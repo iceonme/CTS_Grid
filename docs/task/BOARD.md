@@ -7,6 +7,8 @@
 - [ ] 清理冗余的回测脚本代码
 
 ## DONE
+- [x] 将当前代码仓库推送至 GitHub 并配置安全忽略 [2026-02-24_19-45_github_push.md](history/2026-02-24_19-45_github_push.md)
+- [x] 验证网格线准确性并重构“3高3低”算法 [2026-02-24_20-31_fix_grid_accuracy_and_pivots.md](history/2026-02-24_20-31_fix_grid_accuracy_and_pivots.md)
 - [x] 诊断并修复仪表盘图表未更新问题 [2026-02-24_19-12_fix_chart_update.md](history/2026-02-24_19-12_fix_chart_update.md)
 - [x] 全面审查并修复数据完整性 [2026-02-23_23-30_data_integrity_fix.md](history/2026-02-23_23-30_data_integrity_fix.md)
 - [x] 修复 Dashboard 刷新数据时的 `Value is null` 报错 [2026-02-23_23-15_dashboard_chart_fix.md](history/2026-02-23_23-15_dashboard_chart_fix.md)

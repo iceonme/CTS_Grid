@@ -167,7 +167,7 @@ class LiveEngine:
                     # 计算初始网格
                     df_internal = self.strategy._get_dataframe()
                     if len(df_internal) > 50:
-                        self.strategy.state.grid_upper, self.strategy.state.grid_lower = \
+                        self.strategy.state.grid_upper, self.strategy.state.grid_lower, _ = \
                             self.strategy._calculate_dynamic_grid(df_internal)
                         self.strategy.state.grid_prices = [
                             float(p) for p in 

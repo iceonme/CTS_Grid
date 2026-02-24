@@ -29,9 +29,10 @@ class DashboardServer:
         # Flask 应用
         self.app = Flask(__name__)
         self.app.config['SECRET_KEY'] = 'cts1-secret-key'
+        self.app.config['TEMPLATES_AUTO_RELOAD'] = True  # 开启模板自动重载
         
         # SocketIO
-        self.socketio = SocketIO(self.app, cors_allowed_origins="*")
+        self.socketio = SocketIO(self.app, cors_allowed_origins="*", async_mode='threading')
         
         # 数据缓存
         self._data: Dict[str, Any] = {
@@ -56,7 +57,7 @@ class DashboardServer:
         """设置路由"""
         
         # 版本号 - 每次修改前端代码后更新
-        self.version = "v3.0-20260224"
+        self.version = "v3.7-20260224"
         
         @self.app.route('/')
         def index():

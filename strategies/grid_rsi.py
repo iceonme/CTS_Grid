@@ -119,9 +119,14 @@ class GridRSIStrategy(BaseStrategy):
         self._equity_history.clear()
 
     def _update_buffer(self, data: MarketData):
-        self._data_buffer.append(data)
-        if len(self._data_buffer) > self._max_buffer_size:
-            self._data_buffer.pop(0)
+        if self._data_buffer and self._data_buffer[-1].timestamp == data.timestamp:
+            # 更新当前根 K 线 (实时价格)
+            self._data_buffer[-1] = data
+        else:
+            # 加新 K 线
+            self._data_buffer.append(data)
+            if len(self._data_buffer) > self._max_buffer_size:
+                self._data_buffer.pop(0)
 
     def _get_dataframe(self) -> pd.DataFrame:
         if len(self._data_buffer) < 2:
@@ -214,26 +219,80 @@ class GridRSIStrategy(BaseStrategy):
             return (mid - rsi) / (mid - oversold) * 0.5
         return (mid - rsi) / (overbought - mid) * 0.5
 
-    def _calculate_dynamic_grid(self, df: pd.DataFrame) -> Tuple[float, float]:
-        lookback = min(self.params['grid_refresh_period'], len(df))
-        recent = df.iloc[-lookback:]
+    def _find_pivot_points(self, df: pd.DataFrame, window: int = 5, n: int = 3) -> Tuple[List[float], List[float]]:
+        """
+        寻找最近的 n 个波段高点和低点 (单侧确认逻辑，零滞后)
+        window: 只要比左侧 window 根 K 线高/低，即视为潜在波段点
+        """
+        if len(df) < window + 1:
+            return [], []
 
-        recent_high = recent['high'].max()
-        recent_low = recent['low'].min()
-        range_size = recent_high - recent_low
+        highs = df['high'].values
+        lows = df['low'].values
+        
+        pivot_highs = []
+        pivot_lows = []
+        
+        # 1. 寻找高点：从最新的一根 K 线开始往回扫
+        # 包含最后一根，这样如果正在创新高，网格会立刻移动
+        for i in range(len(df) - 1, window - 1, -1):
+            if highs[i] == max(highs[i-window : i+1]):
+                # 为了保证是不同的“波段”，要求点之间有一定距离或价格有显著不同
+                if not pivot_highs or abs(highs[i] - pivot_highs[-1]) > (highs[i] * 0.0005):
+                    pivot_highs.append(float(highs[i]))
+            if len(pivot_highs) >= n:
+                break
+        
+        # 2. 寻找低点
+        for i in range(len(df) - 1, window - 1, -1):
+            if lows[i] == min(lows[i-window : i+1]):
+                if not pivot_lows or abs(lows[i] - pivot_lows[-1]) > (lows[i] * 0.0005):
+                    pivot_lows.append(float(lows[i]))
+            if len(pivot_lows) >= n:
+                break
+                
+        return pivot_highs, pivot_lows
+
+    def _calculate_dynamic_grid(self, df: pd.DataFrame) -> Tuple[float, float, Dict[str, Any]]:
+        """
+        计算动态网格区间 - 思路B: 3高3低逻辑
+        """
+        # 1. 寻找波段点 (Pivot Points)
+        pivot_highs, pivot_lows = self._find_pivot_points(df, window=5, n=3)
+        
+        if not pivot_highs or not pivot_lows:
+            # 回退到旧的 lookback 逻辑
+            lookback = min(self.params['grid_refresh_period'], len(df))
+            recent = df.iloc[-lookback:]
+            upper = recent['high'].max()
+            lower = recent['low'].min()
+        else:
+            # 使用3高3低的均值或极值
+            # 为了更稳健，这里取均值以平滑异常波动，或取极值以确保全覆盖。
+            # 这里采用：最高的高点和最低的低点来确定边界，更符合“防跑出”策略。
+            upper = max(pivot_highs)
+            lower = min(pivot_lows)
+
+        range_size = upper - lower
+        if range_size <= 0:
+            range_size = upper * 0.01  # 防止零值
+            
         buffer = range_size * self.params['grid_buffer_pct']
 
-        upper = recent_high + buffer
-        lower = recent_low - buffer
+        upper += buffer
+        lower -= buffer
 
+        # 2. RSI 偏移逻辑保持不变
+        rsi_signal = 0.0
         if self.params['rsi_weight'] > 0:
             oversold, overbought = self._get_adaptive_rsi_thresholds(df)
             rsi_signal = self._get_rsi_signal(self.state.current_rsi, oversold, overbought)
+            # 偏移量通常在 2%-10% 范围，根据 rsi_weight 调整
             shift = range_size * rsi_signal * self.params['rsi_weight'] * 0.2
             upper += shift
             lower += shift
 
-        return upper, lower
+        return upper, lower, {'pivots_high': pivot_highs, 'pivots_low': pivot_lows}
 
     def _calculate_position_size(self, context: StrategyContext, rsi_signal: float, is_buy: bool) -> float:
         base_size = context.total_value * self.params['base_position_pct']
@@ -376,15 +435,18 @@ class GridRSIStrategy(BaseStrategy):
                     ))
             self._reset_cycle(context)
 
-        grid_refresh = self.params['grid_refresh_period']
-        if current_idx - self.state.last_grid_update >= grid_refresh or self.state.grid_upper is None:
-            self.state.grid_upper, self.state.grid_lower = self._calculate_dynamic_grid(df)
-            self.state.grid_prices = np.linspace(
-                self.state.grid_lower,
-                self.state.grid_upper,
-                self.params['grid_levels']
-            ).tolist()
-            self.state.last_grid_update = current_idx
+        # 每分钟都进行检测 (思路B)，只要结构变化网格就会微调
+        # 这里不再死锁 100 根线，而是根据结构点更新
+        upper, lower, meta = self._calculate_dynamic_grid(df)
+        self.state.grid_upper = upper
+        self.state.grid_lower = lower
+        self.state.grid_prices = np.linspace(
+            self.state.grid_lower,
+            self.state.grid_upper,
+            self.params['grid_levels']
+        ).tolist()
+        self.state.last_grid_update = current_idx
+        self.state.meta = meta  # 保存波段点信息用于汇报
 
         signals.extend(self._check_stop_loss(data, context))
 
@@ -493,6 +555,35 @@ class GridRSIStrategy(BaseStrategy):
         if context and self.symbol in context.positions:
             position_count = self._estimate_position_layers(context, current_price)
 
+
+        params_snapshot = {
+            'symbol': self.symbol,
+            'grid_levels': self.params['grid_levels'],
+            'grid_refresh_period': self.params['grid_refresh_period'],
+            'grid_buffer_pct': self.params['grid_buffer_pct'],
+            'rsi_period': self.params['rsi_period'],
+            'rsi_weight': self.params['rsi_weight'],
+            'rsi_oversold': self.params['rsi_oversold'],
+            'rsi_overbought': self.params['rsi_overbought'],
+            'rsi_extreme_buy': self.params['rsi_extreme_buy'],
+            'rsi_extreme_sell': self.params['rsi_extreme_sell'],
+            'adaptive_rsi': self.params['adaptive_rsi'],
+            'use_trend_filter': self.params['use_trend_filter'],
+            'adx_period': self.params['adx_period'],
+            'adx_threshold': self.params['adx_threshold'],
+            'ma_period': self.params['ma_period'],
+            'base_position_pct': self.params['base_position_pct'],
+            'max_positions': self.params['max_positions'],
+            'use_kelly_sizing': self.params['use_kelly_sizing'],
+            'kelly_fraction': self.params['kelly_fraction'],
+            'stop_loss_pct': self.params['stop_loss_pct'],
+            'trailing_stop': self.params['trailing_stop'],
+            'trailing_stop_pct': self.params['trailing_stop_pct'],
+            'cycle_reset_period': self.params['cycle_reset_period'],
+            'max_drawdown_reset': self.params['max_drawdown_reset'],
+            'min_order_usdt': self.params['min_order_usdt'],
+        }
+
         return {
             'grid_upper': self.state.grid_upper or 0,
             'grid_lower': self.state.grid_lower or 0,
@@ -510,4 +601,6 @@ class GridRSIStrategy(BaseStrategy):
             'in_grid': in_grid,
             'trade_executed': False,
             'grid_touch_count': self.state.grid_touch_count,
+            'pivots': getattr(self.state, 'meta', {}),
+            'params': params_snapshot,
         }

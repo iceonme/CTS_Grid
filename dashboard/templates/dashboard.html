@@ -8,6 +8,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
+
     <script>
         // 版本号 - 用于确认前端代码版本
         window.APP_VERSION = "{{ app_version }}";
@@ -372,6 +373,125 @@
         ::-webkit-scrollbar-thumb:hover {
             background: var(--text-secondary);
         }
+
+
+        .header-btn {
+            border: 1px solid var(--glass-border);
+            background: var(--glass-bg);
+            color: var(--text-primary);
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s ease;
+        }
+
+        .header-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .modal-mask {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+
+        .modal-mask.show {
+            display: flex;
+        }
+
+        .strategy-modal {
+            width: min(920px, 95vw);
+            max-height: 86vh;
+            overflow: auto;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+        }
+
+        .strategy-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: var(--bg-secondary);
+            z-index: 1;
+        }
+
+        .strategy-modal-title {
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .strategy-modal-close {
+            border: 1px solid var(--glass-border);
+            background: transparent;
+            color: var(--text-secondary);
+            border-radius: 8px;
+            padding: 4px 10px;
+            cursor: pointer;
+        }
+
+        .strategy-modal-body {
+            padding: 16px 18px 20px;
+            display: grid;
+            gap: 12px;
+        }
+
+        .strategy-block {
+            border: 1px solid var(--glass-border);
+            background: var(--glass-bg);
+            border-radius: 10px;
+            padding: 12px;
+        }
+
+        .strategy-block h4 {
+            margin: 0 0 8px;
+            font-size: 13px;
+            color: var(--primary);
+        }
+
+        .strategy-block p {
+            margin: 0;
+            line-height: 1.6;
+            color: var(--text-primary);
+            font-size: 13px;
+        }
+
+        .param-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .param-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 8px 10px;
+        }
+
+        .param-name {
+            color: var(--text-secondary);
+            font-size: 11px;
+            margin-bottom: 4px;
+        }
+
+        .param-value {
+            color: var(--text-primary);
+            font-size: 13px;
+            font-family: 'JetBrains Mono', monospace;
+        }
     </style>
 </head>
 
@@ -394,6 +514,7 @@
                 <span>模拟盘</span>
             </div>
         </div>
+        <button class="header-btn" id="openStrategyDocBtn">策略说明</button>
     </header>
 
     <main>
@@ -445,13 +566,17 @@
 
                     <div class="asset-detail" style="margin-top: 8px;">
                         <div class="asset-detail-item">
-                            <div class="asset-detail-label">网格区间</div>
+                            <div class="asset-detail-label">网格区间 (参考线)</div>
                             <div class="asset-detail-value" id="gridRange" style="font-size: 11px;">--</div>
                         </div>
                         <div class="asset-detail-item">
                             <div class="asset-detail-label">持仓层数</div>
                             <div class="asset-detail-value" id="positionLayers">--</div>
                         </div>
+                    </div>
+
+                    <div id="pivotInfo" style="margin-top: 4px; font-size: 10px; color: var(--primary);">
+                        <!-- 波段点信息将插入此处 -->
                     </div>
 
                     <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">
@@ -503,6 +628,23 @@
             </div>
         </section>
     </main>
+    </div>
+    </div>
+    <div class="modal-mask" id="strategyDocModal">
+        <div class="strategy-modal" role="dialog" aria-modal="true" aria-label="策略说明">
+            <div class="strategy-modal-header">
+                <div class="strategy-modal-title">Grid RSI 策略说明</div>
+                <button class="strategy-modal-close" id="closeStrategyDocBtn">关闭</button>
+            </div>
+            <div class="strategy-modal-body" id="strategyDocContent">
+                <div class="strategy-block">
+                    <p>等待策略参数...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+    </div>
 
     <script>
         const socket = io({ transports: ['websocket', 'polling'] });
@@ -517,6 +659,83 @@
         let overboughtLine, oversoldLine, initialBalanceLine;
         let buyMarkers = [];
         let sellMarkers = [];
+
+        let latestStrategyInfo = null;
+
+        function fmtPct(v) {
+            if (v === undefined || v === null || Number.isNaN(Number(v))) return '--';
+            return `${(Number(v) * 100).toFixed(2)}%`;
+        }
+        function fmtVal(v) {
+            if (v === undefined || v === null) return '--';
+            if (typeof v === 'boolean') return v ? '开启' : '关闭';
+            if (typeof v === 'number') return Number.isInteger(v) ? `${v}` : `${v.toFixed(4)}`;
+            return `${v}`;
+        }
+
+        function renderStrategyDoc(strategyData) {
+            const box = document.getElementById('strategyDocContent');
+            if (!box) return;
+            const params = (strategyData && strategyData.params) ? strategyData.params : null;
+            if (!params) {
+                box.innerHTML = `<div class="strategy-block"><p>等待策略参数同步（通常 2-3 秒内）。</p></div>`;
+                return;
+            }
+
+            const blocks = [];
+            blocks.push(`
+                <div class="strategy-block">
+                    <h4>策略机制</h4>
+                    <p>这是一个动态网格 + RSI 过滤策略：先基于最近波动生成网格区间，再根据 RSI 与市场状态决定是否买卖、买卖多少，并用止损/重置机制控制风险。</p>
+                </div>
+            `);
+
+            blocks.push(`
+                <div class="strategy-block">
+                    <h4>当前参数</h4>
+                    <div class="param-grid">
+                        <div class="param-item"><div class="param-name">交易对</div><div class="param-value">${fmtVal(params.symbol)}</div></div>
+                        <div class="param-item"><div class="param-name">网格数量</div><div class="param-value">${fmtVal(params.grid_levels)}</div></div>
+                        <div class="param-item"><div class="param-name">网格刷新</div><div class="param-value">${fmtVal(params.grid_refresh_period)} 根K线</div></div>
+                        <div class="param-item"><div class="param-name">网格缓冲</div><div class="param-value">${fmtPct(params.grid_buffer_pct)}</div></div>
+                        <div class="param-item"><div class="param-name">RSI周期</div><div class="param-value">${fmtVal(params.rsi_period)}</div></div>
+                        <div class="param-item"><div class="param-name">RSI权重</div><div class="param-value">${fmtVal(params.rsi_weight)}</div></div>
+                        <div class="param-item"><div class="param-name">超卖/超买</div><div class="param-value">${fmtVal(params.rsi_oversold)} / ${fmtVal(params.rsi_overbought)}</div></div>
+                        <div class="param-item"><div class="param-name">极值限制</div><div class="param-value">买入停于>${fmtVal(params.rsi_extreme_buy)}，卖出停于<${fmtVal(params.rsi_extreme_sell)}</div></div>
+                        <div class="param-item"><div class="param-name">基础仓位</div><div class="param-value">${fmtPct(params.base_position_pct)}</div></div>
+                        <div class="param-item"><div class="param-name">最大层数</div><div class="param-value">${fmtVal(params.max_positions)}</div></div>
+                        <div class="param-item"><div class="param-name">Kelly开关</div><div class="param-value">${fmtVal(params.use_kelly_sizing)} (k=${fmtVal(params.kelly_fraction)})</div></div>
+                        <div class="param-item"><div class="param-name">最小下单</div><div class="param-value">${fmtVal(params.min_order_usdt)} USDT</div></div>
+                        <div class="param-item"><div class="param-name">移动止损</div><div class="param-value">${fmtVal(params.trailing_stop)} (${fmtPct(params.trailing_stop_pct)})</div></div>
+                        <div class="param-item"><div class="param-name">固定止损</div><div class="param-value">${fmtPct(params.stop_loss_pct)}</div></div>
+                        <div class="param-item"><div class="param-name">重置周期</div><div class="param-value">${fmtVal(params.cycle_reset_period)} 根K线</div></div>
+                        <div class="param-item"><div class="param-name">最大回撤重置</div><div class="param-value">${fmtPct(params.max_drawdown_reset)}</div></div>
+                    </div>
+                </div>
+            `);
+
+            blocks.push(`
+                <div class="strategy-block">
+                    <h4>执行要点</h4>
+                    <p>策略优先做区间内分层交易；若趋势/波动变化明显，会重算网格并动态调整仓位。实盘建议先小资金验证 1-2 天，再放大仓位。</p>
+                </div>
+            `);
+
+            box.innerHTML = blocks.join('');
+        }
+
+        function openStrategyDoc() {
+            const modal = document.getElementById('strategyDocModal');
+            if (!modal) return;
+            renderStrategyDoc(latestStrategyInfo);
+            modal.classList.add('show');
+        }
+
+        function closeStrategyDoc() {
+            const modal = document.getElementById('strategyDocModal');
+            if (!modal) return;
+            modal.classList.remove('show');
+        }
 
         // 初始化 TradingView 图表
         function initCharts() {
@@ -1135,6 +1354,13 @@
         let isConnected = false;
         let reconnectAttempts = 0;
 
+
+        document.getElementById('openStrategyDocBtn')?.addEventListener('click', openStrategyDoc);
+        document.getElementById('closeStrategyDocBtn')?.addEventListener('click', closeStrategyDoc);
+        document.getElementById('strategyDocModal')?.addEventListener('click', (e) => {
+            if (e.target && e.target.id === 'strategyDocModal') closeStrategyDoc();
+        });
+
         socket.on('connect', () => {
             isConnected = true;
             reconnectAttempts = 0;
@@ -1166,13 +1392,13 @@
                     console.log(`[Socket] 加载 ${data.candles.length} 根 K 线`);
                     updateChart(data.candles, []);
                 }
-                
+
                 // 加载 RSI 历史
                 if (data.rsi && data.rsi.length > 0 && rsiSeries) {
                     const rsiBatch = prepareBatchData(data.rsi);
                     console.log(`[Socket] 加载 ${rsiBatch.length} 个 RSI 点`);
                     rsiSeries.setData(rsiBatch);
-                    
+
                     // 绘制 RSI 参考线
                     if (rsiBatch.length > 0) {
                         rsiStartTime = rsiBatch[0].time;
@@ -1182,13 +1408,13 @@
                         oversoldLine.setData([{ time: rsiStartTime, value: 30 }, { time: endTime, value: 30 }]);
                     }
                 }
-                
+
                 // 加载资产历史
                 if (data.equity && data.equity.length > 0 && equitySeries) {
                     const equityBatch = prepareBatchData(data.equity);
                     console.log(`[Socket] 加载 ${equityBatch.length} 个资产点`);
                     equitySeries.setData(equityBatch);
-                    
+
                     if (equityBatch.length > 0) {
                         equityStartTime = equityBatch[0].time;
                         if (initialBalanceForChart) {
@@ -1345,11 +1571,12 @@
 
                 // 9. 更新策略调试信息
                 if (data.strategy) {
+                    latestStrategyInfo = data.strategy;
                     const s = data.strategy;
 
-                    // 绘制网格线
+                    // 绘制网格线 (固定 5 条作为辅助参考)
                     if (s.grid_lower > 0 && s.grid_upper > 0) {
-                        drawGridLines(s.grid_lower, s.grid_upper, s.max_positions);
+                        drawGridLines(s.grid_lower, s.grid_upper, 5);
                     }
 
                     // 网格区间
@@ -1359,6 +1586,21 @@
                     // 持仓层数
                     document.getElementById('positionLayers').textContent =
                         `${s.position_count}/${s.max_positions}`;
+
+                    // 更新波段点信息 (辅助理解)
+                    if (s.pivots && s.pivots.pivots_high) {
+                        const ph = s.pivots.pivots_high.map(p => p.toFixed(0));
+                        const pl = s.pivots.pivots_low.map(p => p.toFixed(0));
+                        const pivotInfo = document.getElementById('pivotInfo');
+                        if (pivotInfo) {
+                            pivotInfo.innerHTML = `
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 4px;">
+                                    <div style="color: var(--loss)">▲ 高: ${ph.join(', ')}</div>
+                                    <div style="color: var(--profit)">▼ 低: ${pl.join(', ')}</div>
+                                </div>
+                            `;
+                        }
+                    }
 
                     // RSI阈值
                     document.getElementById('rsiThresholds').innerHTML =
@@ -1426,8 +1668,3 @@
 </body>
 
 </html>
-
-
-
-
-
