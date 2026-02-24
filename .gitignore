@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# 数据文件 (太大或敏感)
+*.csv
+*.db
+*.sqlite
+
+# 敏感配置
+config/api_config.py
+
+# 日志
+*.log
+logs/
+
+# 备份
+backup/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 图片输出 (可选)
+*.png
+*.jpg
+*.jpeg

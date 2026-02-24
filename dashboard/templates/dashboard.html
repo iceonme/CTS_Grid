@@ -1,0 +1,1433 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能网格交易系统 | 实时监控中心 {{ app_version }}</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <script>
+        // 版本号 - 用于确认前端代码版本
+        window.APP_VERSION = "{{ app_version }}";
+        window.BUILD_TIME = "{{ version }}";
+        console.log('[APP] 版本:', window.APP_VERSION);
+        console.log('[APP] 构建时间:', window.BUILD_TIME);
+    </script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <!-- TradingView Lightweight Charts -->
+    <script
+        src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js?v=4.1"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0a0e17;
+            --bg-secondary: #111827;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --primary: #00d4ff;
+            --primary-dark: #0099cc;
+            --profit: #00d084;
+            --profit-dark: #00a065;
+            --loss: #ff4757;
+            --loss-dark: #cc3745;
+            --text-primary: #f0f4f8;
+            --text-secondary: #94a3b8;
+            --border: #1e293b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* 顶部导航 */
+        header {
+            height: 60px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .logo-text {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 2px;
+        }
+
+        .logo-sub {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #444;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.connected {
+            background: var(--profit);
+        }
+
+        .status-dot.disconnected {
+            background: var(--loss);
+            animation: none;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        /* 主内容区 */
+        main {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 280px 1fr 320px;
+            gap: 16px;
+            padding: 16px;
+            overflow: hidden;
+        }
+
+        /* 面板样式 */
+        .panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* 左侧资产面板 */
+        .asset-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 16px;
+        }
+
+        .asset-card {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            padding: 16px;
+            text-align: center;
+        }
+
+        .asset-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .asset-value {
+            font-size: 24px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .asset-value.price {
+            color: var(--primary);
+        }
+
+        .asset-value.profit {
+            color: var(--profit);
+        }
+
+        .asset-value.loss {
+            color: var(--loss);
+        }
+
+        .asset-change {
+            font-size: 12px;
+            margin-top: 4px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .asset-detail {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 4px;
+        }
+
+        .asset-detail-item {
+            background: var(--glass-bg);
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+
+        .asset-detail-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .asset-detail-value {
+            font-size: 14px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* 图表区域 */
+        .chart-panel {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chart-container {
+            flex: 1;
+            position: relative;
+            min-height: 0;
+        }
+
+        #tv-chart-main,
+        #tv-chart-rsi,
+        #tv-chart-equity {
+            width: 100%;
+        }
+
+        #tv-chart-main {
+            height: 40%;
+        }
+
+        #tv-chart-rsi {
+            height: 20%;
+            border-top: 1px solid var(--border);
+        }
+
+        #tv-chart-equity {
+            height: 40%;
+            border-top: 1px solid var(--border);
+        }
+
+        /* 右侧交易记录 */
+        .trade-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+        }
+
+        .trade-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background: var(--glass-bg);
+            border-radius: 8px;
+            margin-bottom: 8px;
+            font-size: 13px;
+            border-left: 3px solid transparent;
+        }
+
+        .trade-item.buy {
+            border-left-color: var(--profit);
+        }
+
+        .trade-item.sell {
+            border-left-color: var(--loss);
+        }
+
+        .trade-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        .trade-item.buy .trade-icon {
+            background: rgba(0, 208, 132, 0.15);
+            color: var(--profit);
+        }
+
+        .trade-item.sell .trade-icon {
+            background: rgba(255, 71, 87, 0.15);
+            color: var(--loss);
+        }
+
+        .trade-info {
+            flex: 1;
+        }
+
+        .trade-type {
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .trade-time {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .trade-price {
+            font-family: 'JetBrains Mono', monospace;
+            font-weight: 600;
+            text-align: right;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+
+        /* 滚动条样式 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <div class="logo">
+            <div class="logo-icon">G</div>
+            <div>
+                <div class="logo-text">GRID<span style="color: var(--primary)">PRO</span></div>
+                <div class="logo-sub">智能网格交易系统 {{ app_version }}</div>
+            </div>
+        </div>
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">连接中...</span>
+            </div>
+            <div class="status-item">
+                <span style="color: var(--primary)">OKX</span>
+                <span>模拟盘</span>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <!-- 左侧面板: 资产概览 -->
+        <section class="panel">
+            <div class="panel-header">
+                <span>资产概览</span>
+            </div>
+            <div class="asset-panel">
+                <div class="asset-card">
+                    <div class="asset-label">BTC 当前价格</div>
+                    <div class="asset-value price" id="btcPrice">--</div>
+                    <div class="asset-change" id="priceChange">USDT</div>
+                </div>
+
+                <div class="asset-card">
+                    <div class="asset-label">总权益</div>
+                    <div class="asset-value" id="totalValue">--</div>
+                    <div class="asset-change" id="pnlDisplay" style="color: var(--text-secondary)">初始: --</div>
+                </div>
+
+                <div class="asset-detail">
+                    <div class="asset-detail-item">
+                        <div class="asset-detail-label">可用资金</div>
+                        <div class="asset-detail-value" id="cashValue">--</div>
+                    </div>
+                    <div class="asset-detail-item">
+                        <div class="asset-detail-label">持仓市值</div>
+                        <div class="asset-detail-value" id="positionValue">--</div>
+                    </div>
+                </div>
+
+                <div class="asset-card">
+                    <div class="asset-label">RSI (14)</div>
+                    <div class="asset-value" id="rsiVal" style="font-size: 32px;">--</div>
+                    <div class="asset-change" id="rsiStatus">等待数据...</div>
+                </div>
+
+                <div class="asset-card">
+                    <div class="asset-label">持仓数量</div>
+                    <div class="asset-value" id="positionSize" style="font-size: 20px;">--</div>
+                    <div class="asset-change">BTC</div>
+                </div>
+
+                <!-- 策略调试信息 -->
+                <div class="asset-card"
+                    style="flex:1; background: rgba(0, 212, 255, 0.05); border-color: var(--primary);">
+                    <div class="asset-label" style="color: var(--primary);">策略状态</div>
+
+                    <div class="asset-detail" style="margin-top: 8px;">
+                        <div class="asset-detail-item">
+                            <div class="asset-detail-label">网格区间</div>
+                            <div class="asset-detail-value" id="gridRange" style="font-size: 11px;">--</div>
+                        </div>
+                        <div class="asset-detail-item">
+                            <div class="asset-detail-label">持仓层数</div>
+                            <div class="asset-detail-value" id="positionLayers">--</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">RSI 阈值</div>
+                        <div style="font-size: 13px; font-family: 'JetBrains Mono', monospace;" id="rsiThresholds">
+                            <span style="color: var(--profit);">--</span> / <span style="color: var(--loss);">--</span>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 8px;">
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">信号强度</div>
+                        <div style="font-size: 14px; font-weight: 600; font-family: 'JetBrains Mono', monospace;"
+                            id="signalStrength">--</div>
+                    </div>
+
+                    <div style="margin-top: 8px; padding: 6px; background: var(--glass-bg); border-radius: 6px;"
+                        id="tradeSignal">
+                        <div style="font-size: 11px; color: var(--text-secondary);">交易信号</div>
+                        <div style="font-size: 12px; margin-top: 2px; color: var(--text-primary);">等待中...</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 中间面板: K线图表 -->
+        <section class="panel chart-panel">
+            <div class="panel-header">
+                <span>K线图表</span>
+                <span style="margin-left: auto; font-size: 12px; color: var(--text-secondary);">
+                    标记: <span style="color: var(--profit)">▲ 买入</span> <span style="color: var(--loss);">▼ 卖出</span>
+                </span>
+            </div>
+            <div class="chart-container">
+                <div id="tv-chart-main"></div>
+                <div id="tv-chart-rsi"></div>
+                <div id="tv-chart-equity"></div>
+            </div>
+        </section>
+
+        <!-- 右侧面板: 交易记录 -->
+        <section class="panel">
+            <div class="panel-header">
+                <span>交易记录</span>
+                <span style="margin-left: auto; font-size: 12px; color: var(--text-secondary);" id="tradeCount">0
+                    笔</span>
+            </div>
+            <div class="trade-list" id="tradeList">
+                <div class="empty-state">暂无交易记录</div>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const socket = io({ transports: ['websocket', 'polling'] });
+
+        // TradingView 图表实例
+        let mainChart = null;
+        let rsiChart = null;
+        let equityChart = null;
+        let candleSeries = null;
+        let rsiSeries = null;
+        let equitySeries = null;
+        let overboughtLine, oversoldLine, initialBalanceLine;
+        let buyMarkers = [];
+        let sellMarkers = [];
+
+        // 初始化 TradingView 图表
+        function initCharts() {
+            // 主图配置
+            mainChart = LightweightCharts.createChart(document.getElementById('tv-chart-main'), {
+                layout: {
+                    background: { color: 'transparent' },
+                    textColor: '#94a3b8',
+                    fontFamily: "'Noto Sans SC', sans-serif",
+                },
+                grid: {
+                    vertLines: { color: 'rgba(255, 255, 255, 0.03)' },
+                    horzLines: { color: 'rgba(255, 255, 255, 0.03)' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                    vertLine: {
+                        color: '#00d4ff',
+                        labelBackgroundColor: '#00d4ff',
+                        width: 1,
+                    },
+                    horzLine: {
+                        color: '#00d4ff',
+                        labelBackgroundColor: '#00d4ff',
+                        width: 1,
+                    },
+                },
+                rightPriceScale: {
+                    borderColor: 'rgba(255, 255, 255, 0.1)',
+                    scaleMargins: { top: 0.1, bottom: 0.1 },
+                },
+                timeScale: {
+                    borderColor: 'rgba(255, 255, 255, 0.1)',
+                    timeVisible: true,
+                    secondsVisible: false,
+                    shiftVisibleRangeOnNewBar: true, // 新 K 线产生时自动移动坐标轴
+                    rightBarStaysOnScroll: true,     // 右侧（最新）柱状图保持在视野内
+                },
+                handleScroll: { vertTouchDrag: false },
+            });
+
+            // K线系列
+            candleSeries = mainChart.addCandlestickSeries({
+                upColor: '#00d084',
+                downColor: '#ff4757',
+                borderUpColor: '#00d084',
+                borderDownColor: '#ff4757',
+                wickUpColor: '#00d084',
+                wickDownColor: '#ff4757',
+            });
+
+            // 网格线存储
+            window.gridLines = [];
+
+            // RSI 副图配置
+            rsiChart = LightweightCharts.createChart(document.getElementById('tv-chart-rsi'), {
+                layout: {
+                    background: { color: 'transparent' },
+                    textColor: '#94a3b8',
+                    fontFamily: "'Noto Sans SC', sans-serif",
+                },
+                grid: {
+                    vertLines: { color: 'rgba(255, 255, 255, 0.03)' },
+                    horzLines: { color: 'rgba(255, 255, 255, 0.03)' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Magnet,
+                    vertLine: { color: '#00d4ff', labelBackgroundColor: '#00d4ff' },
+                    horzLine: { color: '#00d4ff', labelBackgroundColor: '#00d4ff' },
+                },
+                rightPriceScale: {
+                    borderColor: 'rgba(255, 255, 255, 0.1)',
+                    scaleMargins: { top: 0.1, bottom: 0.1 },
+                },
+                timeScale: {
+                    visible: false,  // 隐藏时间轴，与主图共用
+                },
+                handleScroll: { vertTouchDrag: false },
+            });
+
+            // RSI 线系列
+            rsiSeries = rsiChart.addLineSeries({
+                color: '#a855f7',
+                lineWidth: 2,
+                title: 'RSI',
+            });
+
+            // RSI 参考线将在收到第一个数据点后动态绘制
+            overboughtLine = rsiChart.addLineSeries({
+                color: '#ff4757',
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                lastValueVisible: false,
+                title: '超买(70)',
+            });
+
+            oversoldLine = rsiChart.addLineSeries({
+                color: '#00d084',
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                lastValueVisible: false,
+                title: '超卖(30)',
+            });
+
+            // 资产曲线图表
+            equityChart = LightweightCharts.createChart(document.getElementById('tv-chart-equity'), {
+                layout: {
+                    background: { color: 'transparent' },
+                    textColor: '#94a3b8',
+                    fontFamily: "'Noto Sans SC', sans-serif",
+                },
+                grid: {
+                    vertLines: { color: 'rgba(255, 255, 255, 0.03)' },
+                    horzLines: { color: 'rgba(255, 255, 255, 0.03)' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Magnet,
+                    vertLine: { color: '#00d4ff', labelBackgroundColor: '#00d4ff' },
+                    horzLine: { color: '#00d4ff', labelBackgroundColor: '#00d4ff' },
+                },
+                rightPriceScale: {
+                    borderColor: 'rgba(255, 255, 255, 0.1)',
+                    scaleMargins: { top: 0.1, bottom: 0.1 },
+                },
+                timeScale: {
+                    visible: false,
+                },
+                handleScroll: { vertTouchDrag: false },
+            });
+
+            // 资产曲线系列
+            equitySeries = equityChart.addLineSeries({
+                color: '#f59e0b',
+                lineWidth: 2,
+                title: '总资产',
+                priceFormat: {
+                    type: 'price',
+                    precision: 2,
+                    minMove: 0.01,
+                },
+            });
+
+            // 初始资金参考线将在收到第一个数据点后动态绘制
+            initialBalanceLine = equityChart.addLineSeries({
+                color: '#64748b',
+                lineWidth: 1,
+                lineStyle: LightweightCharts.LineStyle.Dashed,
+                lastValueVisible: false,
+                title: '初始资金',
+            });
+
+            // 同步三个图表的时间轴 (基于索引的逻辑对齐，配合 1:1 数据骨架)
+            function syncCharts(sourceChart) {
+                const logicalRange = sourceChart.timeScale().getVisibleLogicalRange();
+                if (logicalRange) {
+                    if (sourceChart !== mainChart) mainChart.timeScale().setVisibleLogicalRange(logicalRange);
+                    if (sourceChart !== rsiChart) rsiChart.timeScale().setVisibleLogicalRange(logicalRange);
+                    if (sourceChart !== equityChart) equityChart.timeScale().setVisibleLogicalRange(logicalRange);
+                }
+            }
+
+            mainChart.timeScale().subscribeVisibleTimeRangeChange(() => syncCharts(mainChart));
+            rsiChart.timeScale().subscribeVisibleTimeRangeChange(() => syncCharts(rsiChart));
+            equityChart.timeScale().subscribeVisibleTimeRangeChange(() => syncCharts(equityChart));
+
+            // 响应式调整
+            const resizeObserver = new ResizeObserver(() => {
+                mainChart.applyOptions({ width: document.getElementById('tv-chart-main').clientWidth });
+                rsiChart.applyOptions({ width: document.getElementById('tv-chart-rsi').clientWidth });
+                equityChart.applyOptions({ width: document.getElementById('tv-chart-equity').clientWidth });
+            });
+            resizeObserver.observe(document.getElementById('tv-chart-main'));
+
+            console.log('[Chart] TradingView 图表初始化完成');
+        }
+
+        // 转换时间 (简洁版：专注于数值型毫秒戳)
+        function convertTime(timestamp) {
+            if (timestamp === undefined || timestamp === null) {
+                console.warn('[Time] 时间戳为空');
+                return null;
+            }
+
+            let ms;
+            if (typeof timestamp === 'number') {
+                ms = timestamp > 1e12 ? timestamp : timestamp * 1000;
+            } else if (typeof timestamp === 'string') {
+                // ???? ISO ???? UTC ??????????????????
+                const ts = /Z$|[+-]\d{2}:?\d{2}$/.test(timestamp) ? timestamp : `${timestamp}Z`;
+                const date = new Date(ts);
+                ms = date.getTime();
+            } else {
+                console.warn('[Time] 不支持的时间戳类型:', typeof timestamp, timestamp);
+                return null;
+            }
+
+            // lightweight-charts 需要秒级整数
+            const seconds = Math.floor(ms / 1000);
+
+            // 基础范围检查 (2024年1月1日 1704067200 到未来)
+            if (isNaN(seconds) || seconds < 1704067200) {
+                console.warn('[Time] 时间戳超出范围:', seconds, 'from ms:', ms);
+                return null;
+            }
+            return seconds;
+        }
+
+        // 转换并验证 K 线数据
+        function convertAndValidateCandle(c) {
+            if (!c || typeof c !== 'object') return null;
+
+            // 检查必要字段
+            const required = ['t', 'o', 'h', 'l', 'c'];
+            for (const key of required) {
+                if (c[key] === undefined || c[key] === null) return null;
+            }
+
+            // 转换时间
+            const time = convertTime(c.t);
+            if (!time) return null;
+
+            // 转换价格并严谨检查
+            const open = parseFloat(c.o);
+            const high = parseFloat(c.h);
+            const low = parseFloat(c.l);
+            const close = parseFloat(c.c);
+
+            // 核心修复: 必须是有限数字 (排除 NaN, Infinity)
+            if (!Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) {
+                console.warn('[Chart] 价格包含非有限数值:', c);
+                return null;
+            }
+
+            if (high < low || high < 0 || low < 0) return null;
+
+            return { time, open, high, low, close };
+        }
+
+        // 批量数据处理 (去重、排序、格式转换)
+        function prepareBatchData(data) {
+            if (!Array.isArray(data) || data.length === 0) return [];
+
+            const tvData = [];
+            const seen = new Set();
+
+            for (const item of data) {
+                const time = convertTime(item.t);
+                if (!time || seen.has(time)) continue;
+
+                seen.add(time);
+                // 允许值为 null，这在对齐空历史时很重要
+                tvData.push({
+                    time,
+                    value: (item.v === null || item.v === undefined) ? null : parseFloat(item.v)
+                });
+            }
+
+            return tvData.sort((a, b) => a.time - b.time);
+        }
+
+        // K 线本地缓冲：统一用 setData，避免 update() 的时序报错
+        let candleDataBuffer = [];
+        let lastCandleTime = null;
+
+        function upsertCandle(buffer, candle) {
+            if (!buffer || buffer.length === 0) {
+                buffer.push(candle);
+                return;
+            }
+
+            const last = buffer[buffer.length - 1];
+            if (candle.time > last.time) {
+                buffer.push(candle);
+            } else if (candle.time === last.time) {
+                buffer[buffer.length - 1] = candle;
+            } else {
+                const idx = buffer.findIndex(x => x.time === candle.time);
+                if (idx >= 0) {
+                    buffer[idx] = candle;
+                } else {
+                    buffer.push(candle);
+                    buffer.sort((a, b) => a.time - b.time);
+                }
+            }
+
+            if (buffer.length > 500) {
+                buffer.splice(0, buffer.length - 500);
+            }
+        }
+
+        // 更新图表数据
+        function updateChart(data, tradeHistory) {
+            if (!mainChart || !candleSeries) {
+                console.error('[Chart] ??????');
+                return;
+            }
+
+            const candles = Array.isArray(data) ? data : [data];
+            console.log(`[Chart] updateChart ?? ${candles.length} ? K ?`);
+            if (candles.length === 0) return;
+
+            const tvData = [];
+            let invalidCount = 0;
+            for (const c of candles) {
+                const converted = convertAndValidateCandle(c);
+                if (converted) {
+                    tvData.push(converted);
+                } else {
+                    invalidCount++;
+                    if (invalidCount <= 3) {
+                        console.warn('[Chart] ?? K ?:', c);
+                    }
+                }
+            }
+            console.log(`[Chart] ??: ${tvData.length}, ??: ${invalidCount}`);
+
+            if (tvData.length === 0) {
+                console.error('[Chart] ?????????');
+                return;
+            }
+
+            try {
+                if (Array.isArray(data) && data.length > 1) {
+                    // ???????????? setData
+                    const deduped = new Map();
+                    for (const d of tvData) {
+                        deduped.set(d.time, d);
+                    }
+                    candleDataBuffer = Array.from(deduped.values()).sort((a, b) => a.time - b.time);
+                    if (candleDataBuffer.length > 500) {
+                        candleDataBuffer = candleDataBuffer.slice(-500);
+                    }
+                    candleSeries.setData(candleDataBuffer);
+                    if (candleDataBuffer.length > 0) {
+                        lastCandleTime = candleDataBuffer[candleDataBuffer.length - 1].time;
+                    }
+
+                    if (window.isInitializingCharts) {
+                        mainChart.timeScale().fitContent();
+                        window.isInitializingCharts = false;
+                    }
+                    console.log(`[Chart] ???? K ?: ${candleDataBuffer.length} ?`);
+                } else {
+                    // ???????? setData???????
+                    const lastCandle = tvData[tvData.length - 1];
+                    const wasOlder = (lastCandleTime !== null && lastCandle.time < lastCandleTime);
+
+                    const prevLastTime = lastCandleTime;
+                    upsertCandle(candleDataBuffer, lastCandle);
+                    candleSeries.setData(candleDataBuffer);
+
+                    const isNewBar = (prevLastTime === null) || (lastCandle.time > prevLastTime);
+                    lastCandleTime = lastCandle.time;
+                    console.log(`[Chart] ????: ${candleDataBuffer.length}, lastTime: ${lastCandleTime}, newBar: ${isNewBar}, older: ${wasOlder}`);
+
+                    if (isNewBar) {
+                        mainChart.timeScale().fitContent();
+                    }
+                    mainChart.timeScale().scrollToRealTime();
+                }
+            } catch (err) {
+                console.error('[Chart] ??????:', err);
+            }
+
+            if (tradeHistory && tradeHistory.length > 0) {
+                updateTradeMarkers(tradeHistory);
+            }
+        }
+        // 更新 RSI 数据 (增量更新)
+        let rsiStartTime = null;
+        let lastRsiUpdateTime = null;
+        function updateRSI(rsiValue, timestamp) {
+            if (!rsiSeries || !timestamp || rsiValue === undefined || rsiValue === null) return;
+
+            const value = parseFloat(rsiValue);
+            if (rsiValue !== null && (!Number.isFinite(value) || value < 0 || value > 100)) return;
+
+            const time = convertTime(timestamp);
+            if (!time) return;
+
+
+            if (lastRsiUpdateTime !== null && time < lastRsiUpdateTime) return;
+
+            // 记录第一个点的时间并绘制参考线 (仅当值非空时才认为有效起始点)
+            if (rsiStartTime === null && rsiValue !== null) {
+                rsiStartTime = time;
+                console.log('[Chart] RSI 数据起始时间:', time);
+
+                // 绘制对齐的 70/30 参考线
+                const endTime = time + 3600 * 24;
+                overboughtLine.setData([{ time: time, value: 70 }, { time: endTime, value: 70 }]);
+                oversoldLine.setData([{ time: time, value: 30 }, { time: endTime, value: 30 }]);
+            }
+
+            try {
+                const val = (rsiValue === null || rsiValue === undefined) ? null : parseFloat(rsiValue);
+                rsiSeries.update({ time, value: val });
+                lastRsiUpdateTime = time;
+            } catch (err) {
+                console.error('[Chart] 更新 RSI 失败:', err);
+            }
+        }
+
+        // 更新资产曲线数据 (增量更新)
+        let initialBalanceForChart = null;
+        let equityStartTime = null;
+        let lastEquityUpdateTime = null;
+        function updateEquity(totalValue, timestamp) {
+            if (!equitySeries || !timestamp) return; // totalValue can be null
+
+            const value = parseFloat(totalValue);
+            if (totalValue !== null && (!Number.isFinite(value) || value <= 0)) return;
+
+            const time = convertTime(timestamp);
+            if (!time) return;
+
+
+            if (lastEquityUpdateTime !== null && time < lastEquityUpdateTime) return;
+
+            try {
+                // 记录第一个点的时间并绘制参考线 (仅当值非空时才认为有效起始点)
+                if (equityStartTime === null && totalValue !== null) {
+                    equityStartTime = time;
+                    console.log('[Chart] 资产数据起始时间:', time);
+
+                    if (initialBalanceForChart !== null) {
+                        initialBalanceLine.setData([
+                            { time: time, value: initialBalanceForChart },
+                            { time: time + 3600 * 24, value: initialBalanceForChart }
+                        ]);
+                    }
+                }
+
+                const val = (totalValue === null || totalValue === undefined) ? null : parseFloat(totalValue);
+                equitySeries.update({ time, value: val });
+                lastEquityUpdateTime = time;
+
+                // 如果有了首个点但之前没拿到初始资金，现在补上
+                if (initialBalanceLine.data().length === 0 && initialBalanceForChart !== null && equityStartTime !== null) {
+                    initialBalanceLine.setData([
+                        { time: equityStartTime, value: initialBalanceForChart },
+                        { time: time + 3600 * 24, value: initialBalanceForChart }
+                    ]);
+                }
+            } catch (err) {
+                console.error('[Chart] 更新资产失败:', err);
+            }
+        }
+
+        // 批量加载 RSI 历史数据
+        function loadRSIHistory(candles, rsiValues) {
+            if (!rsiSeries || candles.length !== rsiValues.length) return;
+
+            const rsiData = candles.map((c, i) => ({
+                time: convertTime(c.t),
+                value: rsiValues[i] || 50
+            }));
+
+            rsiSeries.setData(rsiData);
+        }
+
+        // 更新交易标记
+        function updateTradeMarkers(tradeHistory) {
+            if (!candleSeries || !Array.isArray(tradeHistory) || tradeHistory.length === 0) return;
+
+            // 检查图表是否有数据
+            try {
+                const data = candleSeries.data();
+                if (!data || data.length === 0) return;
+            } catch (e) {
+                return;
+            }
+
+            const validMarkers = [];
+
+            for (const trade of tradeHistory) {
+                if (!trade || !trade.time || !trade.type || trade.price === undefined) continue;
+
+                const time = convertTime(trade.time);
+                if (!time || typeof time !== 'number') continue;
+
+                const price = parseFloat(trade.price);
+                if (isNaN(price)) continue;
+
+                validMarkers.push({
+                    time: time,
+                    position: trade.type === 'BUY' ? 'belowBar' : 'aboveBar',
+                    color: trade.type === 'BUY' ? '#00d084' : '#ff4757',
+                    shape: trade.type === 'BUY' ? 'arrowUp' : 'arrowDown',
+                    text: trade.type === 'BUY' ? `买入 @ ${price.toFixed(2)}` : `卖出 @ ${price.toFixed(2)}`,
+                    size: 1.5,
+                });
+            }
+
+            try {
+                candleSeries.setMarkers(validMarkers);
+            } catch (err) {
+                console.error('[Chart] 设置标记失败:', err);
+            }
+        }
+
+        // 绘制网格线
+        function drawGridLines(gridLower, gridUpper, gridLevels) {
+            if (!candleSeries || !mainChart) return;
+
+            // 清除旧网格线
+            if (window.gridLines) {
+                window.gridLines.forEach(line => {
+                    try { mainChart.removeSeries(line); } catch (e) { }
+                });
+            }
+            window.gridLines = [];
+
+            if (!gridLower || !gridUpper || !gridLevels || gridLevels < 2) {
+                console.log('[Chart] 网格参数无效，不绘制网格线');
+                return;
+            }
+
+            // 计算网格线价格
+            const step = (gridUpper - gridLower) / (gridLevels - 1);
+            const colors = ['#00d084', '#a855f7', '#ff4757']; // 下界绿、中间紫、上界红
+
+            for (let i = 0; i < gridLevels; i++) {
+                const price = gridLower + step * i;
+                const color = i === 0 ? colors[0] : (i === gridLevels - 1 ? colors[2] : colors[1]);
+
+                const line = mainChart.addLineSeries({
+                    color: color,
+                    lineWidth: 1,
+                    lineStyle: LightweightCharts.LineStyle.Dashed,
+                    lastValueVisible: true,
+                    title: i === 0 ? '网格下界' : (i === gridLevels - 1 ? '网格上界' : `网格${i}`),
+                    priceLineVisible: false,
+                });
+
+                // 获取当前K线的时间范围
+                const data = candleSeries.data();
+                if (data && data.length > 0) {
+                    const firstTime = data[0].time;
+                    const lastTime = data[data.length - 1].time;
+                    line.setData([
+                        { time: firstTime, value: price },
+                        { time: lastTime, value: price }
+                    ]);
+                }
+
+                window.gridLines.push(line);
+            }
+
+            console.log(`[Chart] 绘制网格线: ${gridLevels}条 [${gridLower.toFixed(2)} - ${gridUpper.toFixed(2)}]`);
+        }
+
+        // 格式化数字
+        function formatNumber(num, decimals = 2) {
+            if (num === undefined || num === null) return '--';
+            return num.toLocaleString('zh-CN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+        }
+
+        // 添加交易记录到列表
+        function addTradeToList(trade, prepend = true) {
+            if (!trade || !trade.type || !trade.time) {
+                console.warn('[UI] 无效的交易数据:', trade);
+                return;
+            }
+
+            const container = document.getElementById('tradeList');
+            if (!container) return;
+
+            // 移除空状态
+            if (container.querySelector('.empty-state')) {
+                container.innerHTML = '';
+            }
+
+            try {
+                const item = document.createElement('div');
+                item.className = `trade-item ${trade.type.toLowerCase()}`;
+
+                let timeStr = '--:--:--';
+                try {
+                    const time = new Date(trade.time);
+                    timeStr = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}:${time.getSeconds().toString().padStart(2, '0')}`;
+                } catch (e) {
+                    console.warn('[UI] 时间解析失败:', trade.time);
+                }
+
+                const price = parseFloat(trade.price) || 0;
+
+                item.innerHTML = `
+                    <div class="trade-icon">${trade.type === 'BUY' ? '买' : '卖'}</div>
+                    <div class="trade-info">
+                        <div class="trade-type">${trade.type === 'BUY' ? '买入' : '卖出'} BTC</div>
+                        <div class="trade-time">${timeStr} · ${trade.reason || '网格交易'}</div>
+                    </div>
+                    <div class="trade-price">${price.toFixed(2)}</div>
+                `;
+
+                if (prepend) {
+                    container.insertBefore(item, container.firstChild);
+                } else {
+                    container.appendChild(item);
+                }
+
+                // 限制数量
+                while (container.children.length > 50) {
+                    container.removeChild(container.lastChild);
+                }
+
+                // 更新计数
+                document.getElementById('tradeCount').textContent = `${container.children.length} 笔`;
+            } catch (err) {
+                console.error('[UI] 添加交易记录失败:', err);
+            }
+        }
+
+        // Socket.IO 事件处理
+        let isConnected = false;
+        let reconnectAttempts = 0;
+
+        socket.on('connect', () => {
+            isConnected = true;
+            reconnectAttempts = 0;
+            document.getElementById('statusDot').className = 'status-dot connected';
+            document.getElementById('statusText').textContent = '已连接';
+            console.log('[Socket] 已连接到服务器');
+            console.log('[Socket] 等待接收 warmup 数据...');
+        });
+
+        socket.on('disconnect', (reason) => {
+            isConnected = false;
+            document.getElementById('statusDot').className = 'status-dot disconnected';
+            document.getElementById('statusText').textContent = '已断开';
+            console.log('[Socket] 连接已断开:', reason);
+        });
+
+        socket.on('connect_error', (error) => {
+            reconnectAttempts++;
+            console.error(`[Socket] 连接错误 (尝试 ${reconnectAttempts}):`, error.message);
+        });
+
+        socket.on('history_update', (data) => {
+            if (!data || !isConnected) return;
+            console.log('[Socket] 收到 history_update:', data);
+
+            try {
+                // 加载 K 线
+                if (data.candles && data.candles.length > 0) {
+                    console.log(`[Socket] 加载 ${data.candles.length} 根 K 线`);
+                    updateChart(data.candles, []);
+                }
+                
+                // 加载 RSI 历史
+                if (data.rsi && data.rsi.length > 0 && rsiSeries) {
+                    const rsiBatch = prepareBatchData(data.rsi);
+                    console.log(`[Socket] 加载 ${rsiBatch.length} 个 RSI 点`);
+                    rsiSeries.setData(rsiBatch);
+                    
+                    // 绘制 RSI 参考线
+                    if (rsiBatch.length > 0) {
+                        rsiStartTime = rsiBatch[0].time;
+                        const lastTime = rsiBatch[rsiBatch.length - 1].time;
+                        const endTime = lastTime + 3600 * 24;
+                        overboughtLine.setData([{ time: rsiStartTime, value: 70 }, { time: endTime, value: 70 }]);
+                        oversoldLine.setData([{ time: rsiStartTime, value: 30 }, { time: endTime, value: 30 }]);
+                    }
+                }
+                
+                // 加载资产历史
+                if (data.equity && data.equity.length > 0 && equitySeries) {
+                    const equityBatch = prepareBatchData(data.equity);
+                    console.log(`[Socket] 加载 ${equityBatch.length} 个资产点`);
+                    equitySeries.setData(equityBatch);
+                    
+                    if (equityBatch.length > 0) {
+                        equityStartTime = equityBatch[0].time;
+                        if (initialBalanceForChart) {
+                            const lastTime = equityBatch[equityBatch.length - 1].time;
+                            const endTime = lastTime + 3600 * 24;
+                            initialBalanceLine.setData([
+                                { time: equityStartTime, value: initialBalanceForChart },
+                                { time: endTime, value: initialBalanceForChart }
+                            ]);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('[Socket] 处理历史数据失败:', err);
+            }
+        });
+
+        socket.on('update', (data) => {
+            console.log('[Socket] 收到数据:', JSON.parse(JSON.stringify(data)));
+            // DEBUG: 检查是否有历史数据
+            if (data.history_candles) {
+                console.log(`[Socket] 收到历史 K 线: ${data.history_candles.length} 根`);
+                if (data.history_candles.length > 0) {
+                    console.log('[Socket] 首条 K 线:', data.history_candles[0]);
+                    console.log('[Socket] 末条 K 线:', data.history_candles[data.history_candles.length - 1]);
+                }
+            } else {
+                // 实时增量消息通常不带 history_candles，这里不打印噪音日志
+            }
+
+            try {
+                // 1. 更新价格
+                if (data.prices && data.prices['BTC-USDT']) {
+                    const price = data.prices['BTC-USDT'];
+                    document.getElementById('btcPrice').textContent = formatNumber(price);
+                }
+
+                // 2. 更新资产
+                if (data.total_value !== undefined) {
+                    document.getElementById('totalValue').textContent = formatNumber(data.total_value);
+                }
+                if (data.cash !== undefined) {
+                    document.getElementById('cashValue').textContent = formatNumber(data.cash);
+                }
+                if (data.position_value !== undefined) {
+                    document.getElementById('positionValue').textContent = formatNumber(data.position_value);
+                }
+                if (data.initial_balance !== undefined) {
+                    document.getElementById('pnlDisplay').textContent = `初始: ${formatNumber(data.initial_balance)}`;
+                }
+
+                // 3. 更新 PNL 和颜色
+                if (data.pnl_pct !== undefined) {
+                    const pnlEl = document.getElementById('totalValue');
+                    if (data.pnl_pct >= 0) {
+                        pnlEl.className = 'asset-value profit';
+                    } else {
+                        pnlEl.className = 'asset-value loss';
+                    }
+                }
+
+                // 4. 更新 RSI
+                if (data.rsi !== undefined && data.candle && !data.history_candles) {
+                    const rsiEl = document.getElementById('rsiVal');
+                    rsiEl.textContent = data.rsi.toFixed(1);
+
+                    const statusEl = document.getElementById('rsiStatus');
+                    if (data.rsi > 70) {
+                        rsiEl.style.color = 'var(--loss)';
+                        statusEl.textContent = '超买区域';
+                        statusEl.style.color = 'var(--loss)';
+                    } else if (data.rsi < 30) {
+                        rsiEl.style.color = 'var(--profit)';
+                        statusEl.textContent = '超卖区域';
+                        statusEl.style.color = 'var(--profit)';
+                    } else {
+                        rsiEl.style.color = 'var(--text-primary)';
+                        statusEl.textContent = '正常区间';
+                        statusEl.style.color = 'var(--text-secondary)';
+                    }
+
+                    // 更新 RSI 图表
+                    if (data.candle) {
+                        const realtimeTs = data.timestamp || data.candle.t;
+                        updateRSI(data.rsi, realtimeTs);
+                    }
+                }
+
+                // 5. 更新资产曲线
+                if (data.total_value !== undefined && !data.history_candles) {
+                    if (data.candle) {
+                        const realtimeTs = data.timestamp || data.candle.t;
+                        updateEquity(data.total_value, realtimeTs);
+                    } else if (data.timestamp) {
+                        updateEquity(data.total_value, data.timestamp);
+                    }
+                }
+
+                // 7. 更新持仓
+                if (data.positions && data.positions['BTC-USDT'] !== undefined) {
+                    document.getElementById('positionSize').textContent = data.positions['BTC-USDT'].toFixed(6);
+                }
+
+                // 8. 核心：图表更新逻辑 (历史与实时)
+                // 实时 K 线更新 (主图)
+                if (data.candle && !data.history_candles) {
+                    const realtimeCandle = { ...data.candle };
+                    if (data.timestamp) realtimeCandle.t = data.timestamp;
+                    updateChart(realtimeCandle, data.trade_history || []);
+                }
+
+                // 处理历史批量数据 (warmup)
+                if (data.history_candles) {
+                    console.log(`[Chart] 收到全量快照 | 初始资金: ${data.initial_balance}`);
+                    if (data.initial_balance) initialBalanceForChart = data.initial_balance;
+
+                    // 批量加载 K 线数据
+                    updateChart(data.history_candles, data.trade_history);
+
+                    // 批量加载 RSI
+                    const rsiBatch = prepareBatchData(data.history_rsi || []);
+                    rsiSeries.setData(rsiBatch);
+                    if (rsiBatch.length > 0) lastRsiUpdateTime = rsiBatch[rsiBatch.length - 1].time;
+
+                    // 寻找第一个有效点来绘制参考线
+                    if (rsiBatch.length > 0) {
+                        rsiStartTime = rsiBatch[0].time;
+                        const lastTime = rsiBatch[rsiBatch.length - 1].time;
+                        const endTime = lastTime + 3600 * 24;
+                        overboughtLine.setData([{ time: rsiStartTime, value: 70 }, { time: endTime, value: 70 }]);
+                        oversoldLine.setData([{ time: rsiStartTime, value: 30 }, { time: endTime, value: 30 }]);
+                    }
+
+                    // 批量加载资产曲线
+                    const equityBatch = prepareBatchData(data.history_equity || []);
+                    equitySeries.setData(equityBatch);
+                    if (equityBatch.length > 0) lastEquityUpdateTime = equityBatch[equityBatch.length - 1].time;
+
+                    if (equityBatch.length > 0) {
+                        equityStartTime = equityBatch[0].time;
+                        if (initialBalanceForChart) {
+                            const lastTime = equityBatch[equityBatch.length - 1].time;
+                            const endTime = lastTime + 3600 * 24;
+                            initialBalanceLine.setData([
+                                { time: equityStartTime, value: initialBalanceForChart },
+                                { time: endTime, value: initialBalanceForChart }
+                            ]);
+                        }
+                    }
+                }
+
+                // 处理实时单点数据
+                if (data.initial_balance) initialBalanceForChart = data.initial_balance;
+
+                // 9. 更新策略调试信息
+                if (data.strategy) {
+                    const s = data.strategy;
+
+                    // 绘制网格线
+                    if (s.grid_lower > 0 && s.grid_upper > 0) {
+                        drawGridLines(s.grid_lower, s.grid_upper, s.max_positions);
+                    }
+
+                    // 网格区间
+                    document.getElementById('gridRange').textContent =
+                        s.grid_lower > 0 ? `${s.grid_lower.toFixed(0)}-${s.grid_upper.toFixed(0)}` : '未初始化';
+
+                    // 持仓层数
+                    document.getElementById('positionLayers').textContent =
+                        `${s.position_count}/${s.max_positions}`;
+
+                    // RSI阈值
+                    document.getElementById('rsiThresholds').innerHTML =
+                        `<span style="color: var(--profit);">${s.rsi_oversold.toFixed(1)}</span> / <span style="color: var(--loss);">${s.rsi_overbought.toFixed(1)}</span>`;
+
+                    // 信号强度
+                    const signalEl = document.getElementById('signalStrength');
+                    const signalValue = s.rsi_signal;
+                    signalEl.textContent = `${signalValue >= 0 ? '+' : ''}${signalValue.toFixed(2)}`;
+                    signalEl.style.color = signalValue > 0.3 ? 'var(--profit)' : (signalValue < -0.3 ? 'var(--loss)' : 'var(--text-secondary)');
+
+                    // 交易信号
+                    const tradeSignalEl = document.getElementById('tradeSignal');
+                    let signalHtml = `<div style="font-size: 11px; color: var(--text-secondary);">交易信号</div>`;
+
+                    if (s.signal_color === 'buy') {
+                        signalHtml += `<div style="font-size: 13px; margin-top: 2px; color: var(--profit); font-weight: 600;">🟢 ${s.signal_text}</div>`;
+                    } else if (s.signal_color === 'sell') {
+                        signalHtml += `<div style="font-size: 13px; margin-top: 2px; color: var(--loss); font-weight: 600;">🔴 ${s.signal_text}</div>`;
+                    } else {
+                        signalHtml += `<div style="font-size: 12px; margin-top: 2px; color: var(--text-secondary);">⚪ ${s.signal_text}</div>`;
+                    }
+
+                    if (s.in_grid) {
+                        signalHtml += `<div style="font-size: 10px; margin-top: 4px; color: var(--primary);">${s.in_grid}</div>`;
+                    }
+
+                    if (s.trade_executed) {
+                        signalHtml += `<div style="font-size: 10px; margin-top: 4px; color: var(--profit); animation: pulse 1s infinite;">✓ 交易已执行</div>`;
+                    }
+
+                    tradeSignalEl.innerHTML = signalHtml;
+
+                    console.log('[Strategy]', s);
+                }
+
+                // 10. 更新交易记录
+                if (data.trade_history) {
+                    // 批量更新时清空重新加载
+                    const container = document.getElementById('tradeList');
+                    container.innerHTML = '';
+                    data.trade_history.slice().reverse().forEach(trade => addTradeToList(trade, false));
+                }
+                if (data.trade) {
+                    addTradeToList(data.trade, true);
+                }
+
+            } catch (err) {
+                console.error('[UI] 更新错误:', err);
+            }
+        });
+
+        // 页面加载完成
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('[App] ===============================');
+            console.log('[App] 智能网格交易系统');
+            console.log('[App] 后端版本:', window.APP_VERSION || '未知');
+            console.log('[App] 构建时间:', window.BUILD_TIME || '未知');
+            console.log('[App] 本地时间:', new Date().toISOString());
+            console.log('[App] ===============================');
+            window.isInitializingCharts = true;
+            initCharts();
+        });
+    </script>
+</body>
+
+</html>
+
+
+
+
+
