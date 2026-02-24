@@ -15,7 +15,7 @@ env/
 *.sqlite
 
 # 敏感配置
-config/api_config.py
+# config/api_config.py 已被用户要求包含在仓库中
 
 # 日志
 *.log
