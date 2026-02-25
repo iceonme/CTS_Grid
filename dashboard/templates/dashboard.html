@@ -1322,14 +1322,30 @@
                 }
 
                 const price = parseFloat(trade.price) || 0;
+                const size = parseFloat(trade.size) || 0;
+                const quoteAmount = parseFloat(trade.quote_amount) || 0;
+                
+                // 使用后端提供的 detail 字段，或本地构建显示信息
+                let tradeDetail = trade.detail || '';
+                if (!tradeDetail) {
+                    // 兼容旧数据格式
+                    if (trade.type === 'BUY' && quoteAmount > 0) {
+                        tradeDetail = `花费 ${quoteAmount.toFixed(2)} USDT 买入 ${size.toFixed(6)} BTC`;
+                    } else if (trade.type === 'SELL' && quoteAmount > 0) {
+                        tradeDetail = `卖出 ${size.toFixed(6)} BTC 获得 ${quoteAmount.toFixed(2)} USDT`;
+                    } else {
+                        tradeDetail = `${trade.type === 'BUY' ? '买入' : '卖出'} ${size.toFixed(6)} BTC @ $${price.toFixed(2)}`;
+                    }
+                }
 
                 item.innerHTML = `
                     <div class="trade-icon">${trade.type === 'BUY' ? '买' : '卖'}</div>
                     <div class="trade-info">
                         <div class="trade-type">${trade.type === 'BUY' ? '买入' : '卖出'} BTC</div>
+                        <div class="trade-detail" style="font-size: 12px; color: #888; margin-top: 2px;">${tradeDetail}</div>
                         <div class="trade-time">${timeStr} · ${trade.reason || '网格交易'}</div>
                     </div>
-                    <div class="trade-price">${price.toFixed(2)}</div>
+                    <div class="trade-price">$${price.toFixed(2)}</div>
                 `;
 
                 if (prepend) {

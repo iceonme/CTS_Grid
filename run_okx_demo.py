@@ -36,6 +36,8 @@ def main():
     dashboard = create_dashboard(port=5000)
     dashboard.start_background()
     time.sleep(1)  # 等待 Dashboard 启动
+
+    session_start = datetime.now()
     
     # 2. 创建策略
     print("[2/4] 初始化策略...")
@@ -58,14 +60,18 @@ def main():
     # 测试连接并获取初始余额
     initial_balance = None
     try:
-        # 获取详细的余额信息
+        # 获取总权益（USDT + 其他币折算）
+        total_value = executor.get_total_value() if hasattr(executor, 'get_total_value') else None
         balance_detail = executor.api.get_balance()
-        if balance_detail:
+        if total_value and total_value > 0:
+            initial_balance = total_value
+            print(f"      连接成功! 初始权益: {initial_balance:.2f} USDT")
+        elif balance_detail:
             print(f"      API返回余额详情:")
             print(f"        availBal (可用): {balance_detail['availBal']}")
             print(f"        eq (总权益): {balance_detail['eq']}")
             print(f"        raw: {balance_detail.get('raw', {})}")
-            initial_balance = balance_detail['eq']  # 使用总权益作为初始资金
+            initial_balance = balance_detail['eq']  # 退回使用 USDT 权益
             print(f"      连接成功! 初始权益: {initial_balance:.2f} USDT")
         else:
             print(f"      警告: API返回空余额信息")
@@ -106,16 +112,31 @@ def main():
         
         # 保存 context 用于策略状态获取
         from core import StrategyContext, Position
+        positions_input = status.get('positions') or {}
+        positions_map = {}
+        if isinstance(positions_input, dict):
+            for sym, size in positions_input.items():
+                positions_map[sym] = Position(
+                    symbol=sym,
+                    size=size,
+                    avg_price=0.0,
+                    entry_time=datetime.now(),
+                    unrealized_pnl=0.0
+                )
+        else:
+            for p in positions_input:
+                positions_map[p['symbol']] = Position(
+                    symbol=p['symbol'],
+                    size=p['size'],
+                    avg_price=p.get('avg_price', 0),
+                    entry_time=datetime.now(),
+                    unrealized_pnl=p.get('unrealized_pnl', 0)
+                )
+
         context = StrategyContext(
             timestamp=datetime.fromisoformat(status['timestamp']),
             cash=status['cash'],
-            positions={p['symbol']: Position(
-                symbol=p['symbol'],
-                size=p['size'],
-                avg_price=p['avg_price'],
-                entry_time=datetime.now(),
-                unrealized_pnl=p.get('unrealized_pnl', 0)
-            ) for p in status['positions']},
+            positions=positions_map,
             current_prices={status['symbol']: status['price']}
         )
         last_context[0] = context
@@ -135,6 +156,19 @@ def main():
         # 获取策略状态
         strategy_status = strategy.get_status(context)
         
+        trade_history = status.get('trade_history', []) or status.get('trades', [])
+        # 仅展示本次页面刷新后的交易记录
+        filtered_trades = []
+        for t in trade_history:
+            t_time = t.get('time')
+            if not t_time:
+                continue
+            try:
+                trade_dt = datetime.fromisoformat(t_time.replace('Z', '+00:00'))
+            except Exception:
+                continue
+            if trade_dt >= session_start:
+                filtered_trades.append(t)
         dashboard_data = {
             'timestamp': status['timestamp'],
             'prices': {status['symbol']: status['price']},
@@ -148,11 +182,15 @@ def main():
             'total_value': status['total_value'],
             'cash': status['cash'],
             'position_value': status['position_value'],
-            'positions': {status['symbol']: sum(p['size'] for p in status['positions'])},
+            'positions': (
+                {status['symbol']: sum(p['size'] for p in status['positions'])}
+                if isinstance(positions_input, list)
+                else positions_input
+            ),
             'pnl_pct': round(pnl_pct, 4),
             'initial_balance': initial_balance or 3000,
             'rsi': getattr(strategy.state, 'current_rsi', 50),
-            'trade_history': status.get('trades', []),
+            'trade_history': filtered_trades,
             'strategy': strategy_status
         }
         

@@ -97,6 +97,7 @@ class FillEvent:
     timestamp: datetime
     fee: float = 0.0
     pnl: Optional[float] = None  # 平仓时才有
+    quote_amount: Optional[float] = None  # 报价币种金额（如USDT金额）
     meta: Dict[str, Any] = field(default_factory=dict)
 
 

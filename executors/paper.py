@@ -98,8 +98,20 @@ class PaperExecutor(BaseExecutor):
         else:
             executed_price = self._current_price * (1 - slippage)
         
-        # 计算费用
-        trade_value = order.size * executed_price
+        # 统一成交数量语义：
+        # - BUY + size_in_quote=True: order.size 为报价币金额（如 USDT），需换算为基础币数量
+        # - 其它情况: order.size 为基础币数量
+        size_in_quote = bool(order.meta.get('size_in_quote', False))
+        executed_size = float(order.size)
+        trade_value = executed_size * executed_price
+        if order.side == Side.BUY and size_in_quote:
+            if executed_price <= 0:
+                order.status = OrderStatus.REJECTED
+                order.meta['reject_reason'] = "invalid_execution_price"
+                self._orders[order_id] = order
+                return order_id
+            trade_value = float(order.size)
+            executed_size = trade_value / executed_price
         fee = trade_value * self.fee_rate
         
         # 检查资金/持仓
@@ -107,12 +119,14 @@ class PaperExecutor(BaseExecutor):
             total_cost = trade_value + fee
             if total_cost > self.cash:
                 order.status = OrderStatus.REJECTED
+                order.meta['reject_reason'] = "insufficient_cash"
                 self._orders[order_id] = order
                 return order_id
         else:
             pos = self._positions.get(order.symbol)
-            if not pos or pos.size < order.size:
+            if not pos or pos.size < executed_size:
                 order.status = OrderStatus.REJECTED
+                order.meta['reject_reason'] = "insufficient_position"
                 self._orders[order_id] = order
                 return order_id
         
@@ -130,25 +144,25 @@ class PaperExecutor(BaseExecutor):
             
             pos = self._positions[order.symbol]
             # 更新平均成本
-            total_cost = pos.size * pos.avg_price + order.size * executed_price
-            pos.size += order.size
+            total_cost = pos.size * pos.avg_price + executed_size * executed_price
+            pos.size += executed_size
             pos.avg_price = total_cost / pos.size if pos.size > 0 else 0
             
         else:
             pos = self._positions[order.symbol]
             
             # 计算实现盈亏
-            realized_pnl = (executed_price - pos.avg_price) * order.size - fee
+            realized_pnl = (executed_price - pos.avg_price) * executed_size - fee
             
             self.cash += (trade_value - fee)
-            pos.size -= order.size
+            pos.size -= executed_size
             
             if pos.size <= 0:
                 del self._positions[order.symbol]
         
         # 更新订单状态
         order.status = OrderStatus.FILLED
-        order.filled_size = order.size
+        order.filled_size = executed_size
         order.avg_price = executed_price
         self._orders[order_id] = order
         
@@ -157,7 +171,7 @@ class PaperExecutor(BaseExecutor):
             order_id=order_id,
             symbol=order.symbol,
             side=order.side,
-            filled_size=order.size,
+            filled_size=executed_size,
             filled_price=executed_price,
             timestamp=order.timestamp,
             fee=fee,

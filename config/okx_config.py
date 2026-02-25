@@ -109,6 +109,18 @@ class OKXAPI:
                         'raw': data
                     }
         return None
+
+    def get_balances(self):
+        """获取账户全币种余额"""
+        result = self._request('GET', '/api/v5/account/balance')
+        if result and result.get('code') == '0':
+            data = result['data'][0]
+            return {
+                'details': data.get('details', []),
+                'totalEq': float(data.get('totalEq', 0) or 0),
+                'raw': data
+            }
+        return None
     
     def get_ticker(self, inst_id='BTC-USDT'):
         """获取最新价格"""
@@ -138,11 +150,14 @@ class OKXAPI:
             return df
         return None
     
-    def place_order(self, inst_id='BTC-USDT', side='buy', ord_type='market', 
-                    sz='0.01', px=None, td_mode='cash', force_server=False):
+    def place_order(self, inst_id='BTC-USDT', side='buy', ord_type='market',
+                    sz='0.01', px=None, td_mode='cash', ccy=None, force_server=False,
+                    tgt_ccy: str = None):
         """
         下单
         force_server: 如果为 True，即使是模拟盘也会发送到 OKX 服务器，而不是本地模拟成交
+        ccy: 指定 sz 的币种，例如 'USDT' 表示 sz 是 USDT 金额（用于市价买入单）
+        tgt_ccy: 目标币种（用于币币交易指定目标币种）
         """
         body = {
             'instId': inst_id,
@@ -151,6 +166,10 @@ class OKXAPI:
             'ordType': ord_type,
             'sz': sz
         }
+        if ccy:
+            body['ccy'] = ccy
+        if tgt_ccy:
+            body['tgtCcy'] = tgt_ccy
         
         if ord_type == 'limit' and px:
             body['px'] = px
@@ -177,9 +196,10 @@ class OKXAPI:
         
         return self._request('POST', '/api/v5/trade/order', body=body)
     
-    def get_order_history(self, inst_id='BTC-USDT', limit=100):
+    def get_order_history(self, inst_id='BTC-USDT', limit=100, inst_type='SPOT'):
         """获取订单历史"""
         params = {
+            'instType': inst_type,
             'instId': inst_id,
             'limit': str(limit)
         }

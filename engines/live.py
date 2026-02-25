@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Callable, Any
 
 from core import (
     MarketData, Signal, Order, FillEvent, Position,
-    StrategyContext, PortfolioSnapshot
+    StrategyContext, PortfolioSnapshot, OrderStatus
 )
 from strategies import BaseStrategy
 from executors import BaseExecutor
@@ -58,6 +58,9 @@ class LiveEngine:
         self._equity_curve: List[PortfolioSnapshot] = []
         self._trades: List[Dict] = []
         
+        # 图表历史数据同步
+        self._history_candles: List[Dict] = []
+        
         # 监控回调
         self._status_callbacks: List[Callable[[Dict], None]] = []
         
@@ -87,15 +90,37 @@ class LiveEngine:
         # 通知策略
         self.strategy.on_fill(fill)
         
+        # 构建交易记录详情
+        side = fill.side.value.upper()
+        symbol = fill.symbol
+        price = fill.filled_price
+        size = fill.filled_size
+        quote_amount = fill.quote_amount
+        
+        # 格式化显示信息
+        if side == 'BUY' and quote_amount:
+            # 买入：显示花费了多少USDT，买了多少BTC
+            detail = f"花费 {quote_amount:.2f} USDT 买入 {size:.6f} BTC"
+        elif side == 'SELL' and quote_amount:
+            # 卖出：显示卖出了多少BTC，获得了多少USDT
+            detail = f"卖出 {size:.6f} BTC 获得 {quote_amount:.2f} USDT"
+        else:
+            detail = f"数量={size:.6f} 价格={price:.2f}"
+        
         # 记录交易
-        self._trades.append({
-            'type': fill.side.value.upper(),
-            'symbol': fill.symbol,
-            'price': fill.filled_price,
-            'size': fill.filled_size,
+        trade_record = {
+            'type': side,
+            'symbol': symbol,
+            'price': price,
+            'size': size,
+            'quote_amount': quote_amount,
             'pnl': fill.pnl,
-            'time': fill.timestamp.isoformat()
-        })
+            'time': fill.timestamp.isoformat(),
+            'detail': detail
+        }
+        self._trades.append(trade_record)
+        
+        print(f"[成交] {side} {symbol} | {detail} | 价格=${price:.2f}")
     
     def _on_data(self, data: MarketData):
         """数据回调（用于预热）"""
@@ -114,7 +139,13 @@ class LiveEngine:
                 timestamp=signal.timestamp,
                 meta=signal.meta
             )
-            self.executor.submit_order(order)
+            order_id = self.executor.submit_order(order)
+            if not order_id or order.status == OrderStatus.REJECTED:
+                reason = order.meta.get('reject_reason', 'submit_failed_or_rejected')
+                print(
+                    f"[执行拒单] symbol={order.symbol} side={order.side.value} "
+                    f"size={order.size} reason={reason}"
+                )
     
     def _notify_status(self, data: Dict):
         """通知监控器"""
@@ -217,8 +248,9 @@ class LiveEngine:
                 self._current_time = data.timestamp
                 self._current_prices[data.symbol] = data.close
                 
-                # 更新执行器
+                # 更新执行器并同步图表历史
                 self.executor.update_market_data(data.timestamp, data.close)
+                self._sync_history_candles(data)
                 
                 # 策略决策
                 context = self._get_context()
@@ -227,6 +259,10 @@ class LiveEngine:
                 # 执行
                 if signals:
                     print(f"[引擎] 生成 {len(signals)} 个信号")
+                    for sig in signals:
+                        if sig.side.value == 'buy':
+                            print(f"[DEBUG BUY] price={data.close:.2f} size={sig.size:.4f} reason={sig.reason} "
+                                  f"rsi={self.strategy.state.current_rsi:.1f} layers={self._estimate_layers()}")
                     self._execute_signals(signals)
                 
                 # 发送状态更新
@@ -244,15 +280,35 @@ class LiveEngine:
         finally:
             self.stop()
     
+    def _estimate_layers(self) -> int:
+        """估算当前持仓层数"""
+        try:
+            positions = self.executor.get_all_positions()
+            cash = self.executor.get_cash()
+            total = cash + sum(p.size * self._current_prices.get(p.symbol, 0) for p in positions)
+            if total <= 0:
+                return 0
+            for pos in positions:
+                if pos.symbol == self.strategy.symbol:
+                    base = max(total * self.strategy.params['base_position_pct'], self.strategy.params['min_order_usdt'])
+                    return max(1, int(__import__('numpy').ceil(pos.size * self._current_prices.get(pos.symbol, 0) / base)))
+        except Exception:
+            pass
+        return 0
+    
     def _build_status(self, data: MarketData) -> Dict:
         """构建状态信息"""
         positions = self.executor.get_all_positions()
-        position_value = sum(
-            pos.size * self._current_prices.get(pos.symbol, 0)
-            for pos in positions
-        )
         cash = self.executor.get_cash()
-        total_value = cash + position_value
+        if hasattr(self.executor, 'get_total_value'):
+            total_value = self.executor.get_total_value()
+            position_value = total_value - cash
+        else:
+            position_value = sum(
+                pos.size * self._current_prices.get(pos.symbol, 0)
+                for pos in positions
+            )
+            total_value = cash + position_value
         
         # 获取策略状态
         context = self._get_context()
@@ -262,6 +318,16 @@ class LiveEngine:
         initial_balance = getattr(self.executor, 'initial_capital', 10000.0)
         pnl_pct = (total_value - initial_balance) / initial_balance * 100
         
+        trade_history = self._trades[-20:]
+        if hasattr(self.executor, 'get_recent_trades'):
+            try:
+                trade_history = self.executor.get_recent_trades(
+                    inst_id=data.symbol.replace('/', '-'),
+                    limit=20
+                )
+            except Exception:
+                trade_history = self._trades[-20:]
+
         return {
             'timestamp': data.timestamp.isoformat(),
             'symbol': data.symbol,
@@ -287,10 +353,28 @@ class LiveEngine:
             'positions': {
                 p.symbol: p.size for p in positions
             },
-            'trade_history': self._trades[-20:], # 统一字段名为 trade_history
-            'history_candles': [] # 实时更新不带历史，避免数据量过大
+            'trade_history': trade_history, # 统一字段名为 trade_history
+            'history_candles': self._history_candles[-200:]  # 同步历史K线数据
         }
     
+    def _sync_history_candles(self, data: MarketData):
+        """同步历史K线数据到图表"""
+        candle = {
+            't': int(data.timestamp.timestamp() * 1000),
+            'o': data.open,
+            'h': data.high,
+            'l': data.low,
+            'c': data.close
+        }
+        # 去重：检查是否已存在相同时间戳
+        if self._history_candles and self._history_candles[-1]['t'] == candle['t']:
+            self._history_candles[-1] = candle  # 更新当前K线
+        else:
+            self._history_candles.append(candle)
+        # 限制历史数据大小
+        if len(self._history_candles) > 1000:
+            self._history_candles = self._history_candles[-1000:]
+
     def stop(self):
         """停止引擎"""
         self.is_running = False

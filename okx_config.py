@@ -139,10 +139,11 @@ class OKXAPI:
         return None
     
     def place_order(self, inst_id='BTC-USDT', side='buy', ord_type='market', 
-                    sz='0.01', px=None, td_mode='cash', force_server=False):
+                    sz='0.01', px=None, td_mode='cash', ccy=None, force_server=False):
         """
         下单
         force_server: 如果为 True，即使是模拟盘也会发送到 OKX 服务器，而不是本地模拟成交
+        ccy: 指定 sz 的币种，例如 'USDT' 表示 sz 是 USDT 金额（用于市价买入单）
         """
         body = {
             'instId': inst_id,
@@ -151,6 +152,9 @@ class OKXAPI:
             'ordType': ord_type,
             'sz': sz
         }
+        
+        if ccy:
+            body['ccy'] = ccy
         
         if ord_type == 'limit' and px:
             body['px'] = px
