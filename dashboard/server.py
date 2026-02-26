@@ -1,7 +1,5 @@
-﻿"""
-Dashboard Web 服务器
-Flask + SocketIO 实现实时监控
-"""
+﻿import eventlet
+eventlet.monkey_patch()
 
 import threading
 import json
@@ -31,8 +29,8 @@ class DashboardServer:
         self.app.config['SECRET_KEY'] = 'cts1-secret-key'
         self.app.config['TEMPLATES_AUTO_RELOAD'] = True  # 开启模板自动重载
         
-        # SocketIO
-        self.socketio = SocketIO(self.app, cors_allowed_origins="*", async_mode='threading')
+        # SocketIO (自动检测 eventlet/gevent/threading)
+        self.socketio = SocketIO(self.app, cors_allowed_origins="*")
         
         # 数据缓存
         self._data: Dict[str, Any] = {
@@ -57,7 +55,7 @@ class DashboardServer:
         """设置路由"""
         
         # 版本号 - 每次修改前端代码后更新
-        self.version = "v3.7-20260224"
+        self.version = "v3.8-ResetFix-0226"
         
         @self.app.route('/')
         def index():
@@ -98,6 +96,15 @@ class DashboardServer:
         @self.socketio.on('ping')
         def handle_ping():
             emit('pong', {'time': datetime.now().isoformat()})
+            
+        @self.socketio.on('reset_strategy')
+        def handle_reset_strategy():
+            print("\n[SocketIO] >>> 收到前端重置策略与资金请求 <<<")
+            if hasattr(self, 'on_reset_callback') and self.on_reset_callback:
+                print("[SocketIO] 执行重置回调函数...")
+                self.on_reset_callback()
+            else:
+                print("[SocketIO] 警告: 未注册重置回调函数")
     
     def _clean_data(self, data: Any) -> Any:
         """清理数据，确保可序列化"""
@@ -145,6 +152,23 @@ class DashboardServer:
             print(f"[Dashboard] 更新失败: {e}")
             import traceback
             traceback.print_exc()
+            
+    def reset_ui(self):
+        """通知前端清空所有 UI 数据"""
+        try:
+            # 清空缓存
+            self._data = {
+                'history_candles': [],
+                'history_rsi': [],
+                'history_equity': [],
+                'trades': [],
+                'prices': {},
+                'positions': {}
+            }
+            self.socketio.emit('reset_ui', {}, namespace='/')
+            print("[DashboardServer] 已向前端发送 reset_ui 信号")
+        except Exception as e:
+            print(f"[Dashboard] 发送 reset_ui 失败: {e}")
     
     def start(self, debug=False):
         """启动服务器"""

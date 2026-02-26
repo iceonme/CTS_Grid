@@ -244,6 +244,15 @@ class LiveEngine:
                 if not self.is_running:
                     break
                 
+                # 重新预热检测（支持运行中重置）
+                if not self._is_warmed:
+                    print("[引擎] 接收到重置信号，重新开始预热...")
+                    self.warmup()
+                    data_count = 0
+                    # 发送空状态给监控器
+                    # self._notify_status(self._build_status(data))
+                    continue
+                
                 data_count += 1
                 self._current_time = data.timestamp
                 self._current_prices[data.symbol] = data.close
@@ -351,7 +360,10 @@ class LiveEngine:
             'rsi': strategy_status.get('current_rsi', 50.0),
             'strategy': strategy_status,
             'positions': {
-                p.symbol: p.size for p in positions
+                p.symbol: {
+                    'size': p.size,
+                    'avg_price': p.avg_price
+                } for p in positions
             },
             'trade_history': trade_history, # 统一字段名为 trade_history
             'history_candles': self._history_candles[-200:]  # 同步历史K线数据
@@ -374,6 +386,28 @@ class LiveEngine:
         # 限制历史数据大小
         if len(self._history_candles) > 1000:
             self._history_candles = self._history_candles[-1000:]
+
+    def save_trades(self, filepath: str):
+        """保存交易记录"""
+        import json
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(self._trades, f, indent=4)
+        except Exception as e:
+            print(f"[引擎] 保存交易记录失败: {e}")
+
+    def load_trades(self, filepath: str):
+        """加载交易记录"""
+        import json
+        import os
+        if not os.path.exists(filepath):
+            return
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                self._trades = json.load(f)
+            print(f"[引擎] 已从 {filepath} 加载 {len(self._trades)} 条交易记录")
+        except Exception as e:
+            print(f"[引擎] 加载交易记录失败: {e}")
 
     def stop(self):
         """停止引擎"""

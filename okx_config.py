@@ -131,7 +131,7 @@ class OKXAPI:
             df = pd.DataFrame(result['data'], columns=[
                 'timestamp', 'open', 'high', 'low', 'close', 'volume', 'volCcy', 'volCcyQuote', 'confirm'
             ])
-            df['timestamp'] = pd.to_datetime(df['timestamp'].astype(float), unit='ms')
+            df['timestamp'] = pd.to_datetime(df['timestamp'].astype(float), unit='ms', utc=True)
             df.set_index('timestamp', inplace=True)
             df = df.sort_index()
             df = df[['open', 'high', 'low', 'close', 'volume']].astype(float)

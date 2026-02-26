@@ -88,7 +88,10 @@ class PaperExecutor(BaseExecutor):
         # 生成订单ID
         order_id = str(uuid.uuid4())[:16]
         order.order_id = order_id
-        order.timestamp = self._current_time or datetime.now()
+        
+        # 使用 UTC 时间
+        from datetime import timezone
+        order.timestamp = self._current_time or datetime.now(timezone.utc)
         
         # 计算成交价格（含滑点）
         slippage = self._calculate_slippage(order.side, order.size)
@@ -210,6 +213,66 @@ class PaperExecutor(BaseExecutor):
         )
         return self.cash + position_value
     
+    def to_dict(self) -> Dict:
+        """转换为字典"""
+        return {
+            'cash': self.cash,
+            'initial_capital': self.initial_capital,
+            'positions': {
+                symbol: {
+                    'symbol': pos.symbol,
+                    'size': pos.size,
+                    'avg_price': pos.avg_price,
+                    'entry_time': pos.entry_time.isoformat() if pos.entry_time else None
+                } for symbol, pos in self._positions.items()
+            }
+        }
+    
+    def from_dict(self, data: Dict):
+        """从字典加载"""
+        self.cash = data.get('cash', self.initial_capital)
+        self.initial_capital = data.get('initial_capital', self.initial_capital)
+        
+        self._positions.clear()
+        for symbol, pos_data in data.get('positions', {}).items():
+            entry_time = None
+            if pos_data.get('entry_time'):
+                from datetime import timezone
+                entry_time = datetime.fromisoformat(pos_data['entry_time'].replace('Z', '+00:00'))
+            
+            self._positions[symbol] = Position(
+                symbol=pos_data['symbol'],
+                size=float(pos_data['size']),
+                avg_price=float(pos_data['avg_price']),
+                entry_time=entry_time
+            )
+
+    def save_state(self, filepath: str):
+        """保存状态到文件"""
+        import json
+        try:
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(self.to_dict(), f, indent=4)
+            print(f"[PaperExecutor] 状态已保存至 {filepath}")
+        except Exception as e:
+            print(f"[PaperExecutor] 保存状态失败: {e}")
+
+    def load_state(self, filepath: str):
+        """从文件加载状态"""
+        import json
+        import os
+        if not os.path.exists(filepath):
+            return False
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            self.from_dict(data)
+            print(f"[PaperExecutor] 已从 {filepath} 加载状态")
+            return True
+        except Exception as e:
+            print(f"[PaperExecutor] 加载状态失败: {e}")
+            return False
+
     def reset(self):
         """重置状态"""
         self.cash = self.initial_capital

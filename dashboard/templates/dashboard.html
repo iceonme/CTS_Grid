@@ -492,6 +492,92 @@
             font-size: 13px;
             font-family: 'JetBrains Mono', monospace;
         }
+
+        /* 自定义确认模态框 */
+        .custom-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 24px;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            animation: modalFadeIn 0.3s ease;
+        }
+
+        @keyframes modalFadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            font-size: 18px;
+            font-weight: bold;
+            color: var(--loss);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .modal-body {
+            color: var(--text-primary);
+            font-size: 14px;
+            line-height: 1.6;
+            margin-bottom: 24px;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        .btn-modal {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .btn-cancel {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-secondary);
+            border-color: var(--glass-border);
+        }
+
+        .btn-confirm-reset {
+            background: var(--loss);
+            color: white;
+        }
+
+        .btn-modal:hover {
+            filter: brightness(1.2);
+            transform: translateY(-1px);
+        }
     </style>
 </head>
 
@@ -514,7 +600,11 @@
                 <span>模拟盘</span>
             </div>
         </div>
-        <button class="header-btn" id="openStrategyDocBtn">策略说明</button>
+        <div>
+            <button type="button" class="header-btn" id="resetBtn"
+                style="margin-right: 8px; border-color: var(--loss); color: var(--loss);">重置测试</button>
+            <button type="button" class="header-btn" id="openStrategyDocBtn">策略说明</button>
+        </div>
     </header>
 
     <main>
@@ -531,9 +621,13 @@
                 </div>
 
                 <div class="asset-card">
-                    <div class="asset-label">总权益</div>
+                    <div class="asset-label">总权益 (USDT)</div>
                     <div class="asset-value" id="totalValue">--</div>
-                    <div class="asset-change" id="pnlDisplay" style="color: var(--text-secondary)">初始: --</div>
+                    <div class="asset-change" id="pnlDisplay"
+                        style="color: var(--text-secondary); display: flex; justify-content: space-between; padding: 0 10px;">
+                        <span>收益率: <span id="pnlRate" style="font-weight: bold;">--</span></span>
+                        <span>初始: <span id="initialBalanceDisplay">--</span></span>
+                    </div>
                 </div>
 
                 <div class="asset-detail">
@@ -554,9 +648,38 @@
                 </div>
 
                 <div class="asset-card">
-                    <div class="asset-label">持仓数量</div>
+                    <div class="asset-label">持仓详情 (BTC)</div>
                     <div class="asset-value" id="positionSize" style="font-size: 20px;">--</div>
-                    <div class="asset-change">BTC</div>
+                    <div class="asset-change" style="margin-top: 8px;">
+                        <div
+                            style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 2px;">
+                            <span>均价: <span id="positionAvgPrice">--</span></span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; font-size: 11px;">
+                            <span>浮亏: <span id="positionUnrealizedPnl">--</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 自定义重置确认模态框 -->
+                <div id="resetConfirmModal" class="custom-modal">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <span style="font-size: 24px;">⚠️</span> 确认重置
+                        </div>
+                        <div class="modal-body">
+                            确定要重置测试进度和资金吗？<br><br>
+                            这将会：<br>
+                            • 立即强制平掉所有持仓<br>
+                            • 清空图表上的所有交易标记<br>
+                            • 删除历史成交记录文件<br>
+                            • 将账户资金恢复至 <b>10,000 USDT</b>
+                        </div>
+                        <div class="modal-footer">
+                            <button id="cancelReset" class="btn-modal btn-cancel">取消</button>
+                            <button id="confirmResetAction" class="btn-modal btn-confirm-reset">确认重置</button>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- 策略调试信息 -->
@@ -823,22 +946,8 @@
                 title: 'RSI',
             });
 
-            // RSI 参考线将在收到第一个数据点后动态绘制
-            overboughtLine = rsiChart.addLineSeries({
-                color: '#ff4757',
-                lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Dashed,
-                lastValueVisible: false,
-                title: '超买(70)',
-            });
+            // RSI 参考线将使用 createPriceLine 添加
 
-            oversoldLine = rsiChart.addLineSeries({
-                color: '#00d084',
-                lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Dashed,
-                lastValueVisible: false,
-                title: '超卖(30)',
-            });
 
             // 资产曲线图表
             equityChart = LightweightCharts.createChart(document.getElementById('tv-chart-equity'), {
@@ -878,14 +987,8 @@
                 },
             });
 
-            // 初始资金参考线将在收到第一个数据点后动态绘制
-            initialBalanceLine = equityChart.addLineSeries({
-                color: '#64748b',
-                lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Dashed,
-                lastValueVisible: false,
-                title: '初始资金',
-            });
+            // 初始资金参考线将使用 createPriceLine 添加
+
 
             // 同步三个图表的时间轴 (基于索引的逻辑对齐，配合 1:1 数据骨架)
             function syncCharts(sourceChart) {
@@ -940,7 +1043,10 @@
                 console.warn('[Time] 时间戳超出范围:', seconds, 'from ms:', ms);
                 return null;
             }
-            return seconds;
+
+            // 调整为本地时区显示 (LightweightCharts 默认展示为 UTC)
+            const localOffset = new Date().getTimezoneOffset() * 60;
+            return seconds - localOffset;
         }
 
         // 转换并验证 K 线数据
@@ -1028,14 +1134,16 @@
 
         // 更新图表数据
         function updateChart(data, tradeHistory) {
-            if (!mainChart || !candleSeries) {
-                console.error('[Chart] ??????');
-                return;
+            if (!mainChart || !candleSeries) return;
+
+            const candles = Array.isArray(data) ? data : [data].filter(x => x);
+
+            // 如果提供了全新的 history_candles (快照)，清除之前的缓存并重新加载
+            if (Array.isArray(data) && data.length > 1) {
+                console.log(`[Chart] 加载全量历史: ${data.length} 根`);
             }
 
-            const candles = Array.isArray(data) ? data : [data];
-            console.log(`[Chart] updateChart ?? ${candles.length} ? K ?`);
-            if (candles.length === 0) return;
+            if (candles.length === 0 && (!tradeHistory || tradeHistory.length === 0)) return;
 
             const tvData = [];
             let invalidCount = 0;
@@ -1100,7 +1208,7 @@
                 console.error('[Chart] ??????:', err);
             }
 
-            if (tradeHistory && tradeHistory.length > 0) {
+            if (tradeHistory) {
                 updateTradeMarkers(tradeHistory);
             }
         }
@@ -1124,10 +1232,11 @@
                 rsiStartTime = time;
                 console.log('[Chart] RSI 数据起始时间:', time);
 
-                // 绘制对齐的 70/30 参考线
-                const endTime = time + 3600 * 24;
-                overboughtLine.setData([{ time: time, value: 70 }, { time: endTime, value: 70 }]);
-                oversoldLine.setData([{ time: time, value: 30 }, { time: endTime, value: 30 }]);
+                if (!window.rsiLinesDrawn) {
+                    rsiSeries.createPriceLine({ price: 70, color: '#ff4757', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超买(70)' });
+                    rsiSeries.createPriceLine({ price: 30, color: '#00d084', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超卖(30)' });
+                    window.rsiLinesDrawn = true;
+                }
             }
 
             try {
@@ -1161,11 +1270,9 @@
                     equityStartTime = time;
                     console.log('[Chart] 资产数据起始时间:', time);
 
-                    if (initialBalanceForChart !== null) {
-                        initialBalanceLine.setData([
-                            { time: time, value: initialBalanceForChart },
-                            { time: time + 3600 * 24, value: initialBalanceForChart }
-                        ]);
+                    if (!window.equityLineDrawn && initialBalanceForChart !== null) {
+                        equitySeries.createPriceLine({ price: parseFloat(initialBalanceForChart), color: '#64748b', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '初始资金' });
+                        window.equityLineDrawn = true;
                     }
                 }
 
@@ -1174,11 +1281,9 @@
                 lastEquityUpdateTime = time;
 
                 // 如果有了首个点但之前没拿到初始资金，现在补上
-                if (initialBalanceLine.data().length === 0 && initialBalanceForChart !== null && equityStartTime !== null) {
-                    initialBalanceLine.setData([
-                        { time: equityStartTime, value: initialBalanceForChart },
-                        { time: time + 3600 * 24, value: initialBalanceForChart }
-                    ]);
+                if (!window.equityLineDrawn && initialBalanceForChart !== null && equityStartTime !== null) {
+                    equitySeries.createPriceLine({ price: parseFloat(initialBalanceForChart), color: '#64748b', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '初始资金' });
+                    window.equityLineDrawn = true;
                 }
             } catch (err) {
                 console.error('[Chart] 更新资产失败:', err);
@@ -1225,7 +1330,7 @@
                     position: trade.type === 'BUY' ? 'belowBar' : 'aboveBar',
                     color: trade.type === 'BUY' ? '#00d084' : '#ff4757',
                     shape: trade.type === 'BUY' ? 'arrowUp' : 'arrowDown',
-                    text: trade.type === 'BUY' ? `买入 @ ${price.toFixed(2)}` : `卖出 @ ${price.toFixed(2)}`,
+                    text: trade.type === 'BUY' ? `买入` : `卖出`,
                     size: 1.5,
                 });
             }
@@ -1324,7 +1429,7 @@
                 const price = parseFloat(trade.price) || 0;
                 const size = parseFloat(trade.size) || 0;
                 const quoteAmount = parseFloat(trade.quote_amount) || 0;
-                
+
                 // 使用后端提供的 detail 字段，或本地构建显示信息
                 let tradeDetail = trade.detail || '';
                 if (!tradeDetail) {
@@ -1377,6 +1482,43 @@
             if (e.target && e.target.id === 'strategyDocModal') closeStrategyDoc();
         });
 
+        const resetModal = document.getElementById('resetConfirmModal');
+        const confirmBtn = document.getElementById('confirmResetAction');
+        const cancelBtn = document.getElementById('cancelReset');
+        const resetTriggerBtn = document.getElementById('resetBtn');
+
+        resetTriggerBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('[UI] 点击重置按钮，显示模态框');
+            resetModal.style.display = 'flex';
+        });
+
+        cancelBtn?.addEventListener('click', () => {
+            resetModal.style.display = 'none';
+        });
+
+        confirmBtn?.addEventListener('click', () => {
+            socket.emit('reset_strategy');
+            resetModal.style.display = 'none';
+
+            // UI 反馈
+            resetTriggerBtn.textContent = '重置中...';
+            resetTriggerBtn.style.opacity = '0.5';
+            resetTriggerBtn.disabled = true;
+
+            setTimeout(() => {
+                resetTriggerBtn.textContent = '重置测试';
+                resetTriggerBtn.style.opacity = '1';
+                resetTriggerBtn.disabled = false;
+            }, 2000);
+        });
+
+        // 点击外部关闭
+        window.addEventListener('click', (e) => {
+            if (e.target === resetModal) resetModal.style.display = 'none';
+        });
+
         socket.on('connect', () => {
             isConnected = true;
             reconnectAttempts = 0;
@@ -1398,6 +1540,36 @@
             console.error(`[Socket] 连接错误 (尝试 ${reconnectAttempts}):`, error.message);
         });
 
+        socket.on('reset_ui', () => {
+            console.log('[Socket] >>> 收到全量重置信号 (reset_ui) <<<');
+            // 1. 清空图表数据
+            if (candleSeries) candleSeries.setData([]);
+            if (rsiSeries) rsiSeries.setData([]);
+            if (equitySeries) equitySeries.setData([]);
+            if (candleSeries) candleSeries.setMarkers([]);
+
+            // 2. 清空 UI 列表
+            const tradeList = document.getElementById('tradeList');
+            if (tradeList) {
+                tradeList.innerHTML = '<div class="empty-state">暂无交易记录</div>';
+                document.getElementById('tradeCount').textContent = '0 笔';
+            }
+
+            // 3. 重置界面数值
+            const els = ['totalValue', 'cashValue', 'positionValue', 'pnlRate', 'positionSize', 'positionAvgPrice', 'positionUnrealizedPnl', 'gridRange', 'positionLayers', 'signalStrength'];
+            els.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = '--';
+            });
+
+            // 4. 重置状态标识
+            window.rsiLinesDrawn = false;
+            window.equityLineDrawn = false;
+            lastCandleTime = null;
+            lastRsiUpdateTime = null;
+            lastEquityUpdateTime = null;
+        });
+
         socket.on('history_update', (data) => {
             if (!data || !isConnected) return;
             console.log('[Socket] 收到 history_update:', data);
@@ -1416,12 +1588,10 @@
                     rsiSeries.setData(rsiBatch);
 
                     // 绘制 RSI 参考线
-                    if (rsiBatch.length > 0) {
-                        rsiStartTime = rsiBatch[0].time;
-                        const lastTime = rsiBatch[rsiBatch.length - 1].time;
-                        const endTime = lastTime + 3600 * 24;
-                        overboughtLine.setData([{ time: rsiStartTime, value: 70 }, { time: endTime, value: 70 }]);
-                        oversoldLine.setData([{ time: rsiStartTime, value: 30 }, { time: endTime, value: 30 }]);
+                    if (!window.rsiLinesDrawn) {
+                        rsiSeries.createPriceLine({ price: 70, color: '#ff4757', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超买(70)' });
+                        rsiSeries.createPriceLine({ price: 30, color: '#00d084', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超卖(30)' });
+                        window.rsiLinesDrawn = true;
                     }
                 }
 
@@ -1431,16 +1601,9 @@
                     console.log(`[Socket] 加载 ${equityBatch.length} 个资产点`);
                     equitySeries.setData(equityBatch);
 
-                    if (equityBatch.length > 0) {
-                        equityStartTime = equityBatch[0].time;
-                        if (initialBalanceForChart) {
-                            const lastTime = equityBatch[equityBatch.length - 1].time;
-                            const endTime = lastTime + 3600 * 24;
-                            initialBalanceLine.setData([
-                                { time: equityStartTime, value: initialBalanceForChart },
-                                { time: endTime, value: initialBalanceForChart }
-                            ]);
-                        }
+                    if (!window.equityLineDrawn && initialBalanceForChart) {
+                        equitySeries.createPriceLine({ price: parseFloat(initialBalanceForChart), color: '#64748b', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '初始资金' });
+                        window.equityLineDrawn = true;
                     }
                 }
             } catch (err) {
@@ -1479,16 +1642,28 @@
                     document.getElementById('positionValue').textContent = formatNumber(data.position_value);
                 }
                 if (data.initial_balance !== undefined) {
-                    document.getElementById('pnlDisplay').textContent = `初始: ${formatNumber(data.initial_balance)}`;
+                    const initEl = document.getElementById('initialBalanceDisplay');
+                    if (initEl) initEl.textContent = formatNumber(data.initial_balance);
                 }
 
                 // 3. 更新 PNL 和颜色
                 if (data.pnl_pct !== undefined) {
                     const pnlEl = document.getElementById('totalValue');
-                    if (data.pnl_pct >= 0) {
+                    const pnlRateEl = document.getElementById('pnlRate');
+                    const pnlVal = parseFloat(data.pnl_pct);
+
+                    if (pnlVal >= 0) {
                         pnlEl.className = 'asset-value profit';
+                        if (pnlRateEl) {
+                            pnlRateEl.textContent = `+${pnlVal.toFixed(2)}%`;
+                            pnlRateEl.style.color = 'var(--profit)';
+                        }
                     } else {
                         pnlEl.className = 'asset-value loss';
+                        if (pnlRateEl) {
+                            pnlRateEl.textContent = `${pnlVal.toFixed(2)}%`;
+                            pnlRateEl.style.color = 'var(--loss)';
+                        }
                     }
                 }
 
@@ -1529,9 +1704,34 @@
                     }
                 }
 
-                // 7. 更新持仓
+                // 7. 更新持仓并且计算未实现盈亏
                 if (data.positions && data.positions['BTC-USDT'] !== undefined) {
-                    document.getElementById('positionSize').textContent = data.positions['BTC-USDT'].toFixed(6);
+                    let posData = data.positions['BTC-USDT'];
+                    if (typeof posData === 'object' && posData !== null) {
+                        document.getElementById('positionSize').textContent = posData.size.toFixed(6);
+
+                        if (posData.size > 0) {
+                            document.getElementById('positionAvgPrice').textContent = formatNumber(posData.avg_price);
+
+                            // Calculate unrealized PNL based on live price
+                            let currentPrice = (data.prices && data.prices['BTC-USDT']) ? data.prices['BTC-USDT'] : (data.candle ? data.candle.c : 0);
+                            let upnl = 0;
+                            if (currentPrice > 0 && posData.avg_price > 0) {
+                                upnl = (currentPrice - posData.avg_price) * posData.size;
+                            }
+
+                            let pnlEl = document.getElementById('positionUnrealizedPnl');
+                            pnlEl.textContent = (upnl >= 0 ? '+' : '') + upnl.toFixed(2);
+                            pnlEl.style.color = upnl >= 0 ? 'var(--profit)' : 'var(--loss)';
+                        } else {
+                            document.getElementById('positionAvgPrice').textContent = '--';
+                            let pnlEl = document.getElementById('positionUnrealizedPnl');
+                            pnlEl.textContent = '--';
+                            pnlEl.style.color = 'var(--text-secondary)';
+                        }
+                    } else {
+                        document.getElementById('positionSize').textContent = parseFloat(posData).toFixed(6);
+                    }
                 }
 
                 // 8. 核心：图表更新逻辑 (历史与实时)
@@ -1556,12 +1756,10 @@
                     if (rsiBatch.length > 0) lastRsiUpdateTime = rsiBatch[rsiBatch.length - 1].time;
 
                     // 寻找第一个有效点来绘制参考线
-                    if (rsiBatch.length > 0) {
-                        rsiStartTime = rsiBatch[0].time;
-                        const lastTime = rsiBatch[rsiBatch.length - 1].time;
-                        const endTime = lastTime + 3600 * 24;
-                        overboughtLine.setData([{ time: rsiStartTime, value: 70 }, { time: endTime, value: 70 }]);
-                        oversoldLine.setData([{ time: rsiStartTime, value: 30 }, { time: endTime, value: 30 }]);
+                    if (!window.rsiLinesDrawn) {
+                        rsiSeries.createPriceLine({ price: 70, color: '#ff4757', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超买(70)' });
+                        rsiSeries.createPriceLine({ price: 30, color: '#00d084', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超卖(30)' });
+                        window.rsiLinesDrawn = true;
                     }
 
                     // 批量加载资产曲线
@@ -1569,16 +1767,9 @@
                     equitySeries.setData(equityBatch);
                     if (equityBatch.length > 0) lastEquityUpdateTime = equityBatch[equityBatch.length - 1].time;
 
-                    if (equityBatch.length > 0) {
-                        equityStartTime = equityBatch[0].time;
-                        if (initialBalanceForChart) {
-                            const lastTime = equityBatch[equityBatch.length - 1].time;
-                            const endTime = lastTime + 3600 * 24;
-                            initialBalanceLine.setData([
-                                { time: equityStartTime, value: initialBalanceForChart },
-                                { time: endTime, value: initialBalanceForChart }
-                            ]);
-                        }
+                    if (!window.equityLineDrawn && initialBalanceForChart) {
+                        equitySeries.createPriceLine({ price: parseFloat(initialBalanceForChart), color: '#64748b', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '初始资金' });
+                        window.equityLineDrawn = true;
                     }
                 }
 
@@ -1681,6 +1872,26 @@
             initCharts();
         });
     </script>
+    <!-- 自定义重置确认模态框 -->
+    <div id="resetConfirmModal" class="custom-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span style="font-size: 24px;">⚠️</span> 确认重置
+            </div>
+            <div class="modal-body">
+                确定要重置测试进度和资金吗？<br><br>
+                这将会：<br>
+                • 立即强制平掉所有持仓<br>
+                • 清空图表上的所有交易标记<br>
+                • 删除历史成交记录文件<br>
+                • 将账户资金恢复至 <b>10,000 USDT</b>
+            </div>
+            <div class="modal-footer">
+                <button id="cancelReset" class="btn-modal btn-cancel">取消</button>
+                <button id="confirmResetAction" class="btn-modal btn-confirm-reset">确认重置</button>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>
