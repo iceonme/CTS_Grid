@@ -1,4 +1,4 @@
-﻿"""
+"""
 动态网格 RSI 策略 V4.0
 对齐原始算法语义，并适配 OKX 实时执行
 """
@@ -478,6 +478,13 @@ class GridRSIStrategy(BaseStrategy):
         oversold, overbought = self._get_adaptive_rsi_thresholds(df)
         rsi_signal = self._get_rsi_signal(self.state.current_rsi, oversold, overbought)
 
+        # 计算动态网格间距保护比例
+        grid_interval_pct = 0.005 # 默认0.5%
+        if self.state.grid_upper and self.state.grid_lower and self.params['grid_levels'] > 1 and current_price > 0:
+            grid_interval = abs(self.state.grid_upper - self.state.grid_lower) / (self.params['grid_levels'] - 1)
+            # 取网格间距的 80% 作为保护距离，最小0.05%，最大1%
+            grid_interval_pct = max(0.0005, min(0.01, (grid_interval / current_price) * 0.8))
+
         if self.state.grid_prices and self.state.last_candle:
             last_high = self.state.last_candle['high']
             last_low = self.state.last_candle['low']
@@ -490,10 +497,10 @@ class GridRSIStrategy(BaseStrategy):
                     if self.state.current_rsi >= self.params['rsi_extreme_buy']:
                         continue
 
-                    # 间隔保护: 新加仓价格需低于持仓均价0.5%
+                    # 间隔保护: 新加仓价格需低于持仓均价动态比例
                     current_pos = context.positions.get(self.symbol)
                     if current_pos and current_pos.size > 0:
-                        if current_price > current_pos.avg_price * 0.995:
+                        if current_price > current_pos.avg_price * (1 - grid_interval_pct):
                             continue
 
                     size = self._calculate_position_size(context, rsi_signal, is_buy=True)
@@ -517,7 +524,7 @@ class GridRSIStrategy(BaseStrategy):
 
                 if last_high < grid_price and current_high >= grid_price:
                     current_pos = context.positions.get(self.symbol)
-                    if current_pos and current_pos.avg_price < current_price * 0.995:
+                    if current_pos and current_pos.avg_price < current_price * (1 - grid_interval_pct):
                         if self.state.current_rsi <= self.params['rsi_extreme_sell']:
                             continue
 
