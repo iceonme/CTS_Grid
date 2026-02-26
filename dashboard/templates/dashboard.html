@@ -749,6 +749,17 @@
             <div class="trade-list" id="tradeList">
                 <div class="empty-state">暂无交易记录</div>
             </div>
+            <!-- 分页控件 -->
+            <div id="tradePagination"
+                style="padding: 10px 12px; border-top: 1px solid var(--border); display: none; align-items: center; justify-content: space-between; font-size: 12px;">
+                <span id="tradePageInfo" style="color: var(--text-secondary);">第 1 页</span>
+                <div style="display: flex; gap: 8px;">
+                    <button id="prevTradePage" class="header-btn"
+                        style="padding: 4px 10px; font-size: 11px;">上一页</button>
+                    <button id="nextTradePage" class="header-btn"
+                        style="padding: 4px 10px; font-size: 11px;">下一页</button>
+                </div>
+            </div>
         </section>
     </main>
     </div>
@@ -1399,76 +1410,189 @@
             return num.toLocaleString('zh-CN', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
         }
 
-        // 添加交易记录到列表
+        // 交易记录分页状态
+        let tradePaginationState = {
+            allTrades: [],      // 所有交易数据
+            currentPage: 1,     // 当前页码
+            pageSize: 20,       // 每页显示数量
+            totalPages: 1       // 总页数
+        };
+
+        // 格式化日期时间为本地时间（UTC+8）
+        function formatLocalTime(timeStr) {
+            if (!timeStr) return '--:--:--';
+            try {
+                // 如果没有包含时区信息，默认补充'Z'按UTC时间解析，与K线保持一致
+                const ts = (typeof timeStr === 'string' && !(/Z$|[+\-]\d{2}:?\d{2}$/.test(timeStr))) ? `${timeStr}Z` : timeStr;
+                const date = new Date(ts);
+                // 强制使用 UTC+8 (Asia/Shanghai) 时间格式化
+                return date.toLocaleString('zh-CN', {
+                    timeZone: 'Asia/Shanghai',
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                });
+            } catch (e) {
+                console.warn('[UI] 时间解析失败:', timeStr);
+                return '--:--:--';
+            }
+        }
+
+        // 渲染交易列表（分页版）
+        function renderTradeList() {
+            const container = document.getElementById('tradeList');
+            const paginationDiv = document.getElementById('tradePagination');
+            if (!container) return;
+
+            const { allTrades, currentPage, pageSize } = tradePaginationState;
+
+            // 计算分页
+            const totalTrades = allTrades.length;
+            tradePaginationState.totalPages = Math.ceil(totalTrades / pageSize) || 1;
+
+            // 确保当前页不超出范围
+            if (currentPage > tradePaginationState.totalPages) {
+                tradePaginationState.currentPage = tradePaginationState.totalPages;
+            }
+
+            // 获取当前页数据
+            const startIdx = (tradePaginationState.currentPage - 1) * pageSize;
+            const endIdx = Math.min(startIdx + pageSize, totalTrades);
+            const pageTrades = allTrades.slice(startIdx, endIdx);
+
+            // 清空容器
+            container.innerHTML = '';
+
+            if (pageTrades.length === 0) {
+                container.innerHTML = '<div class="empty-state">暂无交易记录</div>';
+                if (paginationDiv) paginationDiv.style.display = 'none';
+                document.getElementById('tradeCount').textContent = '0 笔';
+                return;
+            }
+
+            // 显示分页控件
+            if (paginationDiv) paginationDiv.style.display = 'flex';
+
+            // 渲染当前页交易
+            pageTrades.forEach(trade => {
+                const item = document.createElement('div');
+                item.className = `trade-item ${trade.type.toLowerCase()}`;
+
+                const timeStr = formatLocalTime(trade.time);
+                const price = parseFloat(trade.price) || 0;
+                const size = parseFloat(trade.size) || 0;
+                const quoteAmount = parseFloat(trade.quote_amount) || 0;
+
+                // 计算显示的金额：买入显示花费，卖出显示获得
+                let amountText = '';
+                const displayAmount = quoteAmount > 0 ? quoteAmount : (price * size);
+
+                if (displayAmount > 0) {
+                    if (trade.type === 'BUY') {
+                        amountText = `-${displayAmount.toFixed(2)} USDT`;
+                    } else {
+                        amountText = `+${displayAmount.toFixed(2)} USDT`;
+                    }
+                } else {
+                    amountText = `$${price.toFixed(2)}`;
+                }
+
+                // 详细信息显示数量和单价
+                const detailText = `${size.toFixed(6)} BTC @ $${price.toFixed(2)}`;
+
+                item.innerHTML = `
+                    <div class="trade-icon">${trade.type === 'BUY' ? '买' : '卖'}</div>
+                    <div class="trade-info">
+                        <div class="trade-type">${trade.type === 'BUY' ? '买入' : '卖出'} BTC</div>
+                        <div class="trade-detail" style="font-size: 12px; color: #888; margin-top: 2px;">${detailText}</div>
+                        <div class="trade-time">${timeStr} · ${trade.reason || '网格交易'}</div>
+                    </div>
+                    <div class="trade-price" style="color: ${trade.type === 'BUY' ? 'var(--loss)' : 'var(--profit)'}">${amountText}</div>
+                `;
+                container.appendChild(item);
+            });
+
+            // 更新计数和分页信息
+            document.getElementById('tradeCount').textContent = `${totalTrades} 笔`;
+            updatePaginationUI();
+        }
+
+        // 更新分页UI
+        function updatePaginationUI() {
+            const { currentPage, totalPages, allTrades } = tradePaginationState;
+            const pageInfo = document.getElementById('tradePageInfo');
+            const prevBtn = document.getElementById('prevTradePage');
+            const nextBtn = document.getElementById('nextTradePage');
+
+            if (pageInfo) {
+                pageInfo.textContent = `第 ${currentPage}/${totalPages} 页 (共 ${allTrades.length} 笔)`;
+            }
+            if (prevBtn) {
+                prevBtn.disabled = currentPage <= 1;
+                prevBtn.style.opacity = currentPage <= 1 ? '0.5' : '1';
+            }
+            if (nextBtn) {
+                nextBtn.disabled = currentPage >= totalPages;
+                nextBtn.style.opacity = currentPage >= totalPages ? '0.5' : '1';
+            }
+        }
+
+        // 分页事件处理
+        function initPaginationHandlers() {
+            const prevBtn = document.getElementById('prevTradePage');
+            const nextBtn = document.getElementById('nextTradePage');
+
+            if (prevBtn) {
+                prevBtn.addEventListener('click', () => {
+                    if (tradePaginationState.currentPage > 1) {
+                        tradePaginationState.currentPage--;
+                        renderTradeList();
+                    }
+                });
+            }
+            if (nextBtn) {
+                nextBtn.addEventListener('click', () => {
+                    if (tradePaginationState.currentPage < tradePaginationState.totalPages) {
+                        tradePaginationState.currentPage++;
+                        renderTradeList();
+                    }
+                });
+            }
+        }
+
+        // 添加交易记录（新的实时交易处理）
         function addTradeToList(trade, prepend = true) {
             if (!trade || !trade.type || !trade.time) {
                 console.warn('[UI] 无效的交易数据:', trade);
                 return;
             }
 
-            const container = document.getElementById('tradeList');
-            if (!container) return;
-
-            // 移除空状态
-            if (container.querySelector('.empty-state')) {
-                container.innerHTML = '';
+            // 添加到全量数据中
+            if (prepend) {
+                tradePaginationState.allTrades.unshift(trade);
+            } else {
+                tradePaginationState.allTrades.push(trade);
             }
 
-            try {
-                const item = document.createElement('div');
-                item.className = `trade-item ${trade.type.toLowerCase()}`;
-
-                let timeStr = '--:--:--';
-                try {
-                    const time = new Date(trade.time);
-                    timeStr = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}:${time.getSeconds().toString().padStart(2, '0')}`;
-                } catch (e) {
-                    console.warn('[UI] 时间解析失败:', trade.time);
-                }
-
-                const price = parseFloat(trade.price) || 0;
-                const size = parseFloat(trade.size) || 0;
-                const quoteAmount = parseFloat(trade.quote_amount) || 0;
-
-                // 使用后端提供的 detail 字段，或本地构建显示信息
-                let tradeDetail = trade.detail || '';
-                if (!tradeDetail) {
-                    // 兼容旧数据格式
-                    if (trade.type === 'BUY' && quoteAmount > 0) {
-                        tradeDetail = `花费 ${quoteAmount.toFixed(2)} USDT 买入 ${size.toFixed(6)} BTC`;
-                    } else if (trade.type === 'SELL' && quoteAmount > 0) {
-                        tradeDetail = `卖出 ${size.toFixed(6)} BTC 获得 ${quoteAmount.toFixed(2)} USDT`;
-                    } else {
-                        tradeDetail = `${trade.type === 'BUY' ? '买入' : '卖出'} ${size.toFixed(6)} BTC @ $${price.toFixed(2)}`;
-                    }
-                }
-
-                item.innerHTML = `
-                    <div class="trade-icon">${trade.type === 'BUY' ? '买' : '卖'}</div>
-                    <div class="trade-info">
-                        <div class="trade-type">${trade.type === 'BUY' ? '买入' : '卖出'} BTC</div>
-                        <div class="trade-detail" style="font-size: 12px; color: #888; margin-top: 2px;">${tradeDetail}</div>
-                        <div class="trade-time">${timeStr} · ${trade.reason || '网格交易'}</div>
-                    </div>
-                    <div class="trade-price">$${price.toFixed(2)}</div>
-                `;
-
-                if (prepend) {
-                    container.insertBefore(item, container.firstChild);
-                } else {
-                    container.appendChild(item);
-                }
-
-                // 限制数量
-                while (container.children.length > 50) {
-                    container.removeChild(container.lastChild);
-                }
-
-                // 更新计数
-                document.getElementById('tradeCount').textContent = `${container.children.length} 笔`;
-            } catch (err) {
-                console.error('[UI] 添加交易记录失败:', err);
+            // 如果当前在第一页，重新渲染
+            if (tradePaginationState.currentPage === 1) {
+                renderTradeList();
+            } else {
+                // 不在第一页时只更新计数
+                document.getElementById('tradeCount').textContent = `${tradePaginationState.allTrades.length} 笔`;
+                updatePaginationUI();
             }
+        }
+
+        // 批量设置交易历史（初始化或重置时）
+        function setTradeHistory(trades) {
+            tradePaginationState.allTrades = trades || [];
+            tradePaginationState.currentPage = 1;
+            renderTradeList();
         }
 
         // Socket.IO 事件处理
@@ -1548,12 +1672,8 @@
             if (equitySeries) equitySeries.setData([]);
             if (candleSeries) candleSeries.setMarkers([]);
 
-            // 2. 清空 UI 列表
-            const tradeList = document.getElementById('tradeList');
-            if (tradeList) {
-                tradeList.innerHTML = '<div class="empty-state">暂无交易记录</div>';
-                document.getElementById('tradeCount').textContent = '0 笔';
-            }
+            // 2. 清空交易记录（使用新的分页函数）
+            setTradeHistory([]);
 
             // 3. 重置界面数值
             const els = ['totalValue', 'cashValue', 'positionValue', 'pnlRate', 'positionSize', 'positionAvgPrice', 'positionUnrealizedPnl', 'gridRange', 'positionLayers', 'signalStrength'];
@@ -1846,10 +1966,8 @@
 
                 // 10. 更新交易记录
                 if (data.trade_history) {
-                    // 批量更新时清空重新加载
-                    const container = document.getElementById('tradeList');
-                    container.innerHTML = '';
-                    data.trade_history.slice().reverse().forEach(trade => addTradeToList(trade, false));
+                    // 批量更新时重新加载全部历史
+                    setTradeHistory(data.trade_history.slice().reverse());
                 }
                 if (data.trade) {
                     addTradeToList(data.trade, true);
@@ -1870,6 +1988,7 @@
             console.log('[App] ===============================');
             window.isInitializingCharts = true;
             initCharts();
+            initPaginationHandlers();  // 初始化分页事件
         });
     </script>
     <!-- 自定义重置确认模态框 -->

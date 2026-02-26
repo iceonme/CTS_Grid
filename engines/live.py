@@ -327,15 +327,8 @@ class LiveEngine:
         initial_balance = getattr(self.executor, 'initial_capital', 10000.0)
         pnl_pct = (total_value - initial_balance) / initial_balance * 100
         
-        trade_history = self._trades[-20:]
-        if hasattr(self.executor, 'get_recent_trades'):
-            try:
-                trade_history = self.executor.get_recent_trades(
-                    inst_id=data.symbol.replace('/', '-'),
-                    limit=20
-                )
-            except Exception:
-                trade_history = self._trades[-20:]
+        # 返回所有交易记录（分页由前端处理）
+        trade_history = self._trades
 
         return {
             'timestamp': data.timestamp.isoformat(),

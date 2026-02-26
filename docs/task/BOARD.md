@@ -7,6 +7,7 @@
 - [ ] 清理冗余的回测脚本代码
 
 ## DONE
+- [x] 优化交易记录卡片显示（USDT金额及UTC+8时间对齐） [2026-02-26_14-11_update_trade_card.md](history/2026-02-26_14-11_update_trade_card.md)
 - [x] 将当前代码仓库推送至 GitHub 并配置安全忽略 [2026-02-24_19-45_github_push.md](history/2026-02-24_19-45_github_push.md)
 - [x] 验证网格线准确性并重构“3高3低”算法 [2026-02-24_20-31_fix_grid_accuracy_and_pivots.md](history/2026-02-24_20-31_fix_grid_accuracy_and_pivots.md)
 - [x] 诊断并修复仪表盘图表未更新问题 [2026-02-24_19-12_fix_chart_update.md](history/2026-02-24_19-12_fix_chart_update.md)

@@ -55,7 +55,7 @@ class DashboardServer:
         """设置路由"""
         
         # 版本号 - 每次修改前端代码后更新
-        self.version = "v3.8-ResetFix-0226"
+        self.version = "v3.12-TradeDetailFix-0226"
         
         @self.app.route('/')
         def index():

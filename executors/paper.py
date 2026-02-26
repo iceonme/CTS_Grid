@@ -178,7 +178,8 @@ class PaperExecutor(BaseExecutor):
             filled_price=executed_price,
             timestamp=order.timestamp,
             fee=fee,
-            pnl=realized_pnl if order.side == Side.SELL else None
+            pnl=realized_pnl if order.side == Side.SELL else None,
+            quote_amount=trade_value  # 计算金额（USDT金额）
         )
         self._notify_fill(fill)
         
