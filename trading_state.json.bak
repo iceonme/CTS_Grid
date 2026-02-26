@@ -1,0 +1,12 @@
+{
+    "cash": 5638.701664095008,
+    "initial_capital": 10000.0,
+    "positions": {
+        "BTC-USDT": {
+            "symbol": "BTC-USDT",
+            "size": 0.06388449141427331,
+            "avg_price": 68442.86678070533,
+            "entry_time": "2026-02-26T03:44:00"
+        }
+    }
+}

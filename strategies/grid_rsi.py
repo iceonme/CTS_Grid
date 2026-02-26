@@ -45,8 +45,8 @@ class GridRSIStrategy(BaseStrategy):
                  rsi_weight: float = 0.4,
                  rsi_oversold: float = 35,
                  rsi_overbought: float = 65,
-                 rsi_extreme_buy: float = 80,
-                 rsi_extreme_sell: float = 20,
+                 rsi_extreme_buy: float = 70,
+                 rsi_extreme_sell: float = 30,
                  adaptive_rsi: bool = True,
                  # 趋势参数
                  use_trend_filter: bool = True,
@@ -219,12 +219,21 @@ class GridRSIStrategy(BaseStrategy):
             return (mid - rsi) / (mid - oversold) * 0.5
         return (mid - rsi) / (overbought - mid) * 0.5
 
-    def _find_pivot_points(self, df: pd.DataFrame, window: int = 5, n: int = 3) -> Tuple[List[float], List[float]]:
+    def _find_pivot_points(self, df: pd.DataFrame, window: int = 5, n: int = 3,
+                           lookback: int = 100) -> Tuple[List[float], List[float]]:
         """
-        寻找最近的 n 个波段高点和低点 (单侧确认逻辑，零滞后)
-        window: 只要比左侧 window 根 K 线高/低，即视为潜在波段点
+        寻找最近的 n 个波段高点和低点 (双侧确认逻辑)
+        
+        Args:
+            df: K线数据
+            window: 确认窗口大小，检查左右各 window 根 K 线
+            n: 需要找到的波段点数量
+            lookback: 回溯限制，只检查最近 lookback 根 K线 (默认100)
+        
+        Returns:
+            (pivot_highs, pivot_lows): 波段高点列表和波段低点列表
         """
-        if len(df) < window + 1:
+        if len(df) < window * 2 + 1:
             return [], []
 
         highs = df['high'].values
@@ -233,19 +242,35 @@ class GridRSIStrategy(BaseStrategy):
         pivot_highs = []
         pivot_lows = []
         
-        # 1. 寻找高点：从最新的一根 K 线开始往回扫
-        # 包含最后一根，这样如果正在创新高，网格会立刻移动
-        for i in range(len(df) - 1, window - 1, -1):
-            if highs[i] == max(highs[i-window : i+1]):
-                # 为了保证是不同的“波段”，要求点之间有一定距离或价格有显著不同
+        # 计算搜索范围：从最新的 bar-window 开始往回扫，限制 lookback
+        # 确保有足够的数据进行双侧确认 (右边需要 window 根 K 线)
+        end_idx = len(df) - window - 1
+        start_idx = max(window, end_idx - lookback + 1)
+        
+        if start_idx > end_idx:
+            return [], []
+        
+        # 1. 寻找高点：双侧确认
+        # 要求：比左右各 window 根 K 线都高
+        for i in range(end_idx, start_idx - 1, -1):
+            # 左侧范围: [i-window, i-1]
+            left_high = max(highs[i-window:i])
+            # 右侧范围: [i+1, i+window]
+            right_high = max(highs[i+1:i+window+1])
+            
+            if highs[i] > left_high and highs[i] > right_high:
+                # 为了保证是不同的"波段"，要求点之间有一定距离或价格有显著不同
                 if not pivot_highs or abs(highs[i] - pivot_highs[-1]) > (highs[i] * 0.0005):
                     pivot_highs.append(float(highs[i]))
             if len(pivot_highs) >= n:
                 break
         
-        # 2. 寻找低点
-        for i in range(len(df) - 1, window - 1, -1):
-            if lows[i] == min(lows[i-window : i+1]):
+        # 2. 寻找低点：双侧确认
+        for i in range(end_idx, start_idx - 1, -1):
+            left_low = min(lows[i-window:i])
+            right_low = min(lows[i+1:i+window+1])
+            
+            if lows[i] < left_low and lows[i] < right_low:
                 if not pivot_lows or abs(lows[i] - pivot_lows[-1]) > (lows[i] * 0.0005):
                     pivot_lows.append(float(lows[i]))
             if len(pivot_lows) >= n:
@@ -464,6 +489,12 @@ class GridRSIStrategy(BaseStrategy):
                         continue
                     if self.state.current_rsi >= self.params['rsi_extreme_buy']:
                         continue
+
+                    # 间隔保护: 新加仓价格需低于持仓均价0.5%
+                    current_pos = context.positions.get(self.symbol)
+                    if current_pos and current_pos.size > 0:
+                        if current_price > current_pos.avg_price * 0.995:
+                            continue
 
                     size = self._calculate_position_size(context, rsi_signal, is_buy=True)
                     if size < self.params['min_order_usdt']:
