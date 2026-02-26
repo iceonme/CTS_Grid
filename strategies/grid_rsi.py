@@ -224,7 +224,7 @@ class GridRSIStrategy(BaseStrategy):
                            lookback: int = 100) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         寻找最近 of n 个波段高点和低点 (增强时效性逻辑)
-        最新的点采用单侧确认，历史点采用双侧确认
+        最新的 window 范围内采用单侧确认，之外采用双侧确认
         """
         if len(df) < window + 1:
             return [], []
@@ -232,45 +232,59 @@ class GridRSIStrategy(BaseStrategy):
         highs = df['high'].values
         lows = df['low'].values
         times = df.index
+        curr_idx = len(df) - 1
         
         pivot_highs = []
         pivot_lows = []
 
-        # 1. 处理最新的实时点 (单侧确认：只需比左侧 window 根 K线高/低)
-        curr_idx = len(df) - 1
-        
-        # 实时低点检测
-        left_low_min = min(lows[max(0, curr_idx - window):curr_idx])
-        if lows[curr_idx] <= left_low_min:
-            pivot_lows.append({'price': float(lows[curr_idx]), 'time': str(times[curr_idx]), 'type': 'realtime'})
+        # 从最新往回扫，寻找潜在波段
+        for i in range(curr_idx, max(window, curr_idx - lookback), -1):
+            # --- 低点检测 ---
+            if len(pivot_lows) < n:
+                # 1. 基础左侧确认 (必须比左边 window 根低)
+                l_min = min(lows[i-window:i])
+                if lows[i] <= l_min:
+                    is_pivot = False
+                    p_type = 'unknown'
+                    
+                    # 2. 判断属于实时区还是确认区
+                    if i > curr_idx - window:
+                        # 实时区: 只要它是 i 到当前点之间的最低值即可生效 (即跌到底后还没确认右边5根)
+                        if i == curr_idx or lows[i] <= min(lows[i+1:curr_idx+1]):
+                            is_pivot = True
+                            p_type = 'realtime'
+                    else:
+                        # 确认区: 必须有完整的右侧 window 确认
+                        r_min = min(lows[i+1:i+window+1])
+                        if lows[i] < r_min:
+                            is_pivot = True
+                            p_type = 'confirmed'
+                    
+                    if is_pivot:
+                        # 避免重复记录相近点
+                        if not pivot_lows or abs(lows[i] - pivot_lows[-1]['price']) > (lows[i] * 0.001):
+                            pivot_lows.append({'price': float(lows[i]), 'time': str(times[i]), 'type': p_type})
 
-        # 实时高点检测
-        left_high_max = max(highs[max(0, curr_idx - window):curr_idx])
-        if highs[curr_idx] >= left_high_max:
-            pivot_highs.append({'price': float(highs[curr_idx]), 'time': str(times[curr_idx]), 'type': 'realtime'})
-
-        # 2. 寻找历史波段点 (双侧确认)
-        search_end = curr_idx - window
-        search_start = max(window, search_end - lookback)
-
-        for i in range(search_end, search_start - 1, -1):
-            # 高点双侧确认
+            # --- 高点检测 ---
             if len(pivot_highs) < n:
                 l_max = max(highs[i-window:i])
-                r_max = max(highs[i+1:i+window+1])
-                if highs[i] > l_max and highs[i] > r_max:
-                    # 避免与实时点或上一个点太近
-                    if not pivot_highs or abs(highs[i] - pivot_highs[-1]['price']) > (highs[i] * 0.001):
-                        pivot_highs.append({'price': float(highs[i]), 'time': str(times[i]), 'type': 'confirmed'})
+                if highs[i] >= l_max:
+                    is_pivot = False
+                    p_type = 'unknown'
+                    if i > curr_idx - window:
+                        if i == curr_idx or highs[i] >= max(highs[i+1:curr_idx+1]):
+                            is_pivot = True
+                            p_type = 'realtime'
+                    else:
+                        r_max = max(highs[i+1:i+window+1])
+                        if highs[i] > r_max:
+                            is_pivot = True
+                            p_type = 'confirmed'
+                    
+                    if is_pivot:
+                        if not pivot_highs or abs(highs[i] - pivot_highs[-1]['price']) > (highs[i] * 0.001):
+                            pivot_highs.append({'price': float(highs[i]), 'time': str(times[i]), 'type': p_type})
 
-            # 低点双侧确认
-            if len(pivot_lows) < n:
-                l_min = min(lows[i-window:i])
-                r_min = min(lows[i+1:i+window+1])
-                if lows[i] < l_min and lows[i] < r_min:
-                    if not pivot_lows or abs(lows[i] - pivot_lows[-1]['price']) > (lows[i] * 0.001):
-                        pivot_lows.append({'price': float(lows[i]), 'time': str(times[i]), 'type': 'confirmed'})
-            
             if len(pivot_highs) >= n and len(pivot_lows) >= n:
                 break
                 
