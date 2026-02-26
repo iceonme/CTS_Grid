@@ -100,6 +100,7 @@ class GridRSIStrategy(BaseStrategy):
             'cycle_reset_period': cycle_reset_period,
             'max_drawdown_reset': max_drawdown_reset,
             'min_order_usdt': min_order_usdt,
+            'min_trade_interval_pct': kwargs.get('min_trade_interval_pct', 0.0025), # 默认 0.25%
         }
 
         self.state = GridState()
@@ -220,60 +221,57 @@ class GridRSIStrategy(BaseStrategy):
         return (mid - rsi) / (overbought - mid) * 0.5
 
     def _find_pivot_points(self, df: pd.DataFrame, window: int = 5, n: int = 3,
-                           lookback: int = 100) -> Tuple[List[float], List[float]]:
+                           lookback: int = 100) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
-        寻找最近的 n 个波段高点和低点 (双侧确认逻辑)
-        
-        Args:
-            df: K线数据
-            window: 确认窗口大小，检查左右各 window 根 K 线
-            n: 需要找到的波段点数量
-            lookback: 回溯限制，只检查最近 lookback 根 K线 (默认100)
-        
-        Returns:
-            (pivot_highs, pivot_lows): 波段高点列表和波段低点列表
+        寻找最近 of n 个波段高点和低点 (增强时效性逻辑)
+        最新的点采用单侧确认，历史点采用双侧确认
         """
-        if len(df) < window * 2 + 1:
+        if len(df) < window + 1:
             return [], []
 
         highs = df['high'].values
         lows = df['low'].values
+        times = df.index
         
         pivot_highs = []
         pivot_lows = []
+
+        # 1. 处理最新的实时点 (单侧确认：只需比左侧 window 根 K线高/低)
+        curr_idx = len(df) - 1
         
-        # 计算搜索范围：从最新的 bar-window 开始往回扫，限制 lookback
-        # 确保有足够的数据进行双侧确认 (右边需要 window 根 K 线)
-        end_idx = len(df) - window - 1
-        start_idx = max(window, end_idx - lookback + 1)
-        
-        if start_idx > end_idx:
-            return [], []
-        
-        # 1. 寻找高点：双侧确认
-        # 要求：比左右各 window 根 K 线都高
-        for i in range(end_idx, start_idx - 1, -1):
-            # 左侧范围: [i-window, i-1]
-            left_high = max(highs[i-window:i])
-            # 右侧范围: [i+1, i+window]
-            right_high = max(highs[i+1:i+window+1])
+        # 实时低点检测
+        left_low_min = min(lows[max(0, curr_idx - window):curr_idx])
+        if lows[curr_idx] <= left_low_min:
+            pivot_lows.append({'price': float(lows[curr_idx]), 'time': str(times[curr_idx]), 'type': 'realtime'})
+
+        # 实时高点检测
+        left_high_max = max(highs[max(0, curr_idx - window):curr_idx])
+        if highs[curr_idx] >= left_high_max:
+            pivot_highs.append({'price': float(highs[curr_idx]), 'time': str(times[curr_idx]), 'type': 'realtime'})
+
+        # 2. 寻找历史波段点 (双侧确认)
+        search_end = curr_idx - window
+        search_start = max(window, search_end - lookback)
+
+        for i in range(search_end, search_start - 1, -1):
+            # 高点双侧确认
+            if len(pivot_highs) < n:
+                l_max = max(highs[i-window:i])
+                r_max = max(highs[i+1:i+window+1])
+                if highs[i] > l_max and highs[i] > r_max:
+                    # 避免与实时点或上一个点太近
+                    if not pivot_highs or abs(highs[i] - pivot_highs[-1]['price']) > (highs[i] * 0.001):
+                        pivot_highs.append({'price': float(highs[i]), 'time': str(times[i]), 'type': 'confirmed'})
+
+            # 低点双侧确认
+            if len(pivot_lows) < n:
+                l_min = min(lows[i-window:i])
+                r_min = min(lows[i+1:i+window+1])
+                if lows[i] < l_min and lows[i] < r_min:
+                    if not pivot_lows or abs(lows[i] - pivot_lows[-1]['price']) > (lows[i] * 0.001):
+                        pivot_lows.append({'price': float(lows[i]), 'time': str(times[i]), 'type': 'confirmed'})
             
-            if highs[i] > left_high and highs[i] > right_high:
-                # 为了保证是不同的"波段"，要求点之间有一定距离或价格有显著不同
-                if not pivot_highs or abs(highs[i] - pivot_highs[-1]) > (highs[i] * 0.0005):
-                    pivot_highs.append(float(highs[i]))
-            if len(pivot_highs) >= n:
-                break
-        
-        # 2. 寻找低点：双侧确认
-        for i in range(end_idx, start_idx - 1, -1):
-            left_low = min(lows[i-window:i])
-            right_low = min(lows[i+1:i+window+1])
-            
-            if lows[i] < left_low and lows[i] < right_low:
-                if not pivot_lows or abs(lows[i] - pivot_lows[-1]) > (lows[i] * 0.0005):
-                    pivot_lows.append(float(lows[i]))
-            if len(pivot_lows) >= n:
+            if len(pivot_highs) >= n and len(pivot_lows) >= n:
                 break
                 
         return pivot_highs, pivot_lows
@@ -479,11 +477,13 @@ class GridRSIStrategy(BaseStrategy):
         rsi_signal = self._get_rsi_signal(self.state.current_rsi, oversold, overbought)
 
         # 计算动态网格间距保护比例
-        grid_interval_pct = 0.005 # 默认0.5%
+        min_interval = self.params.get('min_trade_interval_pct', 0.0025)
+        grid_interval_pct = min_interval
         if self.state.grid_upper and self.state.grid_lower and self.params['grid_levels'] > 1 and current_price > 0:
             grid_interval = abs(self.state.grid_upper - self.state.grid_lower) / (self.params['grid_levels'] - 1)
-            # 取网格间距的 80% 作为保护距离，最小0.05%，最大1%
-            grid_interval_pct = max(0.0005, min(0.01, (grid_interval / current_price) * 0.8))
+            # 取网格间距的 80% 作为保护距离，但不得低于设定的最小间隔 (如 0.25%)
+            grid_interval_pct = max(min_interval, (grid_interval / current_price) * 0.8)
+            grid_interval_pct = min(0.02, grid_interval_pct) # 最大上限放宽到 2%
 
         if self.state.grid_prices and self.state.last_candle:
             last_high = self.state.last_candle['high']
@@ -620,6 +620,7 @@ class GridRSIStrategy(BaseStrategy):
             'cycle_reset_period': self.params['cycle_reset_period'],
             'max_drawdown_reset': self.params['max_drawdown_reset'],
             'min_order_usdt': self.params['min_order_usdt'],
+            'min_trade_interval_pct': self.params.get('min_trade_interval_pct', 0.0025),
         }
 
         return {
