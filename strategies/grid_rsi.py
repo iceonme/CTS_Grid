@@ -293,8 +293,8 @@ class GridRSIStrategy(BaseStrategy):
             # 使用3高3低的均值或极值
             # 为了更稳健，这里取均值以平滑异常波动，或取极值以确保全覆盖。
             # 这里采用：最高的高点和最低的低点来确定边界，更符合“防跑出”策略。
-            upper = max(pivot_highs)
-            lower = min(pivot_lows)
+            upper = max(p['price'] for p in pivot_highs)
+            lower = min(p['price'] for p in pivot_lows)
 
         range_size = upper - lower
         if range_size <= 0:
