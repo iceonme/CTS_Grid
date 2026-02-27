@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 
 <head>
@@ -1103,7 +1103,6 @@
                 if (!time || seen.has(time)) continue;
 
                 seen.add(time);
-                // 允许值为 null，这在对齐空历史时很重要
                 tvData.push({
                     time,
                     value: (item.v === null || item.v === undefined) ? null : parseFloat(item.v)
@@ -1113,192 +1112,141 @@
             return tvData.sort((a, b) => a.time - b.time);
         }
 
-        // K 线本地缓冲：统一用 setData，避免 update() 的时序报错
+        // K 线本地缓冲
         let candleDataBuffer = [];
+        const MAX_CHART_POINTS = 500;
         let lastCandleTime = null;
 
-        function upsertCandle(buffer, candle) {
-            if (!buffer || buffer.length === 0) {
-                buffer.push(candle);
-                return;
-            }
-
-            const last = buffer[buffer.length - 1];
-            if (candle.time > last.time) {
-                buffer.push(candle);
-            } else if (candle.time === last.time) {
-                buffer[buffer.length - 1] = candle;
-            } else {
-                const idx = buffer.findIndex(x => x.time === candle.time);
-                if (idx >= 0) {
-                    buffer[idx] = candle;
-                } else {
-                    buffer.push(candle);
-                    buffer.sort((a, b) => a.time - b.time);
-                }
-            }
-
-            if (buffer.length > 500) {
-                buffer.splice(0, buffer.length - 500);
-            }
-        }
-
-        // 更新图表数据
         function updateChart(data, tradeHistory) {
             if (!mainChart || !candleSeries) return;
 
             const candles = Array.isArray(data) ? data : [data].filter(x => x);
-
-            // 如果提供了全新的 history_candles (快照)，清除之前的缓存并重新加载
-            if (Array.isArray(data) && data.length > 1) {
-                console.log(`[Chart] 加载全量历史: ${data.length} 根`);
-            }
-
             if (candles.length === 0 && (!tradeHistory || tradeHistory.length === 0)) return;
 
             const tvData = [];
-            let invalidCount = 0;
             for (const c of candles) {
                 const converted = convertAndValidateCandle(c);
-                if (converted) {
-                    tvData.push(converted);
-                } else {
-                    invalidCount++;
-                    if (invalidCount <= 3) {
-                        console.warn('[Chart] ?? K ?:', c);
-                    }
-                }
+                if (converted) tvData.push(converted);
             }
-            console.log(`[Chart] ??: ${tvData.length}, ??: ${invalidCount}`);
 
-            if (tvData.length === 0) {
-                console.error('[Chart] ?????????');
-                return;
-            }
+            if (tvData.length === 0) return;
 
             try {
+                // 批量历史加载
                 if (Array.isArray(data) && data.length > 1) {
-                    // ???????????? setData
-                    const deduped = new Map();
+                    const dedupedOrder = [];
+                    const seenTimes = new Set();
                     for (const d of tvData) {
-                        deduped.set(d.time, d);
+                        if (!seenTimes.has(d.time)) {
+                            seenTimes.add(d.time);
+                            dedupedOrder.push(d);
+                        }
                     }
-                    candleDataBuffer = Array.from(deduped.values()).sort((a, b) => a.time - b.time);
-                    if (candleDataBuffer.length > 500) {
-                        candleDataBuffer = candleDataBuffer.slice(-500);
+                    candleDataBuffer = dedupedOrder.sort((a, b) => a.time - b.time);
+                    if (candleDataBuffer.length > MAX_CHART_POINTS) {
+                        candleDataBuffer = candleDataBuffer.slice(-MAX_CHART_POINTS);
                     }
                     candleSeries.setData(candleDataBuffer);
-                    if (candleDataBuffer.length > 0) {
-                        lastCandleTime = candleDataBuffer[candleDataBuffer.length - 1].time;
-                    }
+                    lastCandleTime = candleDataBuffer.length > 0 ? candleDataBuffer[candleDataBuffer.length - 1].time : null;
 
                     if (window.isInitializingCharts) {
                         mainChart.timeScale().fitContent();
                         window.isInitializingCharts = false;
                     }
-                    console.log(`[Chart] ???? K ?: ${candleDataBuffer.length} ?`);
                 } else {
-                    // ???????? setData???????
-                    const lastCandle = tvData[tvData.length - 1];
-                    const wasOlder = (lastCandleTime !== null && lastCandle.time < lastCandleTime);
-
+                    // 实时增量更新
+                    const newCandle = tvData[tvData.length - 1];
                     const prevLastTime = lastCandleTime;
-                    upsertCandle(candleDataBuffer, lastCandle);
-                    candleSeries.setData(candleDataBuffer);
 
-                    const isNewBar = (prevLastTime === null) || (lastCandle.time > prevLastTime);
-                    lastCandleTime = lastCandle.time;
-                    console.log(`[Chart] ????: ${candleDataBuffer.length}, lastTime: ${lastCandleTime}, newBar: ${isNewBar}, older: ${wasOlder}`);
-
-                    if (isNewBar) {
-                        mainChart.timeScale().fitContent();
+                    if (prevLastTime !== null && newCandle.time === prevLastTime) {
+                        // 更新当前 K 线
+                        candleDataBuffer[candleDataBuffer.length - 1] = newCandle;
+                        candleSeries.update(newCandle);
+                    } else if (prevLastTime === null || newCandle.time > prevLastTime) {
+                        // 新增 K 线
+                        candleDataBuffer.push(newCandle);
+                        if (candleDataBuffer.length > MAX_CHART_POINTS) {
+                            candleDataBuffer.shift();
+                            candleSeries.setData(candleDataBuffer);
+                        } else {
+                            candleSeries.update(newCandle);
+                        }
+                        lastCandleTime = newCandle.time;
+                        mainChart.timeScale().scrollToRealTime();
                     }
-                    mainChart.timeScale().scrollToRealTime();
                 }
             } catch (err) {
-                console.error('[Chart] ??????:', err);
+                console.error('[Chart] 更新失败:', err);
             }
 
-            if (tradeHistory) {
-                updateTradeMarkers(tradeHistory);
-            }
+            if (tradeHistory) updateTradeMarkers(tradeHistory);
         }
-        // 更新 RSI 数据 (增量更新)
-        let rsiStartTime = null;
+        // 更新 RSI 数据
         let lastRsiUpdateTime = null;
+        let rsiDataBuffer = [];
         function updateRSI(rsiValue, timestamp) {
             if (!rsiSeries || !timestamp || rsiValue === undefined || rsiValue === null) return;
+            const time = convertTime(timestamp);
+            if (!time || (lastRsiUpdateTime !== null && time < lastRsiUpdateTime)) return;
 
             const value = parseFloat(rsiValue);
-            if (rsiValue !== null && (!Number.isFinite(value) || value < 0 || value > 100)) return;
+            const newData = { time, value };
 
-            const time = convertTime(timestamp);
-            if (!time) return;
-
-
-            if (lastRsiUpdateTime !== null && time < lastRsiUpdateTime) return;
-
-            // 记录第一个点的时间并绘制参考线 (仅当值非空时才认为有效起始点)
-            if (rsiStartTime === null && rsiValue !== null) {
-                rsiStartTime = time;
-                console.log('[Chart] RSI 数据起始时间:', time);
-
+            try {
                 if (!window.rsiLinesDrawn) {
                     rsiSeries.createPriceLine({ price: 70, color: '#ff4757', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超买(70)' });
                     rsiSeries.createPriceLine({ price: 30, color: '#00d084', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超卖(30)' });
                     window.rsiLinesDrawn = true;
                 }
-            }
 
-            try {
-                const val = (rsiValue === null || rsiValue === undefined) ? null : parseFloat(rsiValue);
-                rsiSeries.update({ time, value: val });
-                lastRsiUpdateTime = time;
-            } catch (err) {
-                console.error('[Chart] 更新 RSI 失败:', err);
-            }
-        }
-
-        // 更新资产曲线数据 (增量更新)
-        let initialBalanceForChart = null;
-        let equityStartTime = null;
-        let lastEquityUpdateTime = null;
-        function updateEquity(totalValue, timestamp) {
-            if (!equitySeries || !timestamp) return; // totalValue can be null
-
-            const value = parseFloat(totalValue);
-            if (totalValue !== null && (!Number.isFinite(value) || value <= 0)) return;
-
-            const time = convertTime(timestamp);
-            if (!time) return;
-
-
-            if (lastEquityUpdateTime !== null && time < lastEquityUpdateTime) return;
-
-            try {
-                // 记录第一个点的时间并绘制参考线 (仅当值非空时才认为有效起始点)
-                if (equityStartTime === null && totalValue !== null) {
-                    equityStartTime = time;
-                    console.log('[Chart] 资产数据起始时间:', time);
-
-                    if (!window.equityLineDrawn && initialBalanceForChart !== null) {
-                        equitySeries.createPriceLine({ price: parseFloat(initialBalanceForChart), color: '#64748b', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '初始资金' });
-                        window.equityLineDrawn = true;
+                if (lastRsiUpdateTime === time) {
+                    rsiDataBuffer[rsiDataBuffer.length - 1] = newData;
+                    rsiSeries.update(newData);
+                } else {
+                    rsiDataBuffer.push(newData);
+                    if (rsiDataBuffer.length > MAX_CHART_POINTS) {
+                        rsiDataBuffer.shift();
+                        rsiSeries.setData(rsiDataBuffer);
+                    } else {
+                        rsiSeries.update(newData);
                     }
                 }
+                lastRsiUpdateTime = time;
+            } catch (err) { console.error('[Chart] RSI 更新失败:', err); }
+        }
 
-                const val = (totalValue === null || totalValue === undefined) ? null : parseFloat(totalValue);
-                equitySeries.update({ time, value: val });
-                lastEquityUpdateTime = time;
+        // 更新资产曲线数据
+        let initialBalanceForChart = null;
+        let lastEquityUpdateTime = null;
+        let equityDataBuffer = [];
+        function updateEquity(totalValue, timestamp) {
+            if (!equitySeries || !timestamp || totalValue === null) return;
+            const time = convertTime(timestamp);
+            if (!time || (lastEquityUpdateTime !== null && time < lastEquityUpdateTime)) return;
 
-                // 如果有了首个点但之前没拿到初始资金，现在补上
-                if (!window.equityLineDrawn && initialBalanceForChart !== null && equityStartTime !== null) {
+            const value = parseFloat(totalValue);
+            const newData = { time, value };
+
+            try {
+                if (!window.equityLineDrawn && initialBalanceForChart !== null) {
                     equitySeries.createPriceLine({ price: parseFloat(initialBalanceForChart), color: '#64748b', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '初始资金' });
                     window.equityLineDrawn = true;
                 }
-            } catch (err) {
-                console.error('[Chart] 更新资产失败:', err);
-            }
+
+                if (lastEquityUpdateTime === time) {
+                    equityDataBuffer[equityDataBuffer.length - 1] = newData;
+                    equitySeries.update(newData);
+                } else {
+                    equityDataBuffer.push(newData);
+                    if (equityDataBuffer.length > MAX_CHART_POINTS) {
+                        equityDataBuffer.shift();
+                        equitySeries.setData(equityDataBuffer);
+                    } else {
+                        equitySeries.update(newData);
+                    }
+                }
+                lastEquityUpdateTime = time;
+            } catch (err) { console.error('[Chart] 资产更新失败:', err); }
         }
 
         // 批量加载 RSI 历史数据
@@ -1313,44 +1261,88 @@
             rsiSeries.setData(rsiData);
         }
 
+        // 更新所有图表标记 (交易 + 波段点)
+        function updateAllMarkers() {
+            if (!candleSeries) return;
+
+            const tradeMarkers = window.latestTradeMarkers || [];
+            const pivotMarkers = window.latestPivotMarkers || [];
+
+            // 合并并按时间排序
+            const allMarkers = [...tradeMarkers, ...pivotMarkers].sort((a, b) => a.time - b.time);
+
+            try {
+                candleSeries.setMarkers(allMarkers);
+            } catch (err) {
+                console.error('[Chart] 设置标记失败:', err);
+            }
+        }
+
         // 更新交易标记
         function updateTradeMarkers(tradeHistory) {
-            if (!candleSeries || !Array.isArray(tradeHistory) || tradeHistory.length === 0) return;
-
-            // 检查图表是否有数据
-            try {
-                const data = candleSeries.data();
-                if (!data || data.length === 0) return;
-            } catch (e) {
+            if (!candleSeries || !Array.isArray(tradeHistory) || tradeHistory.length === 0) {
+                window.latestTradeMarkers = [];
+                updateAllMarkers();
                 return;
             }
 
             const validMarkers = [];
-
             for (const trade of tradeHistory) {
                 if (!trade || !trade.time || !trade.type || trade.price === undefined) continue;
-
                 const time = convertTime(trade.time);
-                if (!time || typeof time !== 'number') continue;
-
-                const price = parseFloat(trade.price);
-                if (isNaN(price)) continue;
+                if (!time) continue;
 
                 validMarkers.push({
                     time: time,
                     position: trade.type === 'BUY' ? 'belowBar' : 'aboveBar',
                     color: trade.type === 'BUY' ? '#00d084' : '#ff4757',
                     shape: trade.type === 'BUY' ? 'arrowUp' : 'arrowDown',
-                    text: trade.type === 'BUY' ? `买入` : `卖出`,
-                    size: 1.5,
+                    text: trade.type === 'BUY' ? `买` : `卖`,
+                    size: 1.2,
+                });
+            }
+            window.latestTradeMarkers = validMarkers;
+            updateAllMarkers();
+        }
+
+        // 绘制波段高低点标记
+        function drawPivotMarkers(pivotsHigh, pivotsLow) {
+            const markers = [];
+
+            if (pivotsHigh) {
+                pivotsHigh.forEach((p, i) => {
+                    const time = convertTime(p.time);
+                    if (time) {
+                        markers.push({
+                            time: time,
+                            position: 'aboveBar',
+                            color: 'rgba(255, 71, 87, 0.8)',
+                            shape: 'circle',
+                            text: `H${i + 1}`,
+                            size: 0.8,
+                        });
+                    }
                 });
             }
 
-            try {
-                candleSeries.setMarkers(validMarkers);
-            } catch (err) {
-                console.error('[Chart] 设置标记失败:', err);
+            if (pivotsLow) {
+                pivotsLow.forEach((p, i) => {
+                    const time = convertTime(p.time);
+                    if (time) {
+                        markers.push({
+                            time: time,
+                            position: 'belowBar',
+                            color: 'rgba(0, 208, 132, 0.8)',
+                            shape: 'circle',
+                            text: `L${i + 1}`,
+                            size: 0.8,
+                        });
+                    }
+                });
             }
+
+            window.latestPivotMarkers = markers;
+            updateAllMarkers();
         }
 
         // 绘制网格线
@@ -1365,10 +1357,7 @@
             }
             window.gridLines = [];
 
-            if (!gridLower || !gridUpper || !gridLevels || gridLevels < 2) {
-                console.log('[Chart] 网格参数无效，不绘制网格线');
-                return;
-            }
+            if (!gridLower || !gridUpper || !gridLevels || gridLevels < 2) return;
 
             // 计算网格线价格
             const step = (gridUpper - gridLower) / (gridLevels - 1);
@@ -1387,21 +1376,14 @@
                     priceLineVisible: false,
                 });
 
-                // 获取当前K线的时间范围
                 const data = candleSeries.data();
                 if (data && data.length > 0) {
                     const firstTime = data[0].time;
                     const lastTime = data[data.length - 1].time;
-                    line.setData([
-                        { time: firstTime, value: price },
-                        { time: lastTime, value: price }
-                    ]);
+                    line.setData([{ time: firstTime, value: price }, { time: lastTime, value: price }]);
                 }
-
                 window.gridLines.push(line);
             }
-
-            console.log(`[Chart] 绘制网格线: ${gridLevels}条 [${gridLower.toFixed(2)} - ${gridUpper.toFixed(2)}]`);
         }
 
         // 格式化数字
@@ -1705,7 +1687,9 @@
                 if (data.rsi && data.rsi.length > 0 && rsiSeries) {
                     const rsiBatch = prepareBatchData(data.rsi);
                     console.log(`[Socket] 加载 ${rsiBatch.length} 个 RSI 点`);
-                    rsiSeries.setData(rsiBatch);
+                    rsiDataBuffer = rsiBatch;
+                    rsiSeries.setData(rsiDataBuffer);
+                    lastRsiUpdateTime = rsiDataBuffer.length > 0 ? rsiDataBuffer[rsiDataBuffer.length - 1].time : null;
 
                     // 绘制 RSI 参考线
                     if (!window.rsiLinesDrawn) {
@@ -1719,7 +1703,9 @@
                 if (data.equity && data.equity.length > 0 && equitySeries) {
                     const equityBatch = prepareBatchData(data.equity);
                     console.log(`[Socket] 加载 ${equityBatch.length} 个资产点`);
-                    equitySeries.setData(equityBatch);
+                    equityDataBuffer = equityBatch;
+                    equitySeries.setData(equityDataBuffer);
+                    lastEquityUpdateTime = equityDataBuffer.length > 0 ? equityDataBuffer[equityDataBuffer.length - 1].time : null;
 
                     if (!window.equityLineDrawn && initialBalanceForChart) {
                         equitySeries.createPriceLine({ price: parseFloat(initialBalanceForChart), color: '#64748b', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '初始资金' });
@@ -1855,42 +1841,49 @@
                 }
 
                 // 8. 核心：图表更新逻辑 (历史与实时)
-                // 实时 K 线更新 (主图)
-                if (data.candle && !data.history_candles) {
+                // 实时更新 (增量)
+                if (data.candle && (!data.history_candles || data.history_candles.length === 0)) {
                     const realtimeCandle = { ...data.candle };
                     if (data.timestamp) realtimeCandle.t = data.timestamp;
                     updateChart(realtimeCandle, data.trade_history || []);
                 }
 
-                // 处理历史批量数据 (warmup)
-                if (data.history_candles) {
-                    console.log(`[Chart] 收到全量快照 | 初始资金: ${data.initial_balance}`);
+                // 处理初始历史批量数据 (Snapshot)
+                if (data.history_candles && data.history_candles.length > 0) {
+                    console.log(`[Chart] 收到历史快照 | 数量: ${data.history_candles.length}`);
                     if (data.initial_balance) initialBalanceForChart = data.initial_balance;
 
-                    // 批量加载 K 线数据
+                    // 1. 批量加载 K 线数据 (内部会重置 candleDataBuffer)
                     updateChart(data.history_candles, data.trade_history);
 
-                    // 批量加载 RSI
-                    const rsiBatch = prepareBatchData(data.history_rsi || []);
-                    rsiSeries.setData(rsiBatch);
-                    if (rsiBatch.length > 0) lastRsiUpdateTime = rsiBatch[rsiBatch.length - 1].time;
+                    // 2. 批量加载 RSI
+                    if (data.history_rsi && data.history_rsi.length > 0) {
+                        const rsiBatch = prepareBatchData(data.history_rsi);
+                        rsiDataBuffer = rsiBatch;
+                        rsiSeries.setData(rsiDataBuffer);
+                        lastRsiUpdateTime = rsiDataBuffer.length > 0 ? rsiDataBuffer[rsiDataBuffer.length - 1].time : null;
 
-                    // 寻找第一个有效点来绘制参考线
-                    if (!window.rsiLinesDrawn) {
-                        rsiSeries.createPriceLine({ price: 70, color: '#ff4757', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超买(70)' });
-                        rsiSeries.createPriceLine({ price: 30, color: '#00d084', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超卖(30)' });
-                        window.rsiLinesDrawn = true;
+                        if (!window.rsiLinesDrawn) {
+                            rsiSeries.createPriceLine({ price: 70, color: '#ff4757', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超买(70)' });
+                            rsiSeries.createPriceLine({ price: 30, color: '#00d084', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超卖(30)' });
+                            window.rsiLinesDrawn = true;
+                        }
                     }
 
-                    // 批量加载资产曲线
-                    const equityBatch = prepareBatchData(data.history_equity || []);
-                    equitySeries.setData(equityBatch);
-                    if (equityBatch.length > 0) lastEquityUpdateTime = equityBatch[equityBatch.length - 1].time;
+                    // 3. 批量加载资产曲线
+                    if (data.history_equity && data.history_equity.length > 0) {
+                        const equityBatch = prepareBatchData(data.history_equity);
+                        equityDataBuffer = equityBatch;
+                        equitySeries.setData(equityDataBuffer);
+                        lastEquityUpdateTime = equityDataBuffer.length > 0 ? equityDataBuffer[equityDataBuffer.length - 1].time : null;
 
-                    if (!window.equityLineDrawn && initialBalanceForChart) {
-                        equitySeries.createPriceLine({ price: parseFloat(initialBalanceForChart), color: '#64748b', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '初始资金' });
-                        window.equityLineDrawn = true;
+                        if (!window.equityLineDrawn && initialBalanceForChart) {
+                            equitySeries.createPriceLine({ price: parseFloat(initialBalanceForChart), color: '#64748b', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '初始资金' });
+                            window.equityLineDrawn = true;
+                        }
                     }
+
+                    mainChart.timeScale().fitContent();
                 }
 
                 // 处理实时单点数据
@@ -1916,8 +1909,8 @@
 
                     // 更新波段点信息 (辅助理解)
                     if (s.pivots && s.pivots.pivots_high) {
-                        const ph = s.pivots.pivots_high.map(p => p.toFixed(0));
-                        const pl = s.pivots.pivots_low.map(p => p.toFixed(0));
+                        const ph = s.pivots.pivots_high.map(p => p.price.toFixed(0));
+                        const pl = s.pivots.pivots_low.map(p => p.price.toFixed(0));
                         const pivotInfo = document.getElementById('pivotInfo');
                         if (pivotInfo) {
                             pivotInfo.innerHTML = `
@@ -1927,6 +1920,8 @@
                                 </div>
                             `;
                         }
+                        // 在K线上标注这些点
+                        drawPivotMarkers(s.pivots.pivots_high, s.pivots.pivots_low);
                     }
 
                     // RSI阈值

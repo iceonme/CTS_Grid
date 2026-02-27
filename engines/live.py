@@ -359,7 +359,7 @@ class LiveEngine:
                 } for p in positions
             },
             'trade_history': trade_history, # 统一字段名为 trade_history
-            'history_candles': self._history_candles[-200:]  # 同步历史K线数据
+            'history_candles': []  # 同步历史K线数据
         }
     
     def _sync_history_candles(self, data: MarketData):
