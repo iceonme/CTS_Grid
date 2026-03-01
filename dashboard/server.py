@@ -183,6 +183,15 @@ class DashboardServer:
                 leave_room(strategy_id)
                 print(f'[SocketIO] 客户端离开策略房间: {strategy_id}')
 
+        @self.socketio.on('save_strategy_params')
+        def handle_save_params(data):
+            """处理前端发送的参数保存请求"""
+            strategy_id = data.get('strategy_id')
+            params = data.get('params')
+            if strategy_id and params and self.on_control_callback:
+                print(f'[SocketIO] 收到参数保存请求: {strategy_id}')
+                self.on_control_callback('save_params', strategy_id, data=params)
+
         @self.socketio.on('ping')
         def handle_ping():
             emit('pong', {'time': datetime.now().isoformat()})

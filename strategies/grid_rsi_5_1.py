@@ -82,6 +82,7 @@ class GridStateV5_1:
 
     # 统计
     grid_touch_count: int = 0
+    actual_levels: int = 10             # V5.1 新增：记录当前生成的网格数量
     pivots: Dict[str, Any] = field(default_factory=dict) # V5.1 新增：存储波段点历史
 
 
@@ -525,20 +526,21 @@ class GridRSIStrategyV5_1(BaseStrategy):
         upper += buffer
         lower -= buffer
 
-        # MACD 趋势偏移网格中心
+        # MACD 趋势偏移网格中心 (§5.1)
+        # 增加/减少的是相对于当前价格的偏移量，避免网格飞出市场
         trend = self.state.trend_strength
         if trend == STRONG_BULLISH:
-            upper *= 1.20
-            lower *= 1.10
+            upper += (upper - current_price) * 0.20
+            lower += (current_price - lower) * 0.10
         elif trend == BULLISH:
-            upper *= 1.10
-            lower *= 1.05
+            upper += (upper - current_price) * 0.10
+            lower += (current_price - lower) * 0.05
         elif trend == BEARISH:
-            upper *= 0.95
-            lower *= 0.90
+            upper -= (upper - current_price) * 0.05
+            lower -= (current_price - lower) * 0.10
         elif trend == STRONG_BEARISH:
-            upper *= 0.90
-            lower *= 0.80
+            upper -= (upper - current_price) * 0.10
+            lower -= (current_price - lower) * 0.20
 
         # RSI 微调（保留原逻辑）
         rsi_signal = 0.0
@@ -583,7 +585,11 @@ class GridRSIStrategyV5_1(BaseStrategy):
 
         # 下限 & 上限
         final_size = max(final_size, self.params['min_order_usdt'])
-        final_size = min(final_size, context.cash * 0.95)
+        
+        # 确保总额不超过可用资金的 95%
+        max_allowed = context.cash * 0.95
+        if final_size > max_allowed:
+            final_size = max_allowed
 
         return final_size
 
@@ -828,19 +834,41 @@ class GridRSIStrategyV5_1(BaseStrategy):
         self._update_buffer(data)
 
         df = self._get_dataframe()
-        # RSI 信号
+        if len(df) < self.params['rsi_period']:
+            return []
+
+        # ── 1. 更新指标与状态 ──
+        # RSI
+        self.state.current_rsi = self._calculate_rsi(df['close'])
+        
+        # MACD & Trend
+        ml, sl, hi = self._calculate_macd(df)
+        self.state.trend_strength = self._determine_trend(ml, sl, hi, self.state.prev_macd_line - self.state.prev_signal_line)
+        self.state.macd_line = ml
+        self.state.signal_line = sl
+        self.state.histogram = hi
+        self.state.prev_macd_line = ml
+        self.state.prev_signal_line = sl
+        self.state.prev_histogram = hi
+        
+        # ATR & ADX
+        self.state.current_atr = self._calculate_atr(df)
+        self.state.current_adx = self._calculate_adx(df)
+        self.state.current_regime = self._detect_market_regime(df)
+        
+        # RSI 信号计算
         oversold, overbought = self._get_adaptive_rsi_thresholds(df)
         rsi_signal = self._get_rsi_signal(self.state.current_rsi, oversold, overbought)
 
         signals: List[Signal] = []
-        current_idx   = len(self._data_buffer) - 1 # Index of the current candle
+        current_idx   = len(self._data_buffer) - 1
         current_price = data.close
-        self._current_prices[self.symbol] = current_price # Sync current price
+        current_high  = data.high
+        current_low   = data.low
+        self._current_prices[self.symbol] = current_price
 
-        # ── 动态网格计算 ──
+        # ── 2. 动态网格计算 ──
         upper, lower, meta = self._calculate_dynamic_grid(df, current_price)
-
-        # 计算具体网格线位置
         dynamic_grid_num = meta.get('dynamic_grid_num', self.params['grid_levels'])
         actual_levels = max(3, min(dynamic_grid_num, self.params['grid_levels'] * 3))
 
@@ -849,17 +877,13 @@ class GridRSIStrategyV5_1(BaseStrategy):
         self.state.grid_prices = np.linspace(lower, upper, actual_levels).tolist()
         self.state.last_grid_update = current_idx
         self.state.meta = meta
-        self.state.pivots = meta # Store pivots as well
+        self.state.pivots = meta
+        self.state.actual_levels = actual_levels # Store for trigger logic
 
-        if len(df) < self.params['rsi_period']:
-            return []
-
-        # 异常检测
+        # ── 3. 风险与异常检测 ──
         self._check_anomaly(df, rsi_signal)
 
-        # 黑天鹅检测 (§6.3)
         if self._check_black_swan(df, data):
-            # 黑天鹅期间: 立即清仓所有持仓
             for symbol, pos in context.positions.items():
                 if symbol == self.symbol and pos.size > 0:
                     signals.append(Signal(
@@ -872,13 +896,13 @@ class GridRSIStrategyV5_1(BaseStrategy):
                         reason="黑天鹅紧急止损 (5分钟波动超限)",
                         meta={'size_in_quote': False},
                     ))
-            return signals  # 暂停期内不执行其它逻辑
+            return signals
 
-        # ── 周期重置检查 ──
+        # ── 4. 周期重置 ──
         should_reset, reset_reason = self._should_reset_cycle(context)
         if should_reset:
             for symbol, pos in context.positions.items():
-                if symbol == self.symbol:
+                if symbol == self.symbol and pos.size > 0:
                     signals.append(Signal(
                         timestamp=data.timestamp,
                         symbol=symbol,
@@ -890,21 +914,6 @@ class GridRSIStrategyV5_1(BaseStrategy):
                         meta={'size_in_quote': False},
                     ))
             self._reset_cycle(context)
-
-        # ── 动态网格计算 ──
-        upper, lower, meta = self._calculate_dynamic_grid(df, current_price)
-        self.state.grid_upper = upper
-        self.state.grid_lower = lower
-        self.state.pivots = meta
-        
-
-        dynamic_grid_num = meta.get('dynamic_grid_num', self.params['grid_levels'])
-
-        self.state.grid_upper  = upper
-        self.state.grid_lower  = lower
-        self.state.grid_prices = np.linspace(lower, upper, actual_levels).tolist()
-        self.state.last_grid_update = current_idx
-        self.state.meta = meta
 
         # ── 止损/止盈检查 ──
         signals.extend(self._check_stop_loss(data, context))

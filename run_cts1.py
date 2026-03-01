@@ -143,7 +143,7 @@ def main():
 
     # 1. 启动 Dashboard
     print("[1/4] 启动 Dashboard...")
-    dashboard = create_dashboard(port=5000)
+    dashboard = create_dashboard(port=5051)
     dashboard.start_background()
     time.sleep(1)
 
@@ -239,7 +239,7 @@ def main():
     dashboard.on_control_callback = on_control
 
     print("\n" + "="*60)
-    print("    >> Dashboard: http://localhost:5000")
+    print("    >> Dashboard: http://localhost:5051")
     print("    >> 请在 Dashboard 选择策略并点击 [启动]")
     print("="*60 + "\n")
 

@@ -16,9 +16,44 @@
         console.log('[APP] 版本:', window.APP_VERSION);
         console.log('[APP] 构建时间:', window.BUILD_TIME);
     </script>
+    <style>
+        .param-input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--glass-border);
+            border-radius: 4px;
+            color: var(--text-primary);
+            padding: 4px 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .param-input:focus {
+            border-color: var(--primary);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .save-params-btn {
+            background: var(--primary);
+            color: #000;
+            font-weight: 700;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .save-params-btn:hover {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+        }
+    </style>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script>
-        const socket = io({ transports: ['polling'] });
+        const socket = io();
     </script>
     <!-- TradingView Lightweight Charts -->
     <script
@@ -231,6 +266,10 @@
                 <div class="strategy-block">
                     <p>等待策略参数...</p>
                 </div>
+            </div>
+            <div class="strategy-modal-footer"
+                style="padding: 16px 18px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end;">
+                <button class="save-params-btn" id="saveParamsBtn">保存并应用配置</button>
             </div>
         </div>
     </div>

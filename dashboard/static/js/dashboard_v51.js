@@ -377,8 +377,65 @@ function updateControlButtons(status) {
 function renderStrategyDoc(strategyData) {
     const box = document.getElementById('strategyDocContent');
     const params = strategyData?.params;
+    const metadata = strategyData?.param_metadata || {};
     if (!params) { box.innerHTML = `<div class="strategy-block"><p>等待策略参数同步...</p></div>`; return; }
-    box.innerHTML = `<div class="strategy-block"><h4>当前参数</h4><div class="param-grid">${Object.entries(params).map(([k, v]) => `<div class="param-item"><div class="param-name">${k}</div><div class="param-value">${fmtVal(v)}</div></div>`).join('')}</div></div>`;
+
+    // 1. 核心判别逻辑部分
+    const logicHtml = `
+        <div style="background: rgba(0,212,255,0.03); border: 1px solid rgba(0,212,255,0.1); border-radius: 8px; padding: 18px; margin-bottom: 24px;">
+            <h5 style="margin: 0 0 12px 0; color: var(--primary); font-size: 16px;">🧠 策略核心判别逻辑</h5>
+            <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: var(--text-secondary); line-height: 1.7;">
+                <li><strong>趋势判别：</strong>使用 MACD (12,26,9) 柱状图斜率判断 5 级市场状态（强牛至强熊）。</li>
+                <li><strong>入场择时：</strong>基于自适应 RSI (14) 识别超买超卖，强牛市网格上移，强熊市网格下移。</li>
+                <li><strong>网格执行：</strong>结合 ATR 波动率动态计算网格上下边界及间距，实现自适应网格。</li>
+                <li><strong>多维风控：</strong>包含 RSI 高位禁买、移动止盈（基于指标背离）、黑天鹅检测及冷却期机制。</li>
+            </ul>
+        </div>
+    `;
+
+    // 2. 将参数渲染为 2 列网格布局
+    const gridHtml = Object.entries(params).map(([k, v]) => {
+        const meta = metadata[k] || { label: k, desc: '暂无说明', default: '--' };
+        let displayVal = v;
+        if (typeof v === 'boolean') displayVal = v ? 'true' : 'false';
+        return `
+            <div class="param-item" style="padding: 18px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                    <div class="param-name" style="flex: 1; padding-right: 12px;">
+                        <div style="font-weight: bold; color: var(--text-primary); font-size: 17px; margin-bottom: 4px;">${meta.label}</div>
+                        <div style="font-weight: normal; color: #475569; font-size: 13px; font-family: monospace;">${k}</div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
+                        <input type="text" class="param-input" id="input-${k}" data-key="${k}" value="${displayVal}" 
+                               style="width: 85px; text-align: right; background: #0f172a; border: 1px solid #334155; color: var(--primary); padding: 5px 10px; border-radius: 6px; font-size: 15px; font-family: monospace; transition: all 0.3s;">
+                        <div style="font-size: 12px; color: #10b981;">
+                            <span style="color: #475569;">默认:</span>
+                            <span style="cursor: pointer; text-decoration: underline dotted; font-weight: bold; padding: 2px 4px; background: rgba(16,185,129,0.1); border-radius: 3px;" 
+                                  title="点击恢复默认值"
+                                  onclick="const el=document.getElementById('input-${k}'); el.value='${meta.default}'; el.focus(); el.style.boxShadow='0 0 12px var(--primary)'; setTimeout(()=>el.style.boxShadow='', 600);">
+                                ${meta.default}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div style="font-size: 14px; color: var(--text-secondary); line-height: 1.6; border-top: 1px solid rgba(255,255,255,0.03); padding-top: 10px; min-height: 3em;">
+                    ${meta.desc}
+                </div>
+            </div>`;
+    }).join('');
+
+    box.innerHTML = `
+        <div class="strategy-block">
+            ${logicHtml}
+            <h4 style="margin-bottom: 20px; color: var(--text-primary); border-left: 4px solid var(--primary); padding-left: 12px; font-size: 18px;">策略参数配置</h4>
+            <div class="param-list" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">${gridHtml}</div>
+            <div style="margin-top:24px; padding: 15px; background: rgba(0,212,255,0.05); border: 1px dashed var(--primary); border-radius: 8px; font-size:14px; color: var(--text-primary); line-height: 1.6;">
+                <strong>💡 操作提示：</strong><br>
+                1. 修改数值后，点击页面下方的“<strong>保存并应用</strong>”按钮。<br>
+                2. 点击绿色的“<strong>默认值</strong>”数字可快速恢复初始配置。<br>
+                3. 修改核心周期参数（MACD/RSI/ATR）会重置指标引擎。
+            </div>
+        </div>`;
 }
 
 // Socket 事件
@@ -484,7 +541,8 @@ socket.on('update', (data) => {
     };
 
     // 价格与权益
-    const btcPrice = (data.prices && data.prices['BTC-USDT-SWAP']) || (data.prices && data.prices['BTC-USDT']) || null;
+    const currentSymbol = (latestStrategyInfo && latestStrategyInfo.params) ? latestStrategyInfo.params.symbol : (Object.keys(data.prices || {})[0] || 'BTC-USDT');
+    const btcPrice = (data.prices && data.prices[currentSymbol]) || (data.prices && data.prices['BTC-USDT']) || (data.prices && data.prices['BTC-USDT-SWAP']) || null;
     if (btcPrice) updateElement('btcPrice', btcPrice.toLocaleString());
 
     if (data.total_value !== undefined) updateElement('totalValue', data.total_value.toLocaleString() + ' USDT');
@@ -548,13 +606,14 @@ socket.on('update', (data) => {
         }
 
         // 持仓详情逻辑 (多来源兼容)
-        const posSize = (data.positions && data.positions['BTC-USDT-SWAP']) ? data.positions['BTC-USDT-SWAP'].size : (s.position_size || 0);
+        const activeSymbol = (s.params && s.params.symbol) ? s.params.symbol : 'BTC-USDT';
+        const posSize = (data.positions && data.positions[activeSymbol]) ? data.positions[activeSymbol].size : (s.position_size || 0);
         updateElement('positionSize', parseFloat(posSize).toFixed(4));
 
-        const posAvg = (data.positions && data.positions['BTC-USDT-SWAP']) ? data.positions['BTC-USDT-SWAP'].avg_price : (s.position_avg_price || 0);
+        const posAvg = (data.positions && data.positions[activeSymbol]) ? data.positions[activeSymbol].avg_price : (s.position_avg_price || 0);
         updateElement('positionAvgPrice', posAvg > 0 ? posAvg.toLocaleString() : '--');
 
-        const posPnl = (data.positions && data.positions['BTC-USDT-SWAP']) ? data.positions['BTC-USDT-SWAP'].unrealized_pnl : (s.position_unrealized_pnl || 0);
+        const posPnl = (data.positions && data.positions[activeSymbol]) ? data.positions[activeSymbol].unrealized_pnl : (s.position_unrealized_pnl || 0);
         const pnlDetailEl = document.getElementById('positionUnrealizedPnl');
         if (pnlDetailEl) {
             pnlDetailEl.textContent = posPnl !== 0 ? (posPnl > 0 ? '+' : '') + posPnl.toFixed(2) : '--';
@@ -602,4 +661,29 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('closeStrategyDocBtn').onclick = () => document.getElementById('strategyDocModal').classList.remove('show');
     document.getElementById('prevTradePage').onclick = () => { if (tradePaginationState.currentPage > 1) { tradePaginationState.currentPage--; renderTradeList(); } };
     document.getElementById('nextTradePage').onclick = () => { if (tradePaginationState.currentPage < tradePaginationState.totalPages) { tradePaginationState.currentPage++; renderTradeList(); } };
+
+    // 保存参数逻辑
+    document.getElementById('saveParamsBtn').onclick = () => {
+        const inputs = document.querySelectorAll('.param-input');
+        const newParams = {};
+        inputs.forEach(input => {
+            const key = input.getAttribute('data-key');
+            let val = input.value.trim();
+            // 基础类型转换尝试
+            if (val.toLowerCase() === 'true') val = true;
+            else if (val.toLowerCase() === 'false') val = false;
+            else if (!isNaN(val) && val !== '') val = parseFloat(val);
+            newParams[key] = val;
+        });
+
+        console.log('[Dashboard] 发送参数更新请求:', newParams);
+        socket.emit('save_strategy_params', {
+            strategy_id: currentStrategyId,
+            params: newParams
+        });
+
+        // 提示并关闭弹窗
+        alert('参数已提交保存请求，请留意终端反馈');
+        document.getElementById('strategyDocModal').classList.remove('show');
+    };
 });
