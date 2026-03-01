@@ -1,6 +1,4 @@
-﻿import eventlet
-eventlet.monkey_patch()
-
+﻿
 """
 OKX 模拟盘一键启动脚本
 无需命令行参数，直接使用配置好的 API
@@ -25,8 +23,9 @@ from engines import LiveEngine
 from dashboard import create_dashboard
 from config.api_config import OKX_DEMO_CONFIG, DEFAULT_SYMBOL, DEFAULT_TIMEFRAME
 
-STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trading_state.json")
-TRADES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trading_trades.json")
+STRATEGY_ID = "grid_rsi_demo_01"
+STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"trading_state_{STRATEGY_ID}.json")
+TRADES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"trading_trades_{STRATEGY_ID}.json")
 
 
 def main():
@@ -43,6 +42,8 @@ def main():
     dashboard = create_dashboard(port=5000)
     dashboard.start_background()
     time.sleep(1)  # 等待 Dashboard 启动
+    if dashboard:
+        dashboard.register_strategy(STRATEGY_ID, f"Grid RSI V4 ({DEFAULT_SYMBOL})")
 
     session_start = datetime.now(timezone.utc)
     
@@ -169,7 +170,7 @@ def main():
         filtered_trades = trade_history
         
         dashboard_data = {
-            'timestamp': status['timestamp'],
+            'timestamp': timestamp_ms,  # 避免字符串覆写前端数字格式
             'prices': {status['symbol']: status['price']},
             'candle': {
                 't': timestamp_ms,
@@ -188,17 +189,18 @@ def main():
             ),
             'pnl_pct': round(pnl_pct, 4),
             'initial_balance': initial_balance or 3000,
-            'rsi': getattr(strategy.state, 'current_rsi', 50),
+            'rsi': strategy_status.get('current_rsi', getattr(strategy.state, 'current_rsi', 50)) if hasattr(strategy, 'state') else strategy_status.get('current_rsi', 50),
             'trade_history': filtered_trades,
             'strategy': strategy_status
         }
         
         if dashboard:
-            # 维护历史数据缓存，防止刷新页面产生断层
+            # 维护历史数据缓存，防止刷新页面产生断层 (适配多策略架构)
             current_candle = dashboard_data['candle']
+            def_data = dashboard._data.get(STRATEGY_ID, {})
             
             # 1. 更新 K 线历史
-            hc = dashboard._data.get('history_candles', [])
+            hc = def_data.get('history_candles', [])
             if hc:
                 if hc[-1]['t'] == current_candle['t']:
                     hc[-1] = current_candle
@@ -207,7 +209,7 @@ def main():
                     if len(hc) > 500: hc.pop(0)
             
             # 2. 更新 RSI 历史
-            hrsi = dashboard._data.get('history_rsi', [])
+            hrsi = def_data.get('history_rsi', [])
             if hrsi:
                 current_rsi = dashboard_data['rsi']
                 if hrsi[-1]['t'] == current_candle['t']:
@@ -217,7 +219,7 @@ def main():
                     if len(hrsi) > 500: hrsi.pop(0)
             
             # 3. 更新资产历史
-            heq = dashboard._data.get('history_equity', [])
+            heq = def_data.get('history_equity', [])
             if heq:
                 current_total = dashboard_data['total_value']
                 if heq[-1]['t'] == current_candle['t']:
@@ -226,7 +228,7 @@ def main():
                     heq.append({'t': current_candle['t'], 'v': current_total})
                     if len(heq) > 500: heq.pop(0)
 
-            dashboard.update(dashboard_data)
+            dashboard.update(dashboard_data, strategy_id=STRATEGY_ID)
             
             # 仅在发生实质交易变化时保存状态，避免每秒写盘
             if len(engine._trades) > last_trade_count[0]:
@@ -241,6 +243,10 @@ def main():
     # --- Dashboard 数据初始化函数 ---
     def send_warmup_to_dashboard():
         if not dashboard:
+            return
+            
+        if not strategy._data_buffer:
+            print("[Demo] 警告: 策略数据缓存为空，跳过预热同步 (等待实时数据...)")
             return
             
         print(f"[Demo] 准备同步预热数据 (Buffer: {len(strategy._data_buffer)})")
@@ -295,6 +301,7 @@ def main():
             equity = sim_cash + sim_pos * data.close
             history_equity.append({'t': ts_ms, 'v': equity})
         
+        current_candle = history_candles[-1]
         current_price = strategy._data_buffer[-1].close
         current_cash = executor.get_cash()
         
@@ -303,18 +310,18 @@ def main():
             'history_rsi': history_rsi,
             'history_equity': history_equity,
             'prices': {DEFAULT_SYMBOL: current_price},
-            'candle': history_candles[-1],
+            'candle': current_candle,
             'total_value': history_equity[-1]['v'],
             'cash': current_cash,
             'position_value': sim_pos * current_price,
             'positions': {DEFAULT_SYMBOL: sim_pos},
             'pnl_pct': (history_equity[-1]['v'] / (initial_balance or 10000.0) - 1) * 100,
             'initial_balance': initial_balance or 10000.0,
-            'rsi': history_rsi[-1]['v'] or 50,
+            'rsi': history_rsi[-1]['v'] if history_rsi and history_rsi[-1]['v'] is not None else 50,
             'trade_history': trades_sorted,
             'strategy': strategy.get_status(None)
         }
-        dashboard.update(warmup_data)
+        dashboard.update(warmup_data, strategy_id=STRATEGY_ID)
         print("  Dashboard 初始化数据同步完成")
 
     # --- 重置处理器 ---

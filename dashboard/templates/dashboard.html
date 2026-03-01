@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 
 <head>
@@ -590,6 +590,12 @@
                 <div class="logo-sub">智能网格交易系统 {{ app_version }}</div>
             </div>
         </div>
+        <!-- V4 策略版本标识 -->
+        <div style="display:flex; align-items:center; gap:8px;">
+            <span
+                style="font-size:14px; font-weight:600; color:var(--text-secondary); background:var(--glass-bg); border:1px solid var(--glass-border); padding:6px 12px; border-radius:8px;">网格
+                V4.0</span>
+        </div>
         <div class="status-bar">
             <div class="status-item">
                 <div class="status-dot" id="statusDot"></div>
@@ -601,8 +607,12 @@
             </div>
         </div>
         <div>
+            <button type="button" class="header-btn" id="startBtn"
+                style="margin-right: 4px; border-color: var(--profit); color: var(--profit);">▶ 启动</button>
+            <button type="button" class="header-btn" id="pauseBtn"
+                style="margin-right: 4px; border-color: #f59e0b; color: #f59e0b;" disabled>⏸ 暂停</button>
             <button type="button" class="header-btn" id="resetBtn"
-                style="margin-right: 8px; border-color: var(--loss); color: var(--loss);">重置测试</button>
+                style="margin-right: 8px; border-color: var(--loss); color: var(--loss);">↺ 重置</button>
             <button type="button" class="header-btn" id="openStrategyDocBtn">策略说明</button>
         </div>
     </header>
@@ -673,7 +683,8 @@
                             • 立即强制平掉所有持仓<br>
                             • 清空图表上的所有交易标记<br>
                             • 删除历史成交记录文件<br>
-                            • 将账户资金恢复至 <b>10,000 USDT</b>
+                            • 将账户资金恢复至 <b>10,000 USDT</b><br>
+                            • <b>停止策略运行</b>（需手动再次启动）
                         </div>
                         <div class="modal-footer">
                             <button id="cancelReset" class="btn-modal btn-cancel">取消</button>
@@ -781,7 +792,7 @@
     </div>
 
     <script>
-        const socket = io({ transports: ['websocket', 'polling'] });
+        const socket = io({ transports: ['polling'] });
 
         // TradingView 图表实例
         let mainChart = null;
@@ -1092,25 +1103,25 @@
         }
 
         // 批量数据处理 (去重、排序、格式转换)
-        function prepareBatchData(data) {
-            if (!Array.isArray(data) || data.length === 0) return [];
+        function prepareBatchData(dataList) {
+            if (!Array.isArray(dataList) || dataList.length === 0) return [];
 
-            const tvData = [];
+            const batch = [];
             const seen = new Set();
+            for (const item of dataList) {
+                if (!item) continue;
+                const ts = convertTime(item.t);
+                if (!ts || seen.has(ts)) continue;
 
-            for (const item of data) {
-                const time = convertTime(item.t);
-                if (!time || seen.has(time)) continue;
-
-                seen.add(time);
-                // 允许值为 null，这在对齐空历史时很重要
-                tvData.push({
-                    time,
-                    value: (item.v === null || item.v === undefined) ? null : parseFloat(item.v)
-                });
+                seen.add(ts);
+                if (item.v === undefined || item.v === null) {
+                    batch.push({ time: ts }); // 空白占位符
+                } else {
+                    batch.push({ time: ts, value: parseFloat(item.v) });
+                }
             }
 
-            return tvData.sort((a, b) => a.time - b.time);
+            return batch.sort((a, b) => a.time - b.time);
         }
 
         // K 线本地缓冲：统一用 setData，避免 update() 的时序报错
@@ -1198,22 +1209,18 @@
                     }
                     console.log(`[Chart] ???? K ?: ${candleDataBuffer.length} ?`);
                 } else {
-                    // ???????? setData???????
+                    // 增量平滑更新 K 线
                     const lastCandle = tvData[tvData.length - 1];
-                    const wasOlder = (lastCandleTime !== null && lastCandle.time < lastCandleTime);
-
-                    const prevLastTime = lastCandleTime;
                     upsertCandle(candleDataBuffer, lastCandle);
-                    candleSeries.setData(candleDataBuffer);
 
-                    const isNewBar = (prevLastTime === null) || (lastCandle.time > prevLastTime);
-                    lastCandleTime = lastCandle.time;
-                    console.log(`[Chart] ????: ${candleDataBuffer.length}, lastTime: ${lastCandleTime}, newBar: ${isNewBar}, older: ${wasOlder}`);
-
-                    if (isNewBar) {
-                        mainChart.timeScale().fitContent();
+                    try {
+                        candleSeries.update(lastCandle);
+                    } catch (e) {
+                        // 回退机制：如果时间未对齐，则重设数据
+                        candleSeries.setData(candleDataBuffer);
                     }
-                    mainChart.timeScale().scrollToRealTime();
+
+                    lastCandleTime = lastCandle.time;
                 }
             } catch (err) {
                 console.error('[Chart] ??????:', err);
@@ -1252,7 +1259,11 @@
 
             try {
                 const val = (rsiValue === null || rsiValue === undefined) ? null : parseFloat(rsiValue);
-                rsiSeries.update({ time, value: val });
+                if (val === null) {
+                    rsiSeries.update({ time });
+                } else {
+                    rsiSeries.update({ time, value: val });
+                }
                 lastRsiUpdateTime = time;
             } catch (err) {
                 console.error('[Chart] 更新 RSI 失败:', err);
@@ -1288,7 +1299,11 @@
                 }
 
                 const val = (totalValue === null || totalValue === undefined) ? null : parseFloat(totalValue);
-                equitySeries.update({ time, value: val });
+                if (val === null) {
+                    equitySeries.update({ time });
+                } else {
+                    equitySeries.update({ time, value: val });
+                }
                 lastEquityUpdateTime = time;
 
                 // 如果有了首个点但之前没拿到初始资金，现在补上
@@ -1357,51 +1372,46 @@
         function drawGridLines(gridLower, gridUpper, gridLevels) {
             if (!candleSeries || !mainChart) return;
 
-            // 清除旧网格线
-            if (window.gridLines) {
-                window.gridLines.forEach(line => {
-                    try { mainChart.removeSeries(line); } catch (e) { }
-                });
-            }
-            window.gridLines = [];
-
             if (!gridLower || !gridUpper || !gridLevels || gridLevels < 2) {
-                console.log('[Chart] 网格参数无效，不绘制网格线');
+                if (window.gridLines) {
+                    window.gridLines.forEach(line => {
+                        try { candleSeries.removePriceLine(line); } catch (e) { }
+                    });
+                    window.gridLines = [];
+                }
                 return;
             }
 
-            // 计算网格线价格
-            const step = (gridUpper - gridLower) / (gridLevels - 1);
-            const colors = ['#00d084', '#a855f7', '#ff4757']; // 下界绿、中间紫、上界红
-
-            for (let i = 0; i < gridLevels; i++) {
-                const price = gridLower + step * i;
-                const color = i === 0 ? colors[0] : (i === gridLevels - 1 ? colors[2] : colors[1]);
-
-                const line = mainChart.addLineSeries({
-                    color: color,
-                    lineWidth: 1,
-                    lineStyle: LightweightCharts.LineStyle.Dashed,
-                    lastValueVisible: true,
-                    title: i === 0 ? '网格下界' : (i === gridLevels - 1 ? '网格上界' : `网格${i}`),
-                    priceLineVisible: false,
-                });
-
-                // 获取当前K线的时间范围
-                const data = candleSeries.data();
-                if (data && data.length > 0) {
-                    const firstTime = data[0].time;
-                    const lastTime = data[data.length - 1].time;
-                    line.setData([
-                        { time: firstTime, value: price },
-                        { time: lastTime, value: price }
-                    ]);
+            // 初始化或层数变化时，重新创建参考线
+            if (!window.gridLines || window.gridLines.length !== gridLevels) {
+                if (window.gridLines) {
+                    window.gridLines.forEach(line => {
+                        try { candleSeries.removePriceLine(line); } catch (e) { }
+                    });
                 }
+                window.gridLines = [];
 
-                window.gridLines.push(line);
+                const colors = ['#00d084', '#a855f7', '#ff4757'];
+                for (let i = 0; i < gridLevels; i++) {
+                    const color = i === 0 ? colors[0] : (i === gridLevels - 1 ? colors[2] : colors[1]);
+                    const line = candleSeries.createPriceLine({
+                        price: gridLower, // 占位
+                        color: color,
+                        lineWidth: 1,
+                        lineStyle: LightweightCharts.LineStyle.Dashed,
+                        axisLabelVisible: true,
+                        title: i === 0 ? '网格下界' : (i === gridLevels - 1 ? '网格上界' : `网格${i}`),
+                    });
+                    window.gridLines.push(line);
+                }
             }
 
-            console.log(`[Chart] 绘制网格线: ${gridLevels}条 [${gridLower.toFixed(2)} - ${gridUpper.toFixed(2)}]`);
+            // 增量更新已有的参考线价格，提升性能
+            const step = (gridUpper - gridLower) / (gridLevels - 1);
+            for (let i = 0; i < gridLevels; i++) {
+                const price = gridLower + step * i;
+                window.gridLines[i].applyOptions({ price: price });
+            }
         }
 
         // 格式化数字
@@ -1623,7 +1633,8 @@
         });
 
         confirmBtn?.addEventListener('click', () => {
-            socket.emit('reset_strategy');
+            if (!currentStrategyId) return;
+            socket.emit('reset_strategy', { strategy_id: currentStrategyId });
             resetModal.style.display = 'none';
 
             // UI 反馈
@@ -1643,6 +1654,39 @@
             if (e.target === resetModal) resetModal.style.display = 'none';
         });
 
+        // 固定策略 ID
+        let currentStrategyId = 'grid_v40';
+        // 当前策略的运行状态 ('stopped' | 'running' | 'paused')
+        let currentSlotStatus = 'stopped';
+
+        // 更新启动/暂停/重置按钮状态
+        function updateControlButtons(status) {
+            currentSlotStatus = status;
+            const startBtn = document.getElementById('startBtn');
+            const pauseBtn = document.getElementById('pauseBtn');
+            const resetBtn = document.getElementById('resetBtn');
+            if (!startBtn || !pauseBtn) return;
+
+            if (status === 'running') {
+                startBtn.disabled = true;
+                startBtn.style.opacity = '0.4';
+                pauseBtn.disabled = false;
+                pauseBtn.style.opacity = '1';
+            } else if (status === 'paused') {
+                startBtn.disabled = false;
+                startBtn.style.opacity = '1';
+                pauseBtn.disabled = true;
+                pauseBtn.style.opacity = '0.4';
+            } else { // stopped
+                startBtn.disabled = false;
+                startBtn.style.opacity = '1';
+                pauseBtn.disabled = true;
+                pauseBtn.style.opacity = '0.4';
+            }
+        }
+
+        // 移除旧的下拉框切换逻辑
+
         socket.on('connect', () => {
             isConnected = true;
             reconnectAttempts = 0;
@@ -1652,6 +1696,25 @@
             console.log('[Socket] 等待接收 warmup 数据...');
         });
 
+        // 固定绑定到 v4 策略
+        socket.on('strategies_list', (data) => {
+            // join 固定房间
+            socket.emit('join', { strategy_id: currentStrategyId });
+            console.log('[Socket] 加入策略房间:', currentStrategyId);
+            document.getElementById('statusText').textContent = '已连接 · ' + currentStrategyId;
+
+            // 绑定按钮事件
+            document.getElementById('startBtn')?.addEventListener('click', () => {
+                socket.emit('start_strategy', { strategy_id: currentStrategyId });
+                updateControlButtons('running');
+            });
+
+            document.getElementById('pauseBtn')?.addEventListener('click', () => {
+                socket.emit('pause_strategy', { strategy_id: currentStrategyId });
+                updateControlButtons('paused');
+            });
+        });
+
         socket.on('disconnect', (reason) => {
             isConnected = false;
             document.getElementById('statusDot').className = 'status-dot disconnected';
@@ -1659,21 +1722,43 @@
             console.log('[Socket] 连接已断开:', reason);
         });
 
+        // 后端通知策略状态变化 (运行/暂停)
+        socket.on('strategy_status_changed', (data) => {
+            if (data && data.strategy_id === currentStrategyId) {
+                const newStatus = data.status === 'running' ? 'running' :
+                    data.status === 'paused' ? 'paused' : 'stopped';
+                updateControlButtons(newStatus);
+                console.log('[Socket] 策略状态变化:', data.strategy_id, '->', newStatus);
+            }
+        });
+
         socket.on('connect_error', (error) => {
             reconnectAttempts++;
             console.error(`[Socket] 连接错误 (尝试 ${reconnectAttempts}):`, error.message);
         });
 
-        socket.on('reset_ui', () => {
-            console.log('[Socket] >>> 收到全量重置信号 (reset_ui) <<<');
-            // 1. 清空图表数据
-            if (candleSeries) candleSeries.setData([]);
-            if (rsiSeries) rsiSeries.setData([]);
-            if (equitySeries) equitySeries.setData([]);
-            if (candleSeries) candleSeries.setMarkers([]);
+        socket.on('reset_ui', (data) => {
+            const isSoft = data && data.soft;
+            console.log(`[Socket] >>> 收到重置信号 (soft=${isSoft}) <<<`);
 
-            // 2. 清空交易记录（使用新的分页函数）
+            // 1. 根据模式清空行情图表数据
+            if (!isSoft) {
+                console.log('[Socket] 执行硬重置：清空行情历史');
+                if (candleSeries) candleSeries.setData([]);
+                if (rsiSeries) rsiSeries.setData([]);
+                if (candleSeries) candleSeries.setMarkers([]);
+                window.rsiLinesDrawn = false;
+                lastCandleTime = null;
+                lastRsiUpdateTime = null;
+            } else {
+                console.log('[Socket] 执行软重置：保留行情历史');
+            }
+
+            // 2. 权益曲线和成交记录始终重置 (因为账户清零了)
+            if (equitySeries) equitySeries.setData([]);
             setTradeHistory([]);
+            window.equityLineDrawn = false;
+            lastEquityUpdateTime = null;
 
             // 3. 重置界面数值
             const els = ['totalValue', 'cashValue', 'positionValue', 'pnlRate', 'positionSize', 'positionAvgPrice', 'positionUnrealizedPnl', 'gridRange', 'positionLayers', 'signalStrength'];
@@ -1681,13 +1766,6 @@
                 const el = document.getElementById(id);
                 if (el) el.textContent = '--';
             });
-
-            // 4. 重置状态标识
-            window.rsiLinesDrawn = false;
-            window.equityLineDrawn = false;
-            lastCandleTime = null;
-            lastRsiUpdateTime = null;
-            lastEquityUpdateTime = null;
         });
 
         socket.on('history_update', (data) => {
@@ -1788,40 +1866,35 @@
                 }
 
                 // 4. 更新 RSI
-                if (data.rsi !== undefined && data.candle && !data.history_candles) {
-                    const rsiEl = document.getElementById('rsiVal');
-                    rsiEl.textContent = data.rsi.toFixed(1);
+                const realtimeTs_rsi = data.timestamp || (data.candle ? data.candle.t : null);
+                if (realtimeTs_rsi && !data.history_candles) {
+                    const rsiVal = (data.rsi !== undefined) ? data.rsi : null;
+                    if (rsiVal !== null) {
+                        const rsiEl = document.getElementById('rsiVal');
+                        rsiEl.textContent = rsiVal.toFixed(1);
 
-                    const statusEl = document.getElementById('rsiStatus');
-                    if (data.rsi > 70) {
-                        rsiEl.style.color = 'var(--loss)';
-                        statusEl.textContent = '超买区域';
-                        statusEl.style.color = 'var(--loss)';
-                    } else if (data.rsi < 30) {
-                        rsiEl.style.color = 'var(--profit)';
-                        statusEl.textContent = '超卖区域';
-                        statusEl.style.color = 'var(--profit)';
-                    } else {
-                        rsiEl.style.color = 'var(--text-primary)';
-                        statusEl.textContent = '正常区间';
-                        statusEl.style.color = 'var(--text-secondary)';
+                        const statusEl = document.getElementById('rsiStatus');
+                        if (rsiVal > 70) {
+                            rsiEl.style.color = 'var(--loss)';
+                            statusEl.textContent = '超买区域';
+                            statusEl.style.color = 'var(--loss)';
+                        } else if (rsiVal < 30) {
+                            rsiEl.style.color = 'var(--profit)';
+                            statusEl.textContent = '超卖区域';
+                            statusEl.style.color = 'var(--profit)';
+                        } else {
+                            rsiEl.style.color = 'var(--text-primary)';
+                            statusEl.textContent = '正常区间';
+                            statusEl.style.color = 'var(--text-secondary)';
+                        }
                     }
-
-                    // 更新 RSI 图表
-                    if (data.candle) {
-                        const realtimeTs = data.timestamp || data.candle.t;
-                        updateRSI(data.rsi, realtimeTs);
-                    }
+                    updateRSI(rsiVal, realtimeTs_rsi);
                 }
 
                 // 5. 更新资产曲线
-                if (data.total_value !== undefined && !data.history_candles) {
-                    if (data.candle) {
-                        const realtimeTs = data.timestamp || data.candle.t;
-                        updateEquity(data.total_value, realtimeTs);
-                    } else if (data.timestamp) {
-                        updateEquity(data.total_value, data.timestamp);
-                    }
+                const realtimeTs_eq = data.timestamp || (data.candle ? data.candle.t : null);
+                if (realtimeTs_eq && !data.history_candles) {
+                    updateEquity(data.total_value !== undefined ? data.total_value : null, realtimeTs_eq);
                 }
 
                 // 7. 更新持仓并且计算未实现盈亏
@@ -1907,17 +1980,20 @@
                     }
 
                     // 网格区间
+                    const gridL = typeof s.grid_lower === 'number' ? s.grid_lower : null;
+                    const gridU = typeof s.grid_upper === 'number' ? s.grid_upper : null;
                     document.getElementById('gridRange').textContent =
-                        s.grid_lower > 0 ? `${s.grid_lower.toFixed(0)}-${s.grid_upper.toFixed(0)}` : '未初始化';
+                        (gridL != null && gridL > 0) ? `${gridL.toFixed(0)}-${gridU.toFixed(0)}` : '未初始化';
 
                     // 持仓层数
-                    document.getElementById('positionLayers').textContent =
-                        `${s.position_count}/${s.max_positions}`;
+                    const pc = s.position_count != null ? s.position_count : '--';
+                    const mp = s.max_positions != null ? s.max_positions : '--';
+                    document.getElementById('positionLayers').textContent = `${pc}/${mp}`;
 
                     // 更新波段点信息 (辅助理解)
                     if (s.pivots && s.pivots.pivots_high) {
-                        const ph = s.pivots.pivots_high.map(p => p.toFixed(0));
-                        const pl = s.pivots.pivots_low.map(p => p.toFixed(0));
+                        const ph = s.pivots.pivots_high.map(p => (typeof p === 'number' ? p : (p.price || 0)).toFixed(0));
+                        const pl = s.pivots.pivots_low.map(p => (typeof p === 'number' ? p : (p.price || 0)).toFixed(0));
                         const pivotInfo = document.getElementById('pivotInfo');
                         if (pivotInfo) {
                             pivotInfo.innerHTML = `
@@ -1930,14 +2006,21 @@
                     }
 
                     // RSI阈值
+                    const ov = typeof s.rsi_oversold === 'number' ? s.rsi_oversold.toFixed(1) : '--';
+                    const obv = typeof s.rsi_overbought === 'number' ? s.rsi_overbought.toFixed(1) : '--';
                     document.getElementById('rsiThresholds').innerHTML =
-                        `<span style="color: var(--profit);">${s.rsi_oversold.toFixed(1)}</span> / <span style="color: var(--loss);">${s.rsi_overbought.toFixed(1)}</span>`;
+                        `<span style="color: var(--profit);">${ov}</span> / <span style="color: var(--loss);">${obv}</span>`;
 
                     // 信号强度
                     const signalEl = document.getElementById('signalStrength');
-                    const signalValue = s.rsi_signal;
-                    signalEl.textContent = `${signalValue >= 0 ? '+' : ''}${signalValue.toFixed(2)}`;
-                    signalEl.style.color = signalValue > 0.3 ? 'var(--profit)' : (signalValue < -0.3 ? 'var(--loss)' : 'var(--text-secondary)');
+                    const signalValue = (typeof s.rsi_signal === 'number') ? s.rsi_signal : null;
+                    if (signalValue != null) {
+                        signalEl.textContent = `${signalValue >= 0 ? '+' : ''}${signalValue.toFixed(2)}`;
+                        signalEl.style.color = signalValue > 0.3 ? 'var(--profit)' : (signalValue < -0.3 ? 'var(--loss)' : 'var(--text-secondary)');
+                    } else {
+                        signalEl.textContent = '--';
+                        signalEl.style.color = 'var(--text-secondary)';
+                    }
 
                     // 交易信号
                     const tradeSignalEl = document.getElementById('tradeSignal');
@@ -1964,7 +2047,15 @@
                     console.log('[Strategy]', s);
                 }
 
-                // 10. 更新交易记录
+                // 10. 同步按钮状态（来自 slot_status 字段）
+                if (data.slot_status) {
+                    const ss = data.slot_status;
+                    const newStatus = ss.is_running && !ss.is_paused ? 'running' :
+                        ss.is_paused ? 'paused' : 'stopped';
+                    updateControlButtons(newStatus);
+                }
+
+                // 11. 更新交易记录
                 if (data.trade_history) {
                     // 批量更新时重新加载全部历史
                     setTradeHistory(data.trade_history.slice().reverse());

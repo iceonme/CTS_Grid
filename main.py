@@ -32,11 +32,17 @@ def run_backtest(args):
     
     data_feed = CSVDataFeed(filepath=args.data, symbol=args.symbol)
     
-    strategy = GridRSIStrategy(
-        symbol=args.symbol,
-        grid_levels=args.grid_levels,
-        rsi_period=args.rsi_period
-    )
+    strategy_version = getattr(args, 'strategy', '4.0')
+    if strategy_version == '5.1':
+        from strategies import GridRSIStrategyV5_1
+        strategy = GridRSIStrategyV5_1(symbol=args.symbol)
+    else:
+        from strategies import GridRSIStrategy
+        strategy = GridRSIStrategy(
+            symbol=args.symbol,
+            grid_levels=args.grid_levels,
+            rsi_period=args.rsi_period
+        )
     
     executor = PaperExecutor(initial_capital=args.capital)
     
@@ -68,12 +74,21 @@ def run_paper(args):
     
     # 启动 Dashboard
     dashboard = create_dashboard(port=args.port)
+    
+    strategy_version = getattr(args, 'strategy', '4.0')
+    if strategy_version == '5.1':
+        from strategies import GridRSIStrategyV5_1
+        strategy = GridRSIStrategyV5_1(symbol=args.symbol)
+        dashboard.register_strategy('default', 'Grid RSI V5.1 (模拟盘)', route='/5.1')
+    else:
+        from strategies import GridRSIStrategy
+        strategy = GridRSIStrategy(symbol=args.symbol)
+        dashboard.register_strategy('default', 'Grid RSI V4.0 (模拟盘)', route='/')
+        
     dashboard.start_background()
     
     # 创建引擎
     data_feed = CSVDataFeed(filepath=args.data, symbol=args.symbol)
-    
-    strategy = GridRSIStrategy(symbol=args.symbol)
     
     executor = PaperExecutor(
         initial_capital=args.capital,
@@ -136,7 +151,13 @@ def run_live(args):
         is_demo=args.demo
     )
     
-    strategy = GridRSIStrategy(symbol=args.symbol)
+    strategy_version = getattr(args, 'strategy', '4.0')
+    if strategy_version == '5.1':
+        from strategies import GridRSIStrategyV5_1
+        strategy = GridRSIStrategyV5_1(symbol=args.symbol)
+    else:
+        from strategies import GridRSIStrategy
+        strategy = GridRSIStrategy(symbol=args.symbol)
     
     executor = OKXExecutor(
         api_key=api_key,
@@ -175,15 +196,30 @@ def run_live(args):
     # 启动 Dashboard
     print(f"[3/4] 启动 Dashboard...")
     dashboard = create_dashboard(port=args.port)
+    app_mode = "实盘模拟" if args.demo else "OKX 实盘"
+    
+    if strategy_version == '5.1':
+        dashboard.register_strategy('default', f'Grid RSI V5.1 ({app_mode})', route='/5.1')
+    else:
+        dashboard.register_strategy('default', f'Grid RSI V4.0 ({app_mode})', route='/')
+        
     dashboard.start_background()
     
     # 发送历史数据到 Dashboard
     if history_candles:
-        dashboard.update({
+        hist_data = {
             'history_candles': history_candles,
-            'history_rsi': [{'t': c['t'], 'v': None} for c in history_candles],
-            'history_equity': [{'t': c['t'], 'v': None} for c in history_candles]
-        })
+            'history_rsi': [{'time': c['t'], 'value': None} for c in history_candles],
+            'history_equity': [{'time': c['t'], 'value': None} for c in history_candles]
+        }
+        
+        # 把引擎生成的历史指标附加上去
+        if hasattr(engine, '_history_rsi'):
+            hist_data['history_rsi'] = engine._history_rsi
+        if hasattr(engine, '_history_macd'):
+            hist_data['history_macd'] = engine._history_macd
+            
+        dashboard.update(hist_data)
         print(f"[4/4] 历史数据已发送到 Dashboard")
     
     # 注册状态回调
@@ -258,6 +294,7 @@ def main():
     backtest_parser.add_argument('--capital', type=float, default=10000, help='初始资金')
     backtest_parser.add_argument('--grid-levels', type=int, default=10, help='网格层数')
     backtest_parser.add_argument('--rsi-period', type=int, default=14, help='RSI周期')
+    backtest_parser.add_argument('--strategy', default='4.0', choices=['4.0', '5.1'], help='策略版本')
     backtest_parser.set_defaults(func=run_backtest)
     
     # 模拟盘模式
@@ -266,6 +303,7 @@ def main():
     paper_parser.add_argument('--symbol', default='BTC-USDT', help='交易对')
     paper_parser.add_argument('--capital', type=float, default=10000, help='初始资金')
     paper_parser.add_argument('--port', type=int, default=5000, help='Dashboard端口')
+    paper_parser.add_argument('--strategy', default='4.0', choices=['4.0', '5.1'], help='策略版本')
     paper_parser.set_defaults(func=run_paper)
     
     # 实盘模式
@@ -277,6 +315,7 @@ def main():
     live_parser.add_argument('--passphrase', help='Passphrase')
     live_parser.add_argument('--demo', action='store_true', help='使用模拟盘')
     live_parser.add_argument('--port', type=int, default=5000, help='Dashboard端口')
+    live_parser.add_argument('--strategy', default='4.0', choices=['4.0', '5.1'], help='策略版本')
     live_parser.set_defaults(func=run_live)
     
     args = parser.parse_args()

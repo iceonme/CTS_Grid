@@ -112,12 +112,20 @@ class GridRSIStrategy(BaseStrategy):
         self._equity_history: List[float] = []
 
     def initialize(self):
+        """策略初始化：保留行情缓冲区，仅重置账户相关状态"""
         super().initialize()
-        self._data_buffer.clear()
+        
+        # 保留 self._data_buffer ！！！
+        # 仅重置与当前交易周期相关的状态
         self.state = GridState()
-        self._peak_prices.clear()
-        self._current_prices.clear()
+        
+        # 保留价格引用以维持 UI 响应
+        # self._peak_prices.clear() # 考虑到止损逻辑，重置时应当清空峰值价格
+        
+        # 清空权益历史，因为账户已经资金重置
         self._equity_history.clear()
+        
+        print(f"[Strategy:{self.name}] 已执行逻辑重置 (行情缓冲区保留: {len(self._data_buffer)} 根)")
 
     def _update_buffer(self, data: MarketData):
         if self._data_buffer and self._data_buffer[-1].timestamp == data.timestamp:

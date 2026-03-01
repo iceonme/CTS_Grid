@@ -1,12 +1,29 @@
 # 项目看板 (BOARD)
 
 ## TODO
-- [x] 修复 RSI/资产曲线起始点坐标偏移 (Build-018) [2026-02-24_01-20_chart_start_fixed_final.md](history/2026-02-24_01-20_chart_start_fixed_final.md)
+- [ ] can 项目：比较 grid-rsi-bot vs grid-bot 的回测表现，调优 RSI 系数参数
 - [ ] 完全对接 OKX 模拟盘：实现真实订单同步 (force_server)
 - [ ] 增加余额异常修复/手动同步触发按钮
 - [ ] 清理冗余的回测脚本代码
 
 ## DONE
+- [x] 2026-03-01_20-30: 优化 V5.1 状态同步逻辑，解决网格在数据更新后消失的问题。 [[归档]](file:///c:/Projects/TradingGarage/CTS1/docs/task/history/2026-03-01_20-30_fix_v51_grid_stability.md)
+- [x] 2026-03-01_20-20: 修复 V5.1 策略语法错误与卖出逻辑嵌套问题。 [[归档]](file:///c:/Projects/TradingGarage/CTS1/docs/task/history/2026-03-01_20-20_fix_v51_logic_and_syntax.md)
+- [x] 全版本软重置 (Soft Reset) 优化：实现重置后行情历史保留、策略无缝重启功能，彻底解决 V4/V5 重置清空数据的痛点 [2026-03-01_19-45_fix_soft_reset_logic.md](history/2026-03-01_19-45_fix_soft_reset_logic.md)
+- [x] 逻辑层向表现层解耦：完成 `dashboard_5_1.html` 深度重构，实现 HTML/CSS/JS 完全动静分离，显著提升代码可维护性 [2026-03-01_18-24_refactor_dashboard_v51.md](history/2026-03-01_18-24_refactor_dashboard_v51.md)
+- [x] 逻辑层深度修复：移除前端数据包过滤守卫，确保指标图表在任何数据更新时都通过 Whitespace 占位推进时间轴 [2026-03-01_17-45_fix_alignment_and_refactor_plan.md](history/2026-03-01_17-45_fix_alignment_and_refactor_plan.md)
+- [x] 彻底修复MACD/RSI等副图在实时更新时右侧留白不与主K线对齐的问题 (基于对齐空白Whitespace填充逻辑索引) [2026-03-01_17-36_fix_timescale_alignment.md](history/2026-03-01_17-36_fix_timescale_alignment.md)
+- [x] 修复策略暂停时实时数据指标(MACD/RSI)未更新导致的右侧图表断崖/不齐 Bug [2026-03-01_16-57_fix_macd_alignment.md](history/2026-03-01_16-57_fix_macd_alignment.md)
+- [x] V4及V5前端UI组件彻底解耦与 MACD 图表修正 [2026-03-01_16-27_frontend_v4_v5_decoupling_macd_fix.md](history/2026-03-01_16-27_frontend_v4_v5_decoupling_macd_fix.md)
+- [x] 开发 5.1 策略专属监控看板 (分离路由与新增 MACD+动态网格显示) [2026-03-01_00-48_dashboard_5_1_implementation.md](history/2026-03-01_00-48_dashboard_5_1_implementation.md)
+- [x] 修复前端重置按钮无反应及重置后不能自动启动的语义修正 [2026-03-01_00-33_fix_reset_button_and_logic.md](history/2026-03-01_00-33_fix_reset_button_and_logic.md)
+- [x] Grid RSI V5.1 MACD+RSI 双指标升级（替换 ADX 逻辑） [2026-03-01_00-15_grid_v51_macd_rsi_upgrade.md](history/2026-03-01_00-15_grid_v51_macd_rsi_upgrade.md)
+- [x] 修复 Dashboard 图表不渲染与服务端缺失心跳日志及 Order_id 报错 [2026-03-01_00-03_fix_chart_rendering_and_missing_order_id.md](history/2026-03-01_00-03_fix_chart_rendering_and_missing_order_id.md)
+- [x] 修复 Dashboard 实时数据流卡住 (禁用 SocketIO Eventlet 模式) [2026-02-28_23-45_fix_realtime_data_stream.md](history/2026-02-28_23-45_fix_realtime_data_stream.md)
+- [x] 修复 Dashboard 数据(表单名/RSI)及多策略持久化隔离 [2026-02-28_21-35_fix_dashboard_and_persistence.md](history/2026-02-28_21-35_fix_dashboard_and_persistence.md)
+- [x] 移除 Eventlet 修复 OKX 连接不可达错误 [2026-02-28_21-20_remove_eventlet_fix_connection.md](history/2026-02-28_21-20_remove_eventlet_fix_connection.md)
+- [x] 修复 run_okx_demo.py 预热崩溃及多策略 Dashboard 适配 [2026-02-28_20-15_fix_run_okx_demo_crash.md](history/2026-02-28_20-15_fix_run_okx_demo_crash.md)
+- [x] can 新增 GridRSI 选手 & CTS1 多策略并行仪表盘 [2026-02-28_17-40_gridrsi_contestant_and_multi_strategy_dashboard.md](history/2026-02-28_17-40_gridrsi_contestant_and_multi_strategy_dashboard.md)
 - [x] 优化交易记录卡片显示（USDT金额及UTC+8时间对齐） [2026-02-26_14-11_update_trade_card.md](history/2026-02-26_14-11_update_trade_card.md)
 - [x] 将当前代码仓库推送至 GitHub 并配置安全忽略 [2026-02-24_19-45_github_push.md](history/2026-02-24_19-45_github_push.md)
 - [x] 验证网格线准确性并重构“3高3低”算法 [2026-02-24_20-31_fix_grid_accuracy_and_pivots.md](history/2026-02-24_20-31_fix_grid_accuracy_and_pivots.md)

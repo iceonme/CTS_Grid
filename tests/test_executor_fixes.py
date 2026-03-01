@@ -17,6 +17,9 @@ class _FakeOKXAPI:
             }
         ]
 
+    def get_balances(self):
+        return []
+
 
 class TestExecutorFixes(unittest.TestCase):
     def test_paper_executor_buy_size_in_quote_converts_to_base(self):
@@ -24,7 +27,7 @@ class TestExecutorFixes(unittest.TestCase):
         executor.update_market_data(datetime(2026, 1, 1), 100.0)
 
         order = Order(
-            order_id="",
+            order_id="test_order_1",
             symbol="BTC-USDT",
             side=Side.BUY,
             size=200.0,  # quote notional (USDT)

@@ -17,9 +17,9 @@ from datetime import datetime, timezone
 class OKXAPI:
     """OKX API接入类"""
     
-    # API端点
+    # API端点 (增加备用域名支持)
     DEMO_API_URL = "https://www.okx.com"
-    LIVE_API_URL = "https://www.okx.com"
+    LIVE_API_URL = "https://aws.okx.com"  # 默认使用 AWS 备用域名，通常更稳定
     
     def __init__(self, api_key=None, api_secret=None, passphrase=None, 
                  is_demo=True, simulate_slippage=True):
@@ -32,10 +32,18 @@ class OKXAPI:
         self.is_demo = is_demo
         self.simulate_slippage = simulate_slippage
         
-        self.base_url = self.DEMO_API_URL if is_demo else self.LIVE_API_URL
+        # 允许通过环境变量覆盖
+        import os
+        env_url = os.environ.get('OKX_API_URL')
+        if env_url:
+            self.base_url = env_url
+        else:
+            self.base_url = self.DEMO_API_URL if is_demo else self.LIVE_API_URL
+            
         self.session = requests.Session()
+        self.timeout = 30 # 延长至 30 秒以应对网络波动
         
-        print(f"OKX API初始化完成 | 模式: {'模拟盘' if is_demo else '实盘'}")
+        print(f"OKX API初始化完成 | 模式: {'模拟盘' if is_demo else '实盘'} | 端点: {self.base_url}")
         
     def _get_timestamp(self):
         """生成ISO格式时间戳"""
@@ -83,15 +91,15 @@ class OKXAPI:
         
         try:
             if method == 'GET':
-                response = self.session.get(url, headers=headers, params=params, timeout=10)
+                response = self.session.get(url, headers=headers, params=params, timeout=self.timeout)
             else:
-                response = self.session.post(url, headers=headers, data=body_str, timeout=10)
+                response = self.session.post(url, headers=headers, data=body_str, timeout=self.timeout)
             
             response.raise_for_status()
             return response.json()
             
         except Exception as e:
-            print(f"请求错误: {e}")
+            print(f"请求错误 ({url}): {e}")
             return None
     
     def get_balance(self):

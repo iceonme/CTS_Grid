@@ -60,6 +60,8 @@ class LiveEngine:
         
         # 图表历史数据同步
         self._history_candles: List[Dict] = []
+        self._history_rsi: List[Dict] = []
+        self._history_macd: List[Dict] = []
         
         # 监控回调
         self._status_callbacks: List[Callable[[Dict], None]] = []
@@ -198,8 +200,15 @@ class LiveEngine:
                     # 计算初始网格
                     df_internal = self.strategy._get_dataframe()
                     if len(df_internal) > 50:
-                        self.strategy.state.grid_upper, self.strategy.state.grid_lower, _ = \
-                            self.strategy._calculate_dynamic_grid(df_internal)
+                        import inspect
+                        sig = inspect.signature(self.strategy._calculate_dynamic_grid)
+                        if 'current_price' in sig.parameters:
+                            curr_price = df_internal.iloc[-1]['close']
+                            self.strategy.state.grid_upper, self.strategy.state.grid_lower, _ = \
+                                self.strategy._calculate_dynamic_grid(df_internal, current_price=curr_price)
+                        else:
+                            self.strategy.state.grid_upper, self.strategy.state.grid_lower, _ = \
+                                self.strategy._calculate_dynamic_grid(df_internal)
                         self.strategy.state.grid_prices = [
                             float(p) for p in 
                             __import__('numpy', fromlist=['linspace']).linspace(
@@ -220,8 +229,54 @@ class LiveEngine:
             import traceback
             traceback.print_exc()
         
-        
         self._is_warmed = True
+        
+        # 预先生成给 Dashboard 用的辅助图表历史指标序列 (RSI, MACD)
+        try:
+            import pandas as pd
+            import numpy as np
+            df = self.strategy._get_dataframe()
+            if df is not None and not df.empty and len(df) > self.strategy.params.get('macd_slow', 26):
+                # 针对 V5.1 快速生成 MACD/RSI 序列给图表预填充
+                if hasattr(self.strategy, '_calculate_macd'):
+                    close = df['close']
+                    fast = self.strategy.params.get('macd_fast', 12)
+                    slow = self.strategy.params.get('macd_slow', 26)
+                    sig  = self.strategy.params.get('macd_signal', 9)
+                    
+                    ema_fast = close.ewm(span=fast, adjust=False).mean()
+                    ema_slow = close.ewm(span=slow, adjust=False).mean()
+                    macd_line = ema_fast - ema_slow
+                    signal_line = macd_line.ewm(span=sig, adjust=False).mean()
+                    hist = macd_line - signal_line
+                    
+                    for ts, val in hist.items():
+                        if pd.isna(val): continue
+                        self._history_macd.append({
+                            'time': int(pd.Timestamp(ts).timestamp() * 1000),
+                            'macd': float(macd_line[ts]) if not pd.isna(macd_line[ts]) else 0.0,
+                            'macdsignal': float(signal_line[ts]) if not pd.isna(signal_line[ts]) else 0.0,
+                            'macdhist': float(val) if not pd.isna(val) else 0.0
+                        })
+                        
+                # 无论啥策略都算个全量 RSI 用于图表平稳过渡
+                period = self.strategy.params.get('rsi_period', 14)
+                delta = df['close'].diff()
+                gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+                loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+                rs = gain / loss.replace(0, np.nan)
+                rsi = 100 - (100 / (1 + rs))
+                for ts, val in rsi.items():
+                    if not pd.isna(val):
+                        self._history_rsi.append({
+                            'time': int(pd.Timestamp(ts).timestamp() * 1000),
+                            'value': float(val)
+                        })
+        except Exception as e:
+            print(f"[引擎] 生成图表预热指标历史失败: {e}")
+            import traceback
+            traceback.print_exc()
+
         print("预热完成")
         return True
     
@@ -330,6 +385,34 @@ class LiveEngine:
         # 返回所有交易记录（分页由前端处理）
         trade_history = self._trades
 
+        # 同步实时的 RSI 和 MACD 图表轨迹
+        timestamp_ms = int(data.timestamp.timestamp() * 1000)
+        
+        # 同步增量 RSI
+        rsi_val = strategy_status.get('current_rsi', 50.0)
+        if hasattr(self, '_history_rsi'):
+            # 解决同一根K线时间戳去重问题
+            if not self._history_rsi or self._history_rsi[-1]['time'] < timestamp_ms:
+                self._history_rsi.append({'time': timestamp_ms, 'value': rsi_val})
+            else:
+                self._history_rsi[-1] = {'time': timestamp_ms, 'value': rsi_val}
+            if len(self._history_rsi) > 1000: self._history_rsi = self._history_rsi[-1000:]
+            
+        # 同步增量 MACD
+        m_val = strategy_status.get('macd')
+        if m_val is not None and hasattr(self, '_history_macd'):
+            macd_data = {
+                'time': timestamp_ms,
+                'macd': m_val,
+                'macdsignal': strategy_status.get('macdsignal', 0.0),
+                'macdhist': strategy_status.get('macdhist', 0.0)
+            }
+            if not self._history_macd or self._history_macd[-1]['time'] < timestamp_ms:
+                self._history_macd.append(macd_data)
+            else:
+                self._history_macd[-1] = macd_data
+            if len(self._history_macd) > 1000: self._history_macd = self._history_macd[-1000:]
+
         return {
             'timestamp': data.timestamp.isoformat(),
             'symbol': data.symbol,
@@ -339,7 +422,7 @@ class LiveEngine:
             'low': data.low,
             # 前端图表核心：K线对象
             'candle': {
-                't': int(data.timestamp.timestamp() * 1000),
+                't': timestamp_ms,
                 'o': data.open,
                 'h': data.high,
                 'l': data.low,
@@ -350,7 +433,7 @@ class LiveEngine:
             'total_value': total_value,
             'initial_balance': initial_balance,
             'pnl_pct': pnl_pct,
-            'rsi': strategy_status.get('current_rsi', 50.0),
+            'rsi': rsi_val,
             'strategy': strategy_status,
             'positions': {
                 p.symbol: {
@@ -359,7 +442,9 @@ class LiveEngine:
                 } for p in positions
             },
             'trade_history': trade_history, # 统一字段名为 trade_history
-            'history_candles': self._history_candles[-200:]  # 同步历史K线数据
+            'history_candles': self._history_candles[-200:],  # 同步历史K线数据
+            'history_rsi': self._history_rsi[-200:] if hasattr(self, '_history_rsi') else [],
+            'history_macd': self._history_macd[-200:] if hasattr(self, '_history_macd') else []
         }
     
     def _sync_history_candles(self, data: MarketData):

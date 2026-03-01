@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能网格交易系统5.1 | 实时监控中心 {{ app_version }}</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+
+    <script>
+        // 版本号 - 用于确认前端代码版本
+        window.APP_VERSION = "{{ app_version }}";
+        window.BUILD_TIME = "{{ version }}";
+        console.log('[APP] 版本:', window.APP_VERSION);
+        console.log('[APP] 构建时间:', window.BUILD_TIME);
+    </script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        const socket = io({ transports: ['polling'] });
+    </script>
+    <!-- TradingView Lightweight Charts -->
+    <script
+        src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js?v=4.1"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard_v51.css') }}?v={{ version }}">
+</head>
+
+<body>
+    <header>
+        <div class="logo">
+            <div class="logo-icon">G</div>
+            <div>
+                <div class="logo-text">GRID<span style="color: var(--primary)">PRO</span></div>
+                <div class="logo-sub">智能网格交易系统5.1 {{ app_version }}</div>
+            </div>
+        </div>
+        <!-- V5 策略版本标识 -->
+        <div style="display:flex; align-items:center; gap:8px;">
+            <span
+                style="font-size:14px; font-weight:600; color:var(--text-secondary); background:var(--glass-bg); border:1px solid var(--glass-border); padding:6px 12px; border-radius:8px;">网格
+                V5.1 (MACD+RSI) 0301-1</span>
+        </div>
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">连接中...</span>
+            </div>
+            <div class="status-item">
+                <span style="color: var(--primary)">OKX</span>
+                <span>模拟盘</span>
+            </div>
+        </div>
+        <div>
+            <button type="button" class="header-btn" id="startBtn"
+                style="margin-right: 4px; border-color: var(--profit); color: var(--profit);">▶ 启动</button>
+            <button type="button" class="header-btn" id="pauseBtn"
+                style="margin-right: 4px; border-color: #f59e0b; color: #f59e0b;" disabled>⏸ 暂停</button>
+            <button type="button" class="header-btn" id="resetBtn"
+                style="margin-right: 8px; border-color: var(--loss); color: var(--loss);">↺ 重置</button>
+            <button type="button" class="header-btn" id="openStrategyDocBtn">策略说明</button>
+        </div>
+    </header>
+
+    <main>
+        <!-- 左侧面板: 策略控制中心 -->
+        <section class="panel">
+            <div class="panel-header">
+                <span>策略控制中心</span>
+            </div>
+            <div class="asset-panel">
+                <!-- 核心交易信号 (Hero) -->
+                <div class="asset-card signal-hero-card" id="tradeSignalBox">
+                    <div class="asset-label">当前交易信号</div>
+                    <div class="signal-value" id="signalText">等待数据...</div>
+                    <div class="signal-sub" id="signalStrengthVal">强度: --</div>
+                </div>
+
+                <!-- 趋势深度分析 -->
+                <div class="asset-card active-card">
+                    <div class="asset-label">趋势分析</div>
+                    <div class="asset-detail">
+                        <div class="asset-detail-item">
+                            <div class="asset-detail-label">MACD 趋势</div>
+                            <div class="asset-detail-value" id="macdTrend" style="font-size: 13px;">--</div>
+                        </div>
+                        <div class="asset-detail-item">
+                            <div class="asset-detail-label">ATR 波动</div>
+                            <div class="asset-detail-value" id="atrVal" style="font-size: 13px;">--</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border);">
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">市场环境</div>
+                        <div style="font-size: 13px;" id="marketRegime">--</div>
+                    </div>
+                </div>
+
+                <!-- 指标概览 (精简) -->
+                <div class="asset-card">
+                    <div class="asset-label">指标参考</div>
+                    <div class="asset-detail" style="grid-template-columns: 1fr 1.2fr;">
+                        <div class="asset-detail-item">
+                            <div class="asset-detail-label">RSI (14)</div>
+                            <div class="asset-detail-value" id="rsiVal" style="color: var(--primary);">--</div>
+                        </div>
+                        <div class="asset-detail-item">
+                            <div class="asset-detail-label">自适应阈值</div>
+                            <div class="asset-detail-value" id="rsiThresholds" style="font-size: 11px;">-- / --</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 网格与波段点 -->
+                <div class="asset-card" style="flex:1;">
+                    <div class="asset-label">网格部署</div>
+                    <div class="asset-detail">
+                        <div class="asset-detail-item">
+                            <div class="asset-detail-label">运行区间</div>
+                            <div class="asset-detail-value" id="gridRange" style="font-size: 11px;">--</div>
+                        </div>
+                        <div class="asset-detail-item">
+                            <div class="asset-detail-label">持仓层数</div>
+                            <div class="asset-detail-value" id="positionLayers">--</div>
+                        </div>
+                    </div>
+                    <div id="pivotInfo" style="margin-top: 10px; font-size: 10px; color: var(--primary);">
+                        <!-- 波段点信息插入点 -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 中间面板: K线图表 -->
+        <section class="panel chart-panel">
+            <div class="panel-header">
+                <span>K线动态行情</span>
+                <span style="margin-left: auto; font-size: 12px; color: var(--text-secondary);">
+                    参考: <span style="color: var(--profit)">▲ 买入</span> <span style="color: var(--loss);">▼ 卖出</span>
+                    <span style="color: #f59e0b; margin-left: 8px;">● 阻力</span> <span
+                        style="color: #a855f7; margin-left:8px;">● 支撑</span>
+                </span>
+            </div>
+            <div class="chart-container">
+                <div id="tv-chart-main"></div>
+                <div id="tv-chart-rsi"></div>
+                <div id="tv-chart-macd"></div>
+                <div id="tv-chart-equity"></div>
+            </div>
+        </section>
+
+        <!-- 右侧面板: 账户与活动 -->
+        <section class="panel">
+            <div class="panel-header">
+                <span>账户与活动</span>
+            </div>
+            <div class="account-panel"
+                style="padding: 16px; display: flex; flex-direction: column; gap: 12px; height: 100%;">
+                <!-- 价格与权益概览 -->
+                <div class="asset-card"
+                    style="background: linear-gradient(135deg, rgba(0, 212, 255, 0.05), rgba(0, 212, 255, 0.02));">
+                    <div class="asset-label">BTC / USDT</div>
+                    <div class="asset-value price" id="btcPrice" style="font-size: 28px;">--</div>
+                    <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);">
+                        <div class="asset-label">账户总权益</div>
+                        <div class="asset-value" id="totalValue" style="font-size: 22px;">--</div>
+                        <div style="display:flex; justify-content: space-between; margin-top: 6px; font-size: 12px;">
+                            <span style="color: var(--text-secondary);">收益率: <span id="pnlRate"
+                                    style="color: var(--profit); font-weight: bold;">--</span></span>
+                            <span style="color: var(--text-secondary);">可用: <span id="cashValue"
+                                    style="color: var(--text-primary);">--</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 实时持仓明细 -->
+                <div class="asset-card" style="border-left: 3px solid var(--primary);">
+                    <div class="asset-label">实时持仓详情</div>
+                    <div style="display: flex; align-items: baseline; gap: 8px; margin: 4px 0;">
+                        <span class="asset-value" id="positionSize" style="font-size: 20px;">--</span>
+                        <span style="font-size: 12px; color: var(--text-secondary);">BTC</span>
+                    </div>
+                    <div class="asset-detail" style="margin-top: 8px;">
+                        <div class="asset-detail-item">
+                            <div class="asset-detail-label">持仓均价</div>
+                            <div class="asset-detail-value" id="positionAvgPrice" style="font-size: 12px;">--</div>
+                        </div>
+                        <div class="asset-detail-item">
+                            <div class="asset-detail-label">未实现盈亏</div>
+                            <div class="asset-detail-value" id="positionUnrealizedPnl" style="font-size: 12px;">--</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 紧凑型交易记录 -->
+                <div style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
+                    <div class="panel-header"
+                        style="padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 12px;">
+                        <span>历史成交消息</span>
+                        <span style="margin-left: auto;" id="tradeCount">0 笔</span>
+                    </div>
+                    <div class="trade-list" id="tradeList" style="flex: 1; padding: 10px 0;">
+                        <div class="empty-state">暂无记录</div>
+                    </div>
+                    <!-- 极简分页 -->
+                    <div id="tradePagination"
+                        style="padding: 10px 0; border-top: 1px solid var(--border); display: none; align-items: center; justify-content: space-between; font-size: 11px;">
+                        <div style="display: flex; gap: 4px;">
+                            <button id="prevTradePage" class="header-btn"
+                                style="padding: 2px 8px; font-size: 10px;">上页</button>
+                            <button id="nextTradePage" class="header-btn"
+                                style="padding: 2px 8px; font-size: 10px;">下页</button>
+                        </div>
+                        <span id="tradePageInfo" style="color: var(--text-secondary);">P: 1</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 策略说明模态框 -->
+    <div class="modal-mask" id="strategyDocModal">
+        <div class="strategy-modal" role="dialog" aria-modal="true" aria-label="策略说明">
+            <div class="strategy-modal-header">
+                <div class="strategy-modal-title">Grid RSI 策略说明</div>
+                <button class="strategy-modal-close" id="closeStrategyDocBtn">关闭</button>
+            </div>
+            <div class="strategy-modal-body" id="strategyDocContent">
+                <div class="strategy-block">
+                    <p>等待策略参数...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 重置确认模态框 -->
+    <div id="resetConfirmModal" class="custom-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span style="font-size: 24px;">⚠️</span> 确认重置
+            </div>
+            <div class="modal-body">
+                确定要重置测试进度和资金吗？<br><br>
+                这将会：<br>
+                • 立即强制平掉所有持仓<br>
+                • 清空图表上的所有交易标记<br>
+                • 删除历史成交记录文件<br>
+                • 将账户资金恢复至 <b>10,000 USDT</b><br>
+                • <b>停止策略运行</b>（需手动再次启动）
+            </div>
+            <div class="modal-footer">
+                <button id="cancelReset" class="btn-modal btn-cancel">取消</button>
+                <button id="confirmResetAction" class="btn-modal btn-confirm-reset">确认重置</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 核心 JS 引用 -->
+    <script src="{{ url_for('static', filename='js/dashboard_v51.js') }}?v={{ version }}"></script>
+</body>
+
+</html>

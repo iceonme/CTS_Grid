@@ -1,0 +1,641 @@
+:root {
+    --bg-color: #0a0e17;
+    --bg-secondary: #111827;
+    --glass-bg: rgba(255, 255, 255, 0.05);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --primary: #00d4ff;
+    --primary-dark: #0099cc;
+    --profit: #00d084;
+    --profit-dark: #00a065;
+    --loss: #ff4757;
+    --loss-dark: #cc3745;
+    --text-primary: #f0f4f8;
+    --text-secondary: #94a3b8;
+    --border: #1e293b;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Noto Sans SC', sans-serif;
+    background: var(--bg-color);
+    color: var(--text-primary);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 顶部导航 */
+header {
+    height: 60px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.logo-icon {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 18px;
+}
+
+.logo-text {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: 2px;
+}
+
+.logo-sub {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
+.status-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.status-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #444;
+    animation: pulse 2s infinite;
+}
+
+.status-dot.connected {
+    background: var(--profit);
+}
+
+.status-dot.disconnected {
+    background: var(--loss);
+    animation: none;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+/* 主内容区 */
+main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 280px 1fr 320px;
+    gap: 16px;
+    padding: 16px;
+    min-height: 0;
+}
+
+/* 面板样式 */
+.panel {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.panel-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 左侧侧边栏特化 */
+.asset-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+/* 信号英雄卡片 */
+.signal-hero-card {
+    background: linear-gradient(135deg, #1e293b, #0f172a);
+    border: 1px solid var(--primary);
+    padding: 20px 16px;
+    position: relative;
+    overflow: hidden;
+}
+
+.signal-hero-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at top right, rgba(0, 212, 255, 0.1), transparent);
+    pointer-events: none;
+}
+
+.signal-value {
+    font-size: 24px;
+    font-weight: 800;
+    margin: 8px 0;
+    letter-spacing: 1px;
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+}
+
+.signal-sub {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* 信号颜色状态 */
+.signal-hero-card.buy {
+    border-color: var(--profit);
+    background: linear-gradient(135deg, rgba(0, 208, 132, 0.1), #0f172a);
+    animation: glow-buy 2s infinite;
+}
+
+.signal-hero-card.sell {
+    border-color: var(--loss);
+    background: linear-gradient(135deg, rgba(255, 71, 87, 0.1), #0f172a);
+    animation: glow-sell 2s infinite;
+}
+
+@keyframes glow-buy {
+
+    0%,
+    100% {
+        box-shadow: 0 0 10px rgba(0, 208, 132, 0.1);
+    }
+
+    50% {
+        box-shadow: 0 0 25px rgba(0, 208, 132, 0.3);
+    }
+}
+
+@keyframes glow-sell {
+
+    0%,
+    100% {
+        box-shadow: 0 0 10px rgba(255, 71, 87, 0.1);
+    }
+
+    50% {
+        box-shadow: 0 0 25px rgba(255, 71, 87, 0.3);
+    }
+}
+
+.active-card {
+    border-color: rgba(0, 212, 255, 0.3);
+    background: rgba(0, 212, 255, 0.03);
+}
+
+.asset-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+}
+
+.asset-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.asset-value {
+    font-size: 24px;
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.asset-value.price {
+    color: var(--primary);
+}
+
+.asset-value.profit {
+    color: var(--profit);
+}
+
+.asset-value.loss {
+    color: var(--loss);
+}
+
+.asset-change {
+    font-size: 12px;
+    margin-top: 4px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.asset-detail {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 4px;
+}
+
+.asset-detail-item {
+    background: var(--glass-bg);
+    border-radius: 8px;
+    padding: 12px;
+    text-align: center;
+}
+
+.asset-detail-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.asset-detail-value {
+    font-size: 14px;
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* 图表区域 */
+/* 右侧账户面板 */
+.account-panel {
+    overflow-y: auto;
+}
+
+.chart-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 800px;
+    /* 保证图表区域有足够高度 */
+}
+
+.chart-container {
+    flex: 1;
+    position: relative;
+    min-height: 0;
+}
+
+#tv-chart-main,
+#tv-chart-rsi,
+#tv-chart-macd,
+#tv-chart-equity {
+    width: 100%;
+}
+
+#tv-chart-main {
+    height: 48%;
+}
+
+#tv-chart-rsi {
+    height: 14%;
+    border-top: 1px solid var(--border);
+}
+
+#tv-chart-macd {
+    height: 14%;
+    border-top: 1px solid var(--border);
+    margin-top: -1px;
+}
+
+#tv-chart-equity {
+    height: 24%;
+    border-top: 1px solid var(--border);
+}
+
+/* 右侧交易记录 */
+.trade-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+}
+
+.trade-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: var(--glass-bg);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    border-left: 3px solid transparent;
+}
+
+.trade-item.buy {
+    border-left-color: var(--profit);
+}
+
+.trade-item.sell {
+    border-left-color: var(--loss);
+}
+
+.trade-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.trade-item.buy .trade-icon {
+    background: rgba(0, 208, 132, 0.15);
+    color: var(--profit);
+}
+
+.trade-item.sell .trade-icon {
+    background: rgba(255, 71, 87, 0.15);
+    color: var(--loss);
+}
+
+.trade-info {
+    flex: 1;
+}
+
+.trade-type {
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.trade-time {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.trade-price {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    text-align: right;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-secondary);
+}
+
+.header-btn {
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    color: var(--text-primary);
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s ease;
+}
+
+.header-btn:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.modal-mask {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+.modal-mask.show {
+    display: flex;
+}
+
+.strategy-modal {
+    width: min(920px, 95vw);
+    max-height: 86vh;
+    overflow: auto;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+
+.strategy-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--bg-secondary);
+    z-index: 1;
+}
+
+.strategy-modal-title {
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.strategy-modal-close {
+    border: 1px solid var(--glass-border);
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: 8px;
+    padding: 4px 10px;
+    cursor: pointer;
+}
+
+.strategy-modal-body {
+    padding: 16px 18px 20px;
+    display: grid;
+    gap: 12px;
+}
+
+.strategy-block {
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    border-radius: 10px;
+    padding: 12px;
+}
+
+.strategy-block h4 {
+    margin: 0 0 8px;
+    font-size: 13px;
+    color: var(--primary);
+}
+
+.strategy-block p {
+    margin: 0;
+    line-height: 1.6;
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.param-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.param-item {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 8px 10px;
+}
+
+.param-name {
+    color: var(--text-secondary);
+    font-size: 11px;
+    margin-bottom: 4px;
+}
+
+.param-value {
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* 自定义确认模态框 */
+.custom-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(5px);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background: var(--bg-card);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    animation: modalFadeIn 0.3s ease;
+}
+
+@keyframes modalFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.modal-header {
+    font-size: 18px;
+    font-weight: bold;
+    color: var(--loss);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.modal-body {
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.6;
+    margin-bottom: 24px;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+.btn-modal {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid transparent;
+}
+
+.btn-cancel {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    border-color: var(--glass-border);
+}
+
+.btn-confirm-reset {
+    background: var(--loss);
+    color: white;
+}
+
+.btn-modal:hover {
+    filter: brightness(1.2);
+    transform: translateY(-1px);
+}
