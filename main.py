@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 def run_backtest(args):
     """运行回测"""
-    from strategies import GridRSIStrategy
+    from strategies import GridRSIStrategyV5_2
     from executors import PaperExecutor
     from datafeeds import CSVDataFeed
     from engines import BacktestEngine
@@ -32,17 +32,7 @@ def run_backtest(args):
     
     data_feed = CSVDataFeed(filepath=args.data, symbol=args.symbol)
     
-    strategy_version = getattr(args, 'strategy', '4.0')
-    if strategy_version == '5.1':
-        from strategies import GridRSIStrategyV5_1
-        strategy = GridRSIStrategyV5_1(symbol=args.symbol)
-    else:
-        from strategies import GridRSIStrategy
-        strategy = GridRSIStrategy(
-            symbol=args.symbol,
-            grid_levels=args.grid_levels,
-            rsi_period=args.rsi_period
-        )
+    strategy = GridRSIStrategyV5_2(symbol=args.symbol)
     
     executor = PaperExecutor(initial_capital=args.capital)
     
@@ -60,7 +50,7 @@ def run_backtest(args):
 
 def run_paper(args):
     """运行模拟盘"""
-    from strategies import GridRSIStrategy
+    from strategies import GridRSIStrategyV5_2
     from executors import PaperExecutor
     from datafeeds import CSVDataFeed
     from engines import LiveEngine
@@ -75,15 +65,8 @@ def run_paper(args):
     # 启动 Dashboard
     dashboard = create_dashboard(port=args.port)
     
-    strategy_version = getattr(args, 'strategy', '4.0')
-    if strategy_version == '5.1':
-        from strategies import GridRSIStrategyV5_1
-        strategy = GridRSIStrategyV5_1(symbol=args.symbol)
-        dashboard.register_strategy('default', 'Grid RSI V5.1 (模拟盘)', route='/5.1')
-    else:
-        from strategies import GridRSIStrategy
-        strategy = GridRSIStrategy(symbol=args.symbol)
-        dashboard.register_strategy('default', 'Grid RSI V4.0 (模拟盘)', route='/')
+    strategy = GridRSIStrategyV5_2(symbol=args.symbol)
+    dashboard.register_strategy('default', 'Grid RSI V5.2 (模拟盘)', route='/v5')
         
     dashboard.start_background()
     
@@ -120,7 +103,7 @@ def run_paper(args):
 
 def run_live(args):
     """运行实盘"""
-    from strategies import GridRSIStrategy
+    from strategies import GridRSIStrategyV5_2
     from executors import OKXExecutor
     from datafeeds import OKXDataFeed
     from engines import LiveEngine
@@ -151,13 +134,7 @@ def run_live(args):
         is_demo=args.demo
     )
     
-    strategy_version = getattr(args, 'strategy', '4.0')
-    if strategy_version == '5.1':
-        from strategies import GridRSIStrategyV5_1
-        strategy = GridRSIStrategyV5_1(symbol=args.symbol)
-    else:
-        from strategies import GridRSIStrategy
-        strategy = GridRSIStrategy(symbol=args.symbol)
+    strategy = GridRSIStrategyV5_2(symbol=args.symbol)
     
     executor = OKXExecutor(
         api_key=api_key,
@@ -198,10 +175,7 @@ def run_live(args):
     dashboard = create_dashboard(port=args.port)
     app_mode = "实盘模拟" if args.demo else "OKX 实盘"
     
-    if strategy_version == '5.1':
-        dashboard.register_strategy('default', f'Grid RSI V5.1 ({app_mode})', route='/5.1')
-    else:
-        dashboard.register_strategy('default', f'Grid RSI V4.0 ({app_mode})', route='/')
+    dashboard.register_strategy('default', f'Grid RSI V5.2 ({app_mode})', route='/v5')
         
     dashboard.start_background()
     
@@ -294,7 +268,7 @@ def main():
     backtest_parser.add_argument('--capital', type=float, default=10000, help='初始资金')
     backtest_parser.add_argument('--grid-levels', type=int, default=10, help='网格层数')
     backtest_parser.add_argument('--rsi-period', type=int, default=14, help='RSI周期')
-    backtest_parser.add_argument('--strategy', default='4.0', choices=['4.0', '5.1'], help='策略版本')
+    backtest_parser.add_argument('--strategy', default='5.2', choices=['5.2'], help='策略版本')
     backtest_parser.set_defaults(func=run_backtest)
     
     # 模拟盘模式
@@ -303,7 +277,7 @@ def main():
     paper_parser.add_argument('--symbol', default='BTC-USDT', help='交易对')
     paper_parser.add_argument('--capital', type=float, default=10000, help='初始资金')
     paper_parser.add_argument('--port', type=int, default=5000, help='Dashboard端口')
-    paper_parser.add_argument('--strategy', default='4.0', choices=['4.0', '5.1'], help='策略版本')
+    paper_parser.add_argument('--strategy', default='5.2', choices=['5.2'], help='策略版本')
     paper_parser.set_defaults(func=run_paper)
     
     # 实盘模式
@@ -315,7 +289,7 @@ def main():
     live_parser.add_argument('--passphrase', help='Passphrase')
     live_parser.add_argument('--demo', action='store_true', help='使用模拟盘')
     live_parser.add_argument('--port', type=int, default=5000, help='Dashboard端口')
-    live_parser.add_argument('--strategy', default='4.0', choices=['4.0', '5.1'], help='策略版本')
+    live_parser.add_argument('--strategy', default='5.2', choices=['5.2'], help='策略版本')
     live_parser.set_defaults(func=run_live)
     
     args = parser.parse_args()

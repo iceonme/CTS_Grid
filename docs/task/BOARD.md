@@ -7,6 +7,8 @@
 - [ ] 清理冗余的回测脚本代码
 
 ## DONE
+- [x] 2026-03-02_17-30: 项目代码库深度瘦身，移除冗余的回测与测试脚本，并将 V4 系列的策略逻辑与 HTML 文件彻底归档，强制将 `main.py` 统一切换至标准的 V5.2 环境。 [[归档]](file:///c:/Projects/TradingGarage/CTS1/docs/task/history/2026-03-02_17-30_cleanup_and_archive.md)
+- [x] 2026-03-02_17-30: CTS 全系统 5.2 版本标准化处理，完成文件名、类名、配置及看板的统一清理。 [[归档]](file:///c:/Projects/TradingGarage/CTS1/docs/task/history/2026-03-02_17-30_standardize_v52_renaming.md)
 - [x] 2026-03-01_20-30: 优化 V5.1 状态同步逻辑，解决网格在数据更新后消失的问题。 [[归档]](file:///c:/Projects/TradingGarage/CTS1/docs/task/history/2026-03-01_20-30_fix_v51_grid_stability.md)
 - [x] 2026-03-01_20-20: 修复 V5.1 策略语法错误与卖出逻辑嵌套问题。 [[归档]](file:///c:/Projects/TradingGarage/CTS1/docs/task/history/2026-03-01_20-20_fix_v51_logic_and_syntax.md)
 - [x] 全版本软重置 (Soft Reset) 优化：实现重置后行情历史保留、策略无缝重启功能，彻底解决 V4/V5 重置清空数据的痛点 [2026-03-01_19-45_fix_soft_reset_logic.md](history/2026-03-01_19-45_fix_soft_reset_logic.md)

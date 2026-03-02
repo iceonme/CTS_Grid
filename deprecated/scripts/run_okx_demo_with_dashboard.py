@@ -31,7 +31,7 @@ def run_engine(engine):
 
 def main():
     parser = argparse.ArgumentParser(description='OKX 模拟盘 + Dashboard (带参数支持版本)')
-    parser.add_argument('--strategy', default='4.0', choices=['4.0', '5.1'], help='策略版本')
+    parser.add_argument('--strategy', default='4.0', choices=['4.0', '5.2'], help='策略版本')
     args = parser.parse_args()
 
     print("\n" + "="*60)
@@ -42,9 +42,9 @@ def main():
     print("="*60 + "\n")
     
     # 创建组件
-    if args.strategy == '5.1':
-        from strategies import GridRSIStrategyV5_1
-        strategy = GridRSIStrategyV5_1(
+    if args.strategy == '5.2':
+        from strategies import GridRSIStrategyV5_2
+        strategy = GridRSIStrategyV5_2(
             symbol=DEFAULT_SYMBOL,
             grid_levels=10,
             use_kelly_sizing=True,
@@ -91,8 +91,8 @@ def main():
     dashboard = create_dashboard(port=5000)
     
     # 绑定最新版的路由体系
-    if args.strategy == '5.1':
-        dashboard.register_strategy('default', 'Grid RSI V5.1 (模拟盘)', route='/5.1')
+    if args.strategy == '5.2':
+        dashboard.register_strategy('default', 'Grid RSI V5.2 (模拟盘)', route='/v5')
     else:
         dashboard.register_strategy('default', 'Grid RSI V4.0 (模拟盘)', route='/')
         

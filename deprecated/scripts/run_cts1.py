@@ -17,7 +17,7 @@ import threading
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from strategies import GridRSIStrategy, GridRSIStrategyV5_1
+from strategies import GridRSIStrategy, GridRSIStrategyV5_2
 from executors.paper import PaperExecutor
 from datafeeds import OKXDataFeed
 from dashboard import create_dashboard
@@ -40,9 +40,9 @@ STRATEGY_CATALOG = {
             'trailing_stop': True,
         }
     },
-    'grid_v51': {
-        'display_name': 'Grid RSI V5.1 (模拟盘)',
-        'cls': GridRSIStrategyV5_1,
+    'grid_v52': {
+        'display_name': 'Grid RSI V5.2 (模拟盘)',
+        'cls': GridRSIStrategyV5_2,
         'params': {
             'symbol': DEFAULT_SYMBOL,
             'grid_levels': 10,

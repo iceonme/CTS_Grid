@@ -31,7 +31,7 @@ V52_RUNTIME_PATH = "config/grid_v52_runtime.json"
 V52_FACTORY_PATH = "config/grid_v52_default.json"
 
 STRATEGY_CATALOG = {
-    'grid_v51': {
+    'grid_v52': {
         'display_name': 'Grid RSI V5.2 (Refactored)',
         'cls': GridRSIStrategyV5_2,
         'params': {
@@ -186,7 +186,7 @@ def main():
         # 传入类和参数进行重新演练
         hc, hrsi, heq, hmacd = build_history_data(
             GridRSIStrategyV5_2, 
-            STRATEGY_CATALOG['grid_v51']['params'], 
+            STRATEGY_CATALOG['grid_v52']['params'], 
             INITIAL_BALANCE, 
             trades_sorted,
             data_source

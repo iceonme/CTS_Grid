@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>智能网格交易系统5.1 | 实时监控中心 {{ app_version }}</title>
+    <title>智能网格交易系统5.2 | 实时监控中心 {{ app_version }}</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -61,7 +61,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard_v51.css') }}?v={{ version }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard_v52.css') }}?v={{ version }}">
 </head>
 
 <body>
@@ -70,14 +70,14 @@
             <div class="logo-icon">G</div>
             <div>
                 <div class="logo-text">GRID<span style="color: var(--primary)">PRO</span></div>
-                <div class="logo-sub">智能网格交易系统5.1 {{ app_version }}</div>
+                <div class="logo-sub">智能网格交易系统5.2 {{ app_version }}</div>
             </div>
         </div>
         <!-- V5 策略版本标识 -->
         <div style="display:flex; align-items:center; gap:8px;">
             <span
                 style="font-size:14px; font-weight:600; color:var(--text-secondary); background:var(--glass-bg); border:1px solid var(--glass-border); padding:6px 12px; border-radius:8px;">网格
-                V5.1 (MACD+RSI) 0301-1</span>
+                V5.2 (MACD+RSI) 0302</span>
         </div>
         <div class="status-bar">
             <div class="status-item">
@@ -297,7 +297,7 @@
     </div>
 
     <!-- 核心 JS 引用 -->
-    <script src="{{ url_for('static', filename='js/dashboard_v51.js') }}?v={{ version }}"></script>
+    <script src="{{ url_for('static', filename='js/dashboard_v52.js') }}?v={{ version }}"></script>
 </body>
 
 </html>

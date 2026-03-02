@@ -225,8 +225,8 @@ class MultiStrategyRunner:
                 for sig in (signals if signals else []):
                     try:
                         # --- 执行审计 ---
-                        if slot.slot_id == 'grid_v51':
-                            print(f"  [SIGNAL] [V5.1] 发现信号: {sig.side.name} | 数量: {sig.size} | 原因: {getattr(sig, 'reason', 'N/A')}")
+                        if 'grid_v5' in slot.slot_id:
+                            print(f"  [SIGNAL] [{slot.slot_id.upper()}] 发现信号: {sig.side.name} | 数量: {sig.size} | 原因: {getattr(sig, 'reason', 'N/A')}")
 
                         from core import Order, OrderType
                         order = Order(
@@ -244,8 +244,8 @@ class MultiStrategyRunner:
                             if order.status == OrderStatus.REJECTED:
                                 print(f"  [ORDER]  [{slot.slot_id}] 订单被拒绝! 原因: {order.meta.get('reject_reason', '未知')}")
                             else:
-                                if slot.slot_id == 'grid_v51':
-                                    print(f"  [ORDER]  [V5.1] 订单已成交: {order_id} | 价格: {order.avg_price:.2f}")
+                                if 'grid_v5' in slot.slot_id:
+                                    print(f"  [ORDER]  [{slot.slot_id.upper()}] 订单已成交: {order_id} | 价格: {order.avg_price:.2f}")
                                 trade = {
                                     'time': data.timestamp.isoformat(),
                                     'side': sig.side.value if hasattr(sig.side, 'value') else str(sig.side),
@@ -414,7 +414,7 @@ class MultiStrategyRunner:
                 now_str = datetime.now().strftime('%H:%M:%S')
                 summary = f"[{now_str}] ══ 市场: {data.symbol} ${data.close:,.2f} ══"
                 for s_id, s_slot in self._slots.items():
-                    status_flag = "▶" if s_slot.is_running and not s_slot.is_paused else "⏸"
+                    status_flag = "[运行中]" if s_slot.is_running and not s_slot.is_paused else "[已暂停]"
                     # 从已有的数据中提取关键指标
                     cached = self.dashboard._data.get(s_id, {})
                     r_val = cached.get('rsi', 0)

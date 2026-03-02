@@ -72,11 +72,11 @@ class DashboardServer:
 
     def _setup_routes(self):
         from flask import redirect, url_for
-        self.version = "v5.1-MultiStrategy-0301-1"
+        self.version = "v5.2-MultiStrategy-0302"
 
         @self.app.route('/')
         def index():
-            return redirect(url_for('index_5_1'))
+            return redirect(url_for('index_5_2'))
 
         @self.app.route('/v4')
         def index_4():
@@ -93,13 +93,13 @@ class DashboardServer:
             return res
 
         @self.app.route('/v5')
-        @self.app.route('/dashboard_5_1')
-        def index_5_1():
+        @self.app.route('/dashboard_5_2')
+        def index_5_2():
             timestamp = datetime.now().strftime('%Y%m%d%H%M%S%f')
             res = make_response(render_template(
-                'dashboard_5_1.html',
+                'dashboard_5_2.html',
                 version=timestamp,
-                app_version=self.version + "-5.1"
+                app_version=self.version
             ))
             res.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0, private'
             res.headers['Pragma']  = 'no-cache'

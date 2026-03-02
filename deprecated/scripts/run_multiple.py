@@ -10,7 +10,7 @@ import sys
 import threading
 from datetime import datetime
 
-from strategies import GridRSIStrategy, GridRSIStrategyV5_1
+from strategies import GridRSIStrategy, GridRSIStrategyV5_2
 from executors import PaperExecutor
 from datafeeds import CSVDataFeed
 from engines import BacktestEngine
@@ -159,7 +159,7 @@ def main():
         trailing_stop=True,
     )
 
-    strategy_v51 = GridRSIStrategyV5_1(
+    strategy_v52 = GridRSIStrategyV5_2(
         symbol=args.symbol,
         grid_levels=10,
         rsi_period=14,
@@ -173,7 +173,7 @@ def main():
         dashboard = create_dashboard(port=args.port)
         set_dashboard(dashboard)
         dashboard.register_strategy('grid_rsi_v40',  'Grid RSI V4.0', route='/')
-        dashboard.register_strategy('grid_rsi_v51',  'Grid RSI V5.1', route='/5.1')
+        dashboard.register_strategy('grid_rsi_v52',  'Grid RSI V5.2', route='/v5')
         dashboard.start_background()
         print(f"[Dashboard] 已在 http://localhost:{args.port} 启动\n")
         import time; time.sleep(1)  # 给 eventlet 一点启动时间
@@ -189,16 +189,16 @@ def main():
             strategy_id='grid_rsi_v40'
         )
 
-    def thread_v51():
-        results_store['v51'] = run_strategy(
-            name='Grid RSI V5.1', strategy=strategy_v51,
+    def thread_v52():
+        results_store['v52'] = run_strategy(
+            name='Grid RSI V5.2', strategy=strategy_v52,
             data_file=args.data, capital=args.capital,
             symbol=args.symbol, dashboard=dashboard,
-            strategy_id='grid_rsi_v51'
+            strategy_id='grid_rsi_v52'
         )
 
     t1 = threading.Thread(target=thread_v40)
-    t2 = threading.Thread(target=thread_v51)
+    t2 = threading.Thread(target=thread_v52)
 
     t1.start()
     t2.start()
@@ -209,7 +209,7 @@ def main():
     print(f"\n{'='*60}")
     print("📊 多策略对比汇总")
     print(f"{'='*60}")
-    for key, label in [('v40', 'Grid RSI V4.0'), ('v51', 'Grid RSI V5.1')]:
+    for key, label in [('v40', 'Grid RSI V4.0'), ('v52', 'Grid RSI V5.2')]:
         r = results_store.get(key, {})
         print(f"\n[{label}]")
         print(f"  总收益率: {r.get('total_return', 0)*100:.2f}%")

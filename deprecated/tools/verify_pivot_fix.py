@@ -7,7 +7,7 @@ from datetime import datetime
 # 确保项目根目录在 path 中
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from strategies.grid_rsi_5_1_r import GridRSIStrategyV5_2
+from strategies.grid_rsi_5_2 import GridRSIStrategyV5_2
 from core import MarketData
 
 def test_pivot_timestamps():

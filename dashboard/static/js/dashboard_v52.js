@@ -1,6 +1,6 @@
 /**
- * 智能网格交易系统 5.1 核心前端逻辑
- * 版本: v0301-refactor
+ * 智能网格交易系统 5.2 核心前端逻辑
+ * 版本: v0302-refactor
  */
 
 // 全局变量容器 (避免污染全局作用域的最佳实践，但此处为了保持与原 HTML 逻辑兼容性，暂沿用全局变量)
@@ -18,7 +18,7 @@ let equitySeries = null;
 let latestStrategyInfo = null;
 let isConnected = false;
 let reconnectAttempts = 0;
-let currentStrategyId = 'grid_v51';
+let currentStrategyId = 'grid_v52';
 let currentSlotStatus = 'stopped';
 let candleDataBuffer = [];
 let lastCandleTime = null;
