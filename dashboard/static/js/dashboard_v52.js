@@ -285,11 +285,18 @@ function updatePivotMarkers(pivots) {
     globalPivotMarkers = [];
     ph.forEach(p => {
         const t = convertTime(p.time);
-        if (t) globalPivotMarkers.push({ time: t, position: 'aboveBar', color: '#f59e0b', shape: 'circle', text: '阻力', size: 0.8, id: `pivot_h_${p.time}` });
+        if (t) {
+            // 使用 index 作为 ID 的一部分，确保同一根 K 线上的标记会覆盖而非堆叠
+            const markerId = p.index !== undefined ? `pivot_h_idx_${p.index}` : `pivot_h_t_${t}`;
+            globalPivotMarkers.push({ time: t, position: 'aboveBar', color: '#f59e0b', shape: 'circle', text: '阻力', size: 0.8, id: markerId });
+        }
     });
     pl.forEach(p => {
         const t = convertTime(p.time);
-        if (t) globalPivotMarkers.push({ time: t, position: 'belowBar', color: '#a855f7', shape: 'circle', text: '支撑', size: 0.8, id: `pivot_l_${p.time}` });
+        if (t) {
+            const markerId = p.index !== undefined ? `pivot_l_idx_${p.index}` : `pivot_l_t_${t}`;
+            globalPivotMarkers.push({ time: t, position: 'belowBar', color: '#a855f7', shape: 'circle', text: '支撑', size: 0.8, id: markerId });
+        }
     });
     refreshMarkers();
 }

@@ -109,6 +109,16 @@ class MultiStrategyRunner:
                 slot.executor.load_state(slot.state_file)
                 print(f"[Slot:{slot.slot_id}] 已从持久化恢复账户状态: "
                       f"{slot.executor.get_cash():.2f} USDT")
+                
+                # 恢复运行状态
+                import json
+                with open(slot.state_file, 'r', encoding='utf-8') as f:
+                    state_data = json.load(f)
+                    meta = state_data.get('slot_metadata', {})
+                    if meta.get('is_running'):
+                        slot.start()
+                    if meta.get('is_paused'):
+                        slot.pause()
             except Exception as e:
                 print(f"[Slot:{slot.slot_id}] 加载状态失败: {e}")
 
@@ -458,9 +468,25 @@ class MultiStrategyRunner:
 
     def _save_slot(self, slot: StrategySlot):
         try:
+            # 1. 保存 Executor 状态
             slot.executor.save_state(slot.state_file)
+            
+            # 2. 追加保存 Slot 运行元数据（确保重启后能自动恢复运行）
+            import json
+            if os.path.exists(slot.state_file):
+                with open(slot.state_file, 'r', encoding='utf-8') as f:
+                    state_data = json.load(f)
+                
+                state_data['slot_metadata'] = {
+                    'is_running': slot.is_running,
+                    'is_paused': slot.is_paused,
+                    'last_save_time': datetime.now().isoformat()
+                }
+                
+                with open(slot.state_file, 'w', encoding='utf-8') as f:
+                    json.dump(state_data, f, indent=4, ensure_ascii=False)
         except Exception as e:
-            print(f"[Slot:{slot.slot_id}] 保存账户状态失败: {e}")
+            print(f"[Slot:{slot.slot_id}] 保存账户状态及元数据失败: {e}")
         try:
             import json
             with open(slot.trades_file, 'w') as f:

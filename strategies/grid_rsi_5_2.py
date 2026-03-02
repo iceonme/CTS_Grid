@@ -210,6 +210,12 @@ class RiskController:
         if not (s.prev_macd_line > s.prev_signal_line and s.macd_line < s.signal_line): return []
         # 方案A：只在零轴下方的绝对空头趋势中发生死叉才清仓，零轴上方的多头回撤不立刻清仓
         if s.macd_line >= 0: return []
+        
+        # 增加 RSI 保护：如果当前处于超卖区域 (或接近超卖)，则不执行趋势清仓，防止“秒买秒卖”
+        # 理由：网格策略在超卖区是买入持仓期，此时即便 MACD 死叉也多为低位震荡信号
+        rsi_limit = self.p['rsi_zone_oversold'] + 5
+        if s.current_rsi < rsi_limit:
+            return []
         pos = ctx.positions.get(self.symbol)
         if pos and pos.size > 0:
             self._peaks.pop(self.symbol, None)
@@ -245,46 +251,85 @@ class GridEngine:
         end = len(highs) - 1
         ph, pl = [], []  # pivot highs, pivot lows
         for i in range(end, max(w, end - lb), -1):
-            if len(pl) < n and lows[i] <= float(np.min(lows[max(0, i-w):i])):
-                ok, tp = self._check_pivot(lows, i, end, w, is_low=True)
-                if ok and (not pl or abs(lows[i] - pl[-1]['price']) > lows[i] * 0.001):
-                    p_data = {'price': float(lows[i]), 'index': i, 'type': tp}
-                    if times and i < len(times): p_data['time'] = times[i]
-                    pl.append(p_data)
-            if len(ph) < n and highs[i] >= float(np.max(highs[max(0, i-w):i])):
-                ok, tp = self._check_pivot(highs, i, end, w, is_low=False)
-                if ok and (not ph or abs(highs[i] - ph[-1]['price']) > highs[i] * 0.001):
-                    p_data = {'price': float(highs[i]), 'index': i, 'type': tp}
-                    if times and i < len(times): p_data['time'] = times[i]
-                    ph.append(p_data)
-            if len(ph) >= n and len(pl) >= n: break
-        return ph, pl
+            # 支撑位搜索: i 必须是 [i-w, min(i+w, end)] 范围内的最小值
+            win_start = max(0, i - w)
+            win_end = min(end, i + w)
+            
+            if lows[i] <= float(np.min(lows[win_start:win_end+1])):
+                tp = 'confirmed' if i <= end - w else 'realtime'
+                p_data = {'price': float(lows[i]), 'index': i, 'type': tp}
+                if times and i < len(times): p_data['time'] = times[i]
+                pl.append(p_data)
+                    
+            if highs[i] >= float(np.max(highs[win_start:win_end+1])):
+                tp = 'confirmed' if i <= end - w else 'realtime'
+                p_data = {'price': float(highs[i]), 'index': i, 'type': tp}
+                if times and i < len(times): p_data['time'] = times[i]
+                ph.append(p_data)
+        # 1. 计算每个候选点的显著度 (Prominence)
+        # 显著度定义：点位价格与局部窗口 [i-w, i+w] 内均值的偏差
+        for p in ph:
+            idx = p['index']
+            win = highs[max(0, idx-w):min(end, idx+w)+1]
+            p['prominence'] = abs(p['price'] - np.mean(win))
+            
+        for p in pl:
+            idx = p['index']
+            win = lows[max(0, idx-w):min(end, idx+w)+1]
+            p['prominence'] = abs(p['price'] - np.mean(win))
 
-    @staticmethod
-    def _check_pivot(arr, i, end, w, is_low) -> Tuple[bool, str]:
-        cmp = np.min if is_low else np.max
-        op = (lambda a, b: a <= b) if is_low else (lambda a, b: a >= b)
-        strict = (lambda a, b: a < b) if is_low else (lambda a, b: a > b)
-        if i > end - w:
-            return (op(arr[i], float(cmp(arr[i+1:end+1]))) if i < end else True), 'realtime'
-        return strict(arr[i], float(cmp(arr[i+1:i+w+1]))), 'confirmed'
+        # 2. 同一波段竞争去重 (如果两个点间距 < w，视为同一个波段事件，仅留最显著的)
+        def filter_cluster(pivots):
+            if not pivots: return []
+            # 先按显著度降序排
+            sorted_p = sorted(pivots, key=lambda x: x['prominence'], reverse=True)
+            kept = []
+            for p in sorted_p:
+                # 如果这个点距离已选中的点太近（在同一个判定窗口内），则舍弃
+                if not any(abs(p['index'] - k['index']) < w for k in kept):
+                    kept.append(p)
+            return kept
+
+        ph_clean = filter_cluster(ph)
+        pl_clean = filter_cluster(pl)
+
+        # 3. 最终选拔：按显著度取前 n 名
+        final_ph = sorted(ph_clean, key=lambda x: x['prominence'], reverse=True)[:n]
+        final_pl = sorted(pl_clean, key=lambda x: x['prominence'], reverse=True)[:n]
+        
+        # 4. 最后按索引(时间)重新排回升序，方便前端绘图
+        final_ph.sort(key=lambda x: x['index'])
+        final_pl.sort(key=lambda x: x['index'])
+        
+        return final_ph, final_pl
 
     def calculate(self, highs: np.ndarray, lows: np.ndarray,
                   price: float, s: StrategyState,
                   rsi_sig: float, times: Optional[List[float]] = None) -> Tuple[float, float, dict]:
         ph, pl = self.find_pivots(highs, lows, times)
+        lb = min(self.p['pivot_lookback'], len(highs))
+        
+        # 1. 基础边界：周期内的全局最高/最低 (作为保底，确保不会漏掉显著极值)
+        abs_upper = float(np.max(highs[-lb:]))
+        abs_lower = float(np.min(lows[-lb:]))
+        
         if not ph or not pl:
-            lb = min(self.p['grid_refresh_period'], len(highs))
-            upper, lower = float(np.max(highs[-lb:])), float(np.min(lows[-lb:]))
+            upper, lower = abs_upper, abs_lower
         else:
-            upper = max(p['price'] for p in ph)
-            lower = min(p['price'] for p in pl)
+            # 2. 结合 Pivot 点位：选取 Pivot 列表中的最极端值
+            p_upper = max(p['price'] for p in ph)
+            p_lower = min(p['price'] for p in pl)
+            
+            # 3. 综合决策：取 Pivot 极值和全局极值中更极端的那个
+            upper = max(p_upper, abs_upper)
+            lower = min(p_lower, abs_lower)
+            
         rng = upper - lower if upper > lower else upper * 0.01
         # ATR 自适应间距
         atr_sp = s.current_atr / price if s.current_atr > 0 and price > 0 else 0
         spacing = np.clip(atr_sp, self.p['grid_spacing_min'], self.p['grid_spacing_max'])
         
-        # 强制最小网格跨度，防止 Pivot 找到的极震荡区间导致网格过度密集
+        # 强制最小网格跨度，防止极窄区间导致网格过度密集
         min_rng = price * spacing * (self.p['grid_levels'] - 1)
         if rng < min_rng:
             mid = (upper + lower) / 2
@@ -439,6 +484,7 @@ class GridRSIStrategyV5_2(BaseStrategy):
             # 备份旧的核心参数用于对此
             old = {k: self.params.get(k) for k in RESET_PARAMS}
             self._apply_config_file()
+            self._load_param_metadata() # 同步加载元数据说明
             # 如果引擎相关参数变了，重建指标引擎
             if any(self.params.get(k) != old.get(k) for k in RESET_PARAMS):
                 self.indicators = IncrementalIndicators(self.params)
@@ -447,7 +493,7 @@ class GridRSIStrategyV5_2(BaseStrategy):
             self.risk_ctrl.p = self.params
             self.grid_engine.p = self.params
             cfg_name = self._config_path.name if self._config_path else "Unknown"
-            print(f"[V5.2] 参数已热加载 ({cfg_name})")
+            print(f"[V5.2] 参数及元数据已热加载 ({cfg_name})")
 
     # ── 初始化 ──
     def initialize(self):
@@ -688,6 +734,8 @@ class GridRSIStrategyV5_2(BaseStrategy):
 
     # ── 状态报告 ──
     def get_status(self, context: Optional[StrategyContext] = None) -> Dict[str, Any]:
+        # 确保 Dashboard 获取的是最新的参数值
+        self._maybe_reload_params()
         s, p = self.state, self.params
         rsi_sig, os_v, ob_v = self._rsi_signal()
         strength, action = dual_evaluate(s.trend_strength, s.current_rsi, p)

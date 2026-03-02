@@ -11,8 +11,8 @@
     },
     "grid_spacing_min": {
         "label": "最小间距",
-        "desc": "网格层之间的最小百分比间距。防止行情窄幅震震荡时频繁无效成交产生过多手续费，建议不低于万分之二十五。",
-        "default": 0.003
+        "desc": "网格层之间的最小百分比间距。防止行情窄幅震震荡时频繁无效成交产生过多手续费，建议不低于万分之五十。",
+        "default": 0.005
     },
     "grid_spacing_max": {
         "label": "最大间距",
@@ -62,7 +62,7 @@
     "rsi_weight": {
         "label": "RSI 权重",
         "desc": "RSI 水平对网格中轴/边界偏移的影响权重。值越大代表网格越倾向于根据超买超卖状态进行大幅偏移。",
-        "default": 0.4
+        "default": 0.2
     },
     "rsi_zone_oversold": {
         "label": "RSI 超卖",
@@ -102,7 +102,7 @@
     "trend_shift_strong_l": {
         "label": "强牛偏移L",
         "desc": "极端强牛市下，网格下界同步上提的比例。旨在保护利润并提高在该阶段的回踩成交胜率。",
-        "default": 10
+        "default": 0.15
     },
     "trend_shift_weak_u": {
         "label": "弱牛偏移U",
@@ -132,7 +132,7 @@
     "min_trade_interval_pct": {
         "label": "调仓间隔",
         "desc": "距离上一笔相同方向成交的最小价格百分比间距。核心防御机制，防止在同一秒内被连续吞单。",
-        "default": 0.0025
+        "default": 0.005
     },
     "stop_loss_pct": {
         "label": "基础止损",
