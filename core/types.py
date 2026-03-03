@@ -80,6 +80,7 @@ class Order:
     status: OrderStatus = OrderStatus.PENDING
     filled_size: float = 0.0
     avg_price: float = 0.0
+    fee: float = 0.0
     meta: Dict[str, Any] = field(default_factory=dict)
 
 

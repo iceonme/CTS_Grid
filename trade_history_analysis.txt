@@ -1,0 +1,140 @@
+Time: 2026-03-02T11:13:00
+Type: BUY
+Price: 66173.6
+Reason: 网格买入@66118.04(RSI:55.3 BULLISH ★2)
+--------------------
+Time: 2026-03-02T11:16:00
+Type: SELL
+Price: 66125.0
+Reason: MACD死叉清仓(-1.6639)
+--------------------
+Time: 2026-03-02T11:54:00
+Type: BUY
+Price: 66320.0
+Reason: 网格买入@66325.36(RSI:30.3 BEARISH ★2)
+--------------------
+Time: 2026-03-02T11:54:00
+Type: SELL
+Price: 66242.9
+Reason: MACD死叉清仓(-19.0791)
+--------------------
+Time: 2026-03-02T14:39:00
+Type: BUY
+Price: 66249.8
+Reason: 网格买入@66120.51(RSI:56.0 BULLISH ★2)
+--------------------
+Time: 2026-03-02T14:54:00
+Type: SELL
+Price: 67049.4
+Reason: 网格卖出@67025.82(RSI:60.7 STRONG_BULLISH ★3)
+--------------------
+Time: 2026-03-02T15:29:00
+Type: BUY
+Price: 68545.4
+Reason: 网格买入@68351.43(RSI:44.2 STRONG_BULLISH ★4)
+--------------------
+Time: 2026-03-02T15:34:00
+Type: SELL
+Price: 68985.5
+Reason: 网格卖出@68894.74(RSI:89.8 STRONG_BULLISH ★2)
+--------------------
+Time: 2026-03-02T16:22:00
+Type: BUY
+Price: 69516.4
+Reason: 网格买入@69462.73(RSI:48.7 BULLISH ★3)
+--------------------
+Time: 2026-03-02T16:25:00
+Type: SELL
+Price: 69422.9
+Reason: MACD死叉清仓(-19.5517)
+--------------------
+Time: 2026-03-02T17:49:00
+Type: BUY
+Price: 68958.6
+Reason: 网格买入@68861.80(RSI:60.7 BULLISH ★2)
+--------------------
+Time: 2026-03-02T17:50:00
+Type: SELL
+Price: 68938.5
+Reason: MACD死叉清仓(-1.1711)
+--------------------
+Time: 2026-03-02T18:07:00
+Type: BUY
+Price: 69053.0
+Reason: 网格买入@68869.93(RSI:58.9 BULLISH ★2)
+--------------------
+Time: 2026-03-02T18:16:00
+Type: SELL
+Price: 69097.6
+Reason: MACD死叉清仓(-1.4961)
+--------------------
+Time: 2026-03-02T18:42:00
+Type: BUY
+Price: 68948.2
+Reason: 网格买入@68791.87(RSI:20.4 BEARISH ★2)
+--------------------
+Time: 2026-03-02T18:50:00
+Type: SELL
+Price: 69091.2
+Reason: MACD死叉清仓(-3.4133)
+--------------------
+Time: 2026-03-02T19:13:00
+Type: BUY
+Price: 68702.8
+Reason: 网格买入@68703.61(RSI:53.3 BULLISH ★2)
+--------------------
+Time: 2026-03-02T19:24:00
+Type: SELL
+Price: 68854.6
+Reason: MACD死叉清仓(-5.2649)
+--------------------
+Time: 2026-03-02T20:10:00
+Type: BUY
+Price: 68750.9
+Reason: 网格买入@68752.49(RSI:34.0 BEARISH ★2)
+--------------------
+Time: 2026-03-02T20:18:00
+Type: SELL
+Price: 68871.7
+Reason: MACD死叉清仓(-1.4480)
+--------------------
+Time: 2026-03-02T20:54:00
+Type: BUY
+Price: 69369.5
+Reason: 网格买入@69237.56(RSI:47.3 BULLISH ★3)
+--------------------
+Time: 2026-03-02T20:55:00
+Type: SELL
+Price: 69294.9
+Reason: MACD死叉清仓(-11.6854)
+--------------------
+Time: 2026-03-02T21:45:00
+Type: BUY
+Price: 69420.2
+Reason: 网格买入@69312.89(RSI:46.4 BULLISH ★3)
+--------------------
+Time: 2026-03-02T21:48:00
+Type: SELL
+Price: 69455.0
+Reason: MACD死叉清仓(-5.7446)
+--------------------
+Time: 2026-03-02T22:08:00
+Type: BUY
+Price: 69445.1
+Reason: 网格买入@69346.70(RSI:66.8 STRONG_BULLISH ★3)
+--------------------
+Time: 2026-03-02T22:42:00
+Type: SELL
+Price: 69329.1
+Reason: MACD死叉清仓(-0.7920)
+--------------------
+Time: 2026-03-02T23:07:00
+Type: BUY
+Price: 69315.0
+Reason: 网格买入@69321.43(RSI:45.6 BULLISH ★3)
+--------------------
+Time: 2026-03-02T23:09:00
+Type: SELL
+Price: 69311.6
+Reason: MACD死叉清仓(-1.5415)
+--------------------

@@ -259,12 +259,12 @@ class MultiStrategyRunner:
                                 trade = {
                                     'time': data.timestamp.isoformat(),
                                     'side': sig.side.value if hasattr(sig.side, 'value') else str(sig.side),
-                                    'size': getattr(order, 'filled_size', None) or sig.size,
-                                    'price': data.close,
-                                    'fee': 0,
+                                    'size': order.filled_size,
+                                    'price': order.avg_price,
+                                    'fee': getattr(order, 'fee', 0),
                                     'type': 'BUY' if 'buy' in str(sig.side).lower() else 'SELL',
                                     'reason': getattr(sig, 'reason', ''),
-                                    'quote_amount': (getattr(order, 'filled_size', None) or sig.size) * data.close,
+                                    'quote_amount': order.filled_size * order.avg_price,
                                 }
                                 self._trades[slot.slot_id].append(trade)
                     except Exception as e:

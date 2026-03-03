@@ -16,7 +16,7 @@ from pathlib import Path
 # 确保项目根目录在 path 中
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from strategies import GridRSIStrategyV5_2
+from strategies import GridRSIStrategyV5_2, NeuralNetStrategyV6_0
 from executors.paper import PaperExecutor
 from datafeeds import OKXDataFeed
 from dashboard import create_dashboard
@@ -37,6 +37,13 @@ STRATEGY_CATALOG = {
         'params': {
             'symbol': DEFAULT_SYMBOL,
             'config_path': V52_RUNTIME_PATH,
+        }
+    },
+    'neural_v60': {
+        'display_name': 'Neural Network V6.0 (Architecture Mock)',
+        'cls': NeuralNetStrategyV6_0,
+        'params': {
+            'symbol': DEFAULT_SYMBOL,
         }
     }
 }
@@ -62,8 +69,8 @@ def build_history_data(strategy_cls, strategy_params, initial_balance, trades_so
     for i, data in enumerate(data_source):
         ts_ms = int(data.timestamp.timestamp() * 1000)
 
-        # 1. 更新指标
-        temp_strat._update_buffer(data)
+        # 1. 更新指标 (使用标准 on_data 接口)
+        temp_strat.on_data(data, None)
         
         # 记录指标历史 (等到 warmup_done 之后)
         if temp_strat.indicators.warmup_done:
@@ -71,7 +78,7 @@ def build_history_data(strategy_cls, strategy_params, initial_balance, trades_so
             
             history_candles.append({
                 't': ts_ms, 'o': data.open, 'h': data.high,
-                'l': data.low, 'c': data.close
+                'l': data.low, 'c': data.close, 'v': data.volume
             })
             
             history_rsi.append({'t': ts_ms, 'v': status.get('current_rsi')})
@@ -156,11 +163,11 @@ def main():
         runner.add_slot(slot)
         print(f"  [OK] {cfg['display_name']} 已就绪")
 
-    # 4. 数据流
-    print("[3/4] 建立数据连接...")
+    # 4. 数据流 (显式指定 5m 周期，对齐 V5.2 策略要求)
+    print("[3/4] 建立数据连接 (Timeframe: 5m)...")
     data_feed = OKXDataFeed(
         symbol=DEFAULT_SYMBOL,
-        timeframe=DEFAULT_TIMEFRAME,
+        timeframe='5m',
         api_key=OKX_DEMO_CONFIG['api_key'],
         api_secret=OKX_DEMO_CONFIG['api_secret'],
         passphrase=OKX_DEMO_CONFIG['passphrase'],
@@ -220,6 +227,11 @@ def main():
                             json.dump(current_config, f, indent=2, ensure_ascii=False)
                         
                         print(f"[Config] 策略 {str_id} 运行时参数已保存至 {cp}")
+                        
+                        # 【新增内容】: 显式触发策略的热重载，取代轮询
+                        if hasattr(slot.strategy, 'reload_config'):
+                            slot.strategy.reload_config()
+                            print(f"[Config] 策略 {str_id} 已完成即时热加载")
                     else:
                         print(f"[Config] 错误: 找不到策略 {str_id} 的配置文件路径")
         except Exception as e:

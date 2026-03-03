@@ -146,10 +146,10 @@ class PaperExecutor(BaseExecutor):
                 )
             
             pos = self._positions[order.symbol]
-            # 更新平均成本
-            total_cost = pos.size * pos.avg_price + executed_size * executed_price
+            # 更新平均成本 (仅统计成交单价的加权平均，不计入手续费)
+            new_total_val = pos.size * pos.avg_price + executed_size * executed_price
             pos.size += executed_size
-            pos.avg_price = total_cost / pos.size if pos.size > 0 else 0
+            pos.avg_price = new_total_val / pos.size if pos.size > 0 else 0
             
         else:
             pos = self._positions[order.symbol]
@@ -163,10 +163,10 @@ class PaperExecutor(BaseExecutor):
             if pos.size <= 0:
                 del self._positions[order.symbol]
         
-        # 更新订单状态
         order.status = OrderStatus.FILLED
         order.filled_size = executed_size
         order.avg_price = executed_price
+        order.fee = fee
         self._orders[order_id] = order
         
         # 发送成交回报

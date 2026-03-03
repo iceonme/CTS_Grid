@@ -51,13 +51,13 @@
             transform: translateY(-1px);
         }
     </style>
-    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.7.2/dist/socket.io.min.js"></script>
     <script>
         const socket = io();
     </script>
     <!-- TradingView Lightweight Charts -->
     <script
-        src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js?v=4.1"></script>
+        src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <link
         href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono&display=swap"
         rel="stylesheet">
@@ -133,6 +133,22 @@
                     </div>
                 </div>
 
+                <!-- 成交量分析 (增强) -->
+                <div class="asset-card">
+                    <div class="asset-label">成交量分析</div>
+                    <div class="asset-detail" style="grid-template-columns: 1.2fr 1fr;">
+                        <div class="asset-detail-item">
+                            <div class="asset-detail-label">量能趋势</div>
+                            <div class="asset-detail-value" id="volTrend" style="font-size: 13px; color: #60a5fa;">--
+                            </div>
+                        </div>
+                        <div class="asset-detail-item">
+                            <div class="asset-detail-label">当前成交量</div>
+                            <div class="asset-detail-value" id="currentVolume" style="font-size: 11px;">--</div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 指标概览 (精简) -->
                 <div class="asset-card">
                     <div class="asset-label">指标参考</div>
@@ -180,6 +196,7 @@
             </div>
             <div class="chart-container">
                 <div id="tv-chart-main"></div>
+                <div id="tv-chart-volume" style="height: 100px;"></div>
                 <div id="tv-chart-rsi"></div>
                 <div id="tv-chart-macd"></div>
                 <div id="tv-chart-equity"></div>

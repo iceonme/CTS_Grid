@@ -78,6 +78,9 @@ class LiveEngine:
         """构建策略上下文"""
         positions = {}
         for pos in self.executor.get_all_positions():
+            # 实时计算浮动盈亏
+            if pos.symbol in self._current_prices:
+                pos.unrealized_pnl = (self._current_prices[pos.symbol] - pos.avg_price) * pos.size
             positions[pos.symbol] = pos
         
         return StrategyContext(
@@ -180,7 +183,8 @@ class LiveEngine:
                 if df is not None and len(df) > 0:
                     print(f"  成功获取 {len(df)} 条历史数据")
                     
-                    # 将历史数据喂给策略
+                    # 构建标准数据列表并预热
+                    data_list = []
                     for timestamp, row in df.iterrows():
                         from core import MarketData
                         data = MarketData(
@@ -192,33 +196,12 @@ class LiveEngine:
                             close=float(row['close']),
                             volume=float(row['volume'])
                         )
-                        
-                        # 更新策略内部状态（不生成信号）
-                        self.strategy._update_buffer(data)
-                        self.strategy._current_prices[data.symbol] = data.close
+                        data_list.append(data)
+                        self._current_prices[data.symbol] = data.close
                     
-                    # 计算初始网格
-                    df_internal = self.strategy._get_dataframe()
-                    if len(df_internal) > 50:
-                        import inspect
-                        sig = inspect.signature(self.strategy._calculate_dynamic_grid)
-                        if 'current_price' in sig.parameters:
-                            curr_price = df_internal.iloc[-1]['close']
-                            self.strategy.state.grid_upper, self.strategy.state.grid_lower, _ = \
-                                self.strategy._calculate_dynamic_grid(df_internal, current_price=curr_price)
-                        else:
-                            self.strategy.state.grid_upper, self.strategy.state.grid_lower, _ = \
-                                self.strategy._calculate_dynamic_grid(df_internal)
-                        self.strategy.state.grid_prices = [
-                            float(p) for p in 
-                            __import__('numpy', fromlist=['linspace']).linspace(
-                                self.strategy.state.grid_lower, 
-                                self.strategy.state.grid_upper, 
-                                self.strategy.params['grid_levels']
-                            )
-                        ]
-                        self.strategy.state.last_grid_update = len(df_internal)
-                        print(f"  网格初始化: [{self.strategy.state.grid_lower:.2f}, {self.strategy.state.grid_upper:.2f}]")
+                    # 1. 调用标准化预热接口 (Runner 2.0 契约)
+                    self.strategy.warmup(data_list)
+                    print(f"  策略预热与核心状态初始化完成")
                 else:
                     print("  警告: 未能获取历史数据，将使用实时数据初始化")
             else:
@@ -230,53 +213,6 @@ class LiveEngine:
             traceback.print_exc()
         
         self._is_warmed = True
-        
-        # 预先生成给 Dashboard 用的辅助图表历史指标序列 (RSI, MACD)
-        try:
-            import pandas as pd
-            import numpy as np
-            df = self.strategy._get_dataframe()
-            if df is not None and not df.empty and len(df) > self.strategy.params.get('macd_slow', 26):
-                # 针对 V5.1 快速生成 MACD/RSI 序列给图表预填充
-                if hasattr(self.strategy, '_calculate_macd'):
-                    close = df['close']
-                    fast = self.strategy.params.get('macd_fast', 12)
-                    slow = self.strategy.params.get('macd_slow', 26)
-                    sig  = self.strategy.params.get('macd_signal', 9)
-                    
-                    ema_fast = close.ewm(span=fast, adjust=False).mean()
-                    ema_slow = close.ewm(span=slow, adjust=False).mean()
-                    macd_line = ema_fast - ema_slow
-                    signal_line = macd_line.ewm(span=sig, adjust=False).mean()
-                    hist = macd_line - signal_line
-                    
-                    for ts, val in hist.items():
-                        if pd.isna(val): continue
-                        self._history_macd.append({
-                            'time': int(pd.Timestamp(ts).timestamp() * 1000),
-                            'macd': float(macd_line[ts]) if not pd.isna(macd_line[ts]) else 0.0,
-                            'macdsignal': float(signal_line[ts]) if not pd.isna(signal_line[ts]) else 0.0,
-                            'macdhist': float(val) if not pd.isna(val) else 0.0
-                        })
-                        
-                # 无论啥策略都算个全量 RSI 用于图表平稳过渡
-                period = self.strategy.params.get('rsi_period', 14)
-                delta = df['close'].diff()
-                gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-                loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-                rs = gain / loss.replace(0, np.nan)
-                rsi = 100 - (100 / (1 + rs))
-                for ts, val in rsi.items():
-                    if not pd.isna(val):
-                        self._history_rsi.append({
-                            'time': int(pd.Timestamp(ts).timestamp() * 1000),
-                            'value': float(val)
-                        })
-        except Exception as e:
-            print(f"[引擎] 生成图表预热指标历史失败: {e}")
-            import traceback
-            traceback.print_exc()
-
         print("预热完成")
         return True
     
@@ -426,7 +362,8 @@ class LiveEngine:
                 'o': data.open,
                 'h': data.high,
                 'l': data.low,
-                'c': data.close
+                'c': data.close,
+                'v': data.volume
             },
             'cash': cash,
             'position_value': position_value,
@@ -438,7 +375,8 @@ class LiveEngine:
             'positions': {
                 p.symbol: {
                     'size': p.size,
-                    'avg_price': p.avg_price
+                    'avg_price': p.avg_price,
+                    'unrealized_pnl': (data.close - p.avg_price) * p.size if p.symbol == data.symbol else 0.0
                 } for p in positions
             },
             'trade_history': trade_history, # 统一字段名为 trade_history

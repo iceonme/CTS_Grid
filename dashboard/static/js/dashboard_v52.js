@@ -7,12 +7,14 @@
 let mainChart = null;
 let rsiChart = null;
 let macdChart = null;
+let volumeChart = null;
 let equityChart = null;
 let candleSeries = null;
 let rsiSeries = null;
 let macdHistSeries = null;
 let macdMacdSeries = null;
 let macdSignalSeries = null;
+let volumeSeries = null;
 let equitySeries = null;
 
 let latestStrategyInfo = null;
@@ -86,9 +88,10 @@ function convertAndValidateCandle(c) {
     const high = parseFloat(c.h);
     const low = parseFloat(c.l);
     const close = parseFloat(c.c);
+    const volume = parseFloat(c.v) || 0;
     if (!Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) return null;
     if (high < low || high < 0 || low < 0) return null;
-    return { time, open, high, low, close };
+    return { time, open, high, low, close, volume };
 }
 
 function prepareBatchData(dataList) {
@@ -144,6 +147,14 @@ function initCharts() {
     macdSignalSeries = macdChart.addLineSeries({ color: '#FF6D00', lineWidth: 1, title: 'Signal', priceScaleId: 'right' });
     macdHistSeries.createPriceLine({ price: 0, color: 'rgba(255, 255, 255, 0.2)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: false });
 
+    volumeChart = LightweightCharts.createChart(document.getElementById('tv-chart-volume'), {
+        layout: { background: { color: 'transparent' }, textColor: '#94a3b8', fontFamily: "'Noto Sans SC', sans-serif" },
+        grid: { vertLines: { color: 'rgba(255, 255, 255, 0.03)' }, horzLines: { color: 'rgba(255, 255, 255, 0.03)' } },
+        rightPriceScale: { borderColor: 'rgba(255, 255, 255, 0.1)', mode: LightweightCharts.PriceScaleMode.Normal, scaleMargins: { top: 0.1, bottom: 0.1 }, minimumWidth: 72 },
+        timeScale: { visible: false },
+    });
+    volumeSeries = volumeChart.addHistogramSeries({ color: 'rgba(38, 166, 154, 0.5)', priceFormat: { type: 'volume' } });
+
     equityChart = LightweightCharts.createChart(document.getElementById('tv-chart-equity'), {
         layout: { background: { color: 'transparent' }, textColor: '#94a3b8', fontFamily: "'Noto Sans SC', sans-serif" },
         grid: { vertLines: { color: 'rgba(255, 255, 255, 0.03)' }, horzLines: { color: 'rgba(255, 255, 255, 0.03)' } },
@@ -156,17 +167,18 @@ function initCharts() {
     function syncCharts(sourceChart) {
         const logicalRange = sourceChart.timeScale().getVisibleLogicalRange();
         if (logicalRange) {
-            [mainChart, rsiChart, macdChart, equityChart].forEach(c => {
-                if (c !== sourceChart) c.timeScale().setVisibleLogicalRange(logicalRange);
+            [mainChart, rsiChart, macdChart, volumeChart, equityChart].forEach(c => {
+                if (c && c !== sourceChart) c.timeScale().setVisibleLogicalRange(logicalRange);
             });
         }
     }
-    [mainChart, rsiChart, macdChart, equityChart].forEach(c => {
-        c.timeScale().subscribeVisibleTimeRangeChange(() => syncCharts(c));
+    [mainChart, rsiChart, macdChart, volumeChart, equityChart].forEach(c => {
+        if (c) c.timeScale().subscribeVisibleTimeRangeChange(() => syncCharts(c));
     });
 
     const resizeObserver = new ResizeObserver(() => {
-        [mainChart, rsiChart, macdChart, equityChart].forEach(c => {
+        [mainChart, rsiChart, macdChart, volumeChart, equityChart].forEach(c => {
+            if (!c) return;
             const container = c.chartElement().parentElement;
             if (container) c.applyOptions({ width: container.clientWidth });
         });
@@ -236,12 +248,30 @@ function updateChart(data, tradeHistory) {
         if (Array.isArray(data) && data.length > 1) {
             candleDataBuffer = tvData.sort((a, b) => a.time - b.time).slice(-500);
             candleSeries.setData(candleDataBuffer);
+            if (volumeSeries) {
+                const volData = candleDataBuffer.map(d => ({
+                    time: d.time,
+                    value: d.volume,
+                    color: d.close >= d.open ? 'rgba(0, 208, 132, 0.5)' : 'rgba(255, 71, 87, 0.5)'
+                }));
+                volumeSeries.setData(volData);
+            }
             if (candleDataBuffer.length > 0) lastCandleTime = candleDataBuffer[candleDataBuffer.length - 1].time;
-            if (window.isInitializingCharts) { mainChart.timeScale().fitContent(); window.isInitializingCharts = false; }
+            if (window.isInitializingCharts) {
+                mainChart.timeScale().fitContent();
+                window.isInitializingCharts = false;
+            }
         } else {
             const lastCandle = tvData[tvData.length - 1];
             upsertCandle(candleDataBuffer, lastCandle);
             candleSeries.update(lastCandle);
+            if (volumeSeries) {
+                volumeSeries.update({
+                    time: lastCandle.time,
+                    value: lastCandle.volume,
+                    color: lastCandle.close >= lastCandle.open ? 'rgba(0, 208, 132, 0.5)' : 'rgba(255, 71, 87, 0.5)'
+                });
+            }
             lastCandleTime = lastCandle.time;
         }
     } catch (err) { console.error('[Chart] Candle Update Error:', err); }
@@ -512,7 +542,9 @@ socket.on('strategy_status_changed', (data) => {
 });
 
 socket.on('history_update', (data) => {
-    if (data.history_candles) updateChart(data.history_candles, []);
+    if (data.history_candles) {
+        updateChart(data.history_candles, []);
+    }
     if (data.history_rsi && rsiSeries) rsiSeries.setData(prepareBatchData(data.history_rsi));
     if (data.history_equity && equitySeries) equitySeries.setData(prepareBatchData(data.history_equity));
     if (data.history_macd) {
@@ -580,8 +612,10 @@ socket.on('update', (data) => {
 
         // 趋势与分析
         updateElement('macdTrend', s.macd_trend);
-        updateElement('atrVal', s.current_atr ? s.current_atr.toFixed(1) : '--');
-        updateElement('marketRegime', s.market_regime || '--');
+        updateElement('atrVal', s.atrVal !== undefined && s.atrVal !== null ? s.atrVal.toFixed(1) : '--');
+        updateElement('marketRegime', s.marketRegime || '--');
+        updateElement('volTrend', s.vol_trend || '--');
+        updateElement('currentVolume', s.current_volume !== undefined ? s.current_volume.toLocaleString() : '--');
 
         // 指标
         updateElement('rsiVal', s.current_rsi !== undefined ? s.current_rsi.toFixed(2) : '--');
@@ -613,18 +647,24 @@ socket.on('update', (data) => {
         }
 
         // 持仓详情逻辑 (多来源兼容)
-        const activeSymbol = (s.params && s.params.symbol) ? s.params.symbol : 'BTC-USDT';
+        const activeSymbol = (s && s.params && s.params.symbol) ? s.params.symbol : 'BTC-USDT';
         const posSize = (data.positions && data.positions[activeSymbol]) ? data.positions[activeSymbol].size : (s.position_size || 0);
         updateElement('positionSize', parseFloat(posSize).toFixed(4));
 
         const posAvg = (data.positions && data.positions[activeSymbol]) ? data.positions[activeSymbol].avg_price : (s.position_avg_price || 0);
         updateElement('positionAvgPrice', posAvg > 0 ? posAvg.toLocaleString() : '--');
 
-        const posPnl = (data.positions && data.positions[activeSymbol]) ? data.positions[activeSymbol].unrealized_pnl : (s.position_unrealized_pnl || 0);
+        const posPnl = (data.positions && data.positions[activeSymbol]) ? data.positions[activeSymbol].unrealized_pnl : (s ? s.position_unrealized_pnl : 0);
         const pnlDetailEl = document.getElementById('positionUnrealizedPnl');
         if (pnlDetailEl) {
-            pnlDetailEl.textContent = posPnl !== 0 ? (posPnl > 0 ? '+' : '') + posPnl.toFixed(2) : '--';
-            pnlDetailEl.style.color = posPnl > 0 ? 'var(--profit)' : (posPnl < 0 ? 'var(--loss)' : 'var(--text-primary)');
+            // 安全调用 toFixed: 确保 posPnl 是有效的数字
+            if (posPnl !== undefined && posPnl !== null && !isNaN(posPnl)) {
+                pnlDetailEl.textContent = (posPnl > 0 ? '+' : '') + parseFloat(posPnl).toFixed(2);
+                pnlDetailEl.style.color = posPnl > 0 ? 'var(--profit)' : (posPnl < 0 ? 'var(--loss)' : 'var(--text-primary)');
+            } else {
+                pnlDetailEl.textContent = '--';
+                pnlDetailEl.style.color = 'var(--text-primary)';
+            }
         }
 
         // 图表标记与网格线

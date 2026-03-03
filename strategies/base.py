@@ -79,6 +79,32 @@ class BaseStrategy(ABC):
     def on_stop(self):
         """策略停止时调用（可选重写）"""
         pass
+
+    def warmup(self, data_list: List[MarketData]):
+        """
+        [标准接口] 批量预热数据。
+        引擎在启动前会调用此方法，将历史 K 线批量喂给策略。
+        子类应在此处更新指标、初始化状态，而不应依赖引擎去更新策略私有缓存。
+        """
+        for data in data_list:
+            # 默认调用 initialize() 确保初始化
+            if not self._initialized:
+                self.initialize()
+            # 默认调用上下文为空的 on_data（仅用于更新指标）
+            # 注意：实际策略重写时应优化此处的计算开销
+            self.on_data(data, None)
+
+    def get_ui_manifest(self) -> Dict[str, Any]:
+        """
+        [预研接口] 返回策略所需的 UI 组件规格。
+        多策略 Dashboard 将根据此配置动态渲染面板（如：神经网络热力图、特定技术指标）。
+        """
+        return {
+            'charts': [
+                {'type': 'candle_volume', 'name': '主图'},
+                {'type': 'oscillator', 'name': 'RSI'}
+            ]
+        }
     
     def get_param(self, key: str, default: Any = None) -> Any:
         """获取策略参数"""

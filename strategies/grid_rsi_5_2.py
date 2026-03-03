@@ -1,20 +1,17 @@
 """
-动态网格 RSI 策略 V5.2 (Refactored) — 高性能解耦架构
-
-核心改进 (相较 V5.1):
-  1. 架构解耦: IncrementalIndicators / RiskController / GridEngine / DualSignalMatrix
-  2. 性能革命: 去 Pandas, O(1) 增量指标, deque 内存优化
-  3. 外部JSON配置: 35 参数可被外部 Agent 热更新
-  4. 双模式热加载: 定期轮询 + .reload 标记文件主动 Push
+动态网格 RSI 策略 V5.2 - 全新重写版
+5分钟趋势确认 + 强制满仓 + 动态止盈 + 多重反转保护
 """
 
+import json
+import numpy as np
+import time as _time
 from typing import List, Optional, Tuple, Dict, Any
 from dataclasses import dataclass, field
 from pathlib import Path
-import json, time as _time
-import numpy as np
 from collections import deque
 
+import pandas as pd
 from core import (
     Signal, MarketData, StrategyContext, FillEvent,
     Side, OrderType, MarketRegime
@@ -22,758 +19,585 @@ from core import (
 from .base import BaseStrategy
 
 # ============================================================
-# 1. 常量
+# 1. 状态与常量
 # ============================================================
-STRONG_BULLISH = "STRONG_BULLISH"
-BULLISH        = "BULLISH"
-NEUTRAL        = "NEUTRAL"
-BEARISH        = "BEARISH"
-STRONG_BEARISH = "STRONG_BEARISH"
 
-_TREND_TO_REGIME = {
-    STRONG_BULLISH: MarketRegime.TRENDING_UP,
-    BULLISH:        MarketRegime.TRENDING_UP,
-    NEUTRAL:        MarketRegime.RANGING,
-    BEARISH:        MarketRegime.TRENDING_DOWN,
-    STRONG_BEARISH: MarketRegime.TRENDING_DOWN,
-}
-_TREND_BOOST = {
-    STRONG_BULLISH: 0.3, BULLISH: 0.1, NEUTRAL: 0.0,
-    BEARISH: -0.2, STRONG_BEARISH: -0.4,
-}
-_TREND_LABELS = {
-    STRONG_BULLISH: "极强牛市 ↑↑", BULLISH: "看涨趋势 ↑",
-    NEUTRAL: "中性偏区间 ↔", BEARISH: "看跌趋势 ↓",
-    STRONG_BEARISH: "极强熊市 ↓↓",
-}
-
-# 默认参数（代码内硬编码保底，JSON
-_DEFAULT_PARAMS: Dict[str, Any] = {
-    'grid_levels': 10, 'grid_buffer_pct': 0.1,
-    'grid_spacing_min': 0.003, 'grid_spacing_max': 0.02,
-    'grid_refresh_period': 100,
-    'pivot_window': 5, 'pivot_n': 3, 'pivot_lookback': 100,
-    'macd_fast': 12, 'macd_slow': 26, 'macd_signal': 9,
-    'rsi_period': 14, 'rsi_weight': 0.4,
-    'rsi_zone_oversold': 35, 'rsi_zone_mid': 50, 'rsi_zone_overbought': 65,
-    'rsi_extreme_buy': 75, 'rsi_extreme_sell': 25,
-    'atr_period': 14,
-    'trend_shift_strong_u': 0.20, 'trend_shift_strong_l': 0.10,
-    'trend_shift_weak_u': 0.10, 'trend_shift_weak_l': 0.05,
-    'base_position_pct': 0.1, 'max_positions': 5,
-    'min_order_usdt': 100.0, 'min_trade_interval_pct': 0.0025,
-    'stop_loss_pct': 0.05, 'trailing_stop': True,
-    'trailing_stop_pct': 0.02, 'trailing_trigger_pct': 0.05,
-    'black_swan_pct': 0.10, 'cooldown_minutes': 15,
-    'cycle_reset_period': 5000, 'max_drawdown_reset': 0.30,
-}
-
-# 指标引擎重置标记 (修改这些参数需要重置指标)
-RESET_PARAMS = {'macd_fast', 'macd_slow', 'macd_signal', 'rsi_period', 'atr_period'}
-
-# ============================================================
-# 2. 状态容器 (纯数据，无逻辑)
-# ============================================================
 @dataclass
 class StrategyState:
-    last_candle: Optional[Dict[str, float]] = None
-    last_trade_ts: float = 0.0
-    # 指标
-    current_rsi: float = 50.0
-    current_atr: float = 0.0
+    # 核心持仓状态
+    current_layers: int = 0
+    grid_center: Optional[float] = None
+    dynamic_grid: bool = True
+    
+    # 指标数据
+    rsi_6: float = 50.0
+    rsi_12: float = 50.0
+    rsi_24: float = 50.0
     macd_line: float = 0.0
     signal_line: float = 0.0
     histogram: float = 0.0
-    prev_histogram: float = 0.0
-    prev_macd_line: float = 0.0
-    prev_signal_line: float = 0.0
-    trend_strength: str = NEUTRAL
-    current_regime: MarketRegime = MarketRegime.UNKNOWN
-    # 网格
-    grid_upper: Optional[float] = None
-    grid_lower: Optional[float] = None
+    ma5: float = 0.0
+    ma10: float = 0.0
+    vol_ma20: float = 0.0
+    vol_ratio: float = 1.0
+    
+    # 历史记录 (用于 RSI 骤降判断等)
+    history_rsi_6: deque = field(default_factory=lambda: deque(maxlen=20))
+    trend_score: int = 0
+    target_layers: int = 0
+    
+    # 交易记录
+    last_trade_ts: float = 0.0
+    last_candle: Dict[str, Any] = field(default_factory=dict)
+    
+    # 【兼容性补全】: 供 LiveEngine 预热与画图使用
+    grid_upper: float = 0.0
+    grid_lower: float = 0.0
     grid_prices: List[float] = field(default_factory=list)
-    grid_touch_count: int = 0
     last_grid_update: int = 0
-    actual_levels: int = 10
-    pivots: Dict[str, Any] = field(default_factory=dict)
-    last_action: str = 'hold'
-    # 风控
-    conservative_mode: bool = False
-    consecutive_conflict: int = 0
-    black_swan_pause_until: float = 0.0
+    
+    @property
+    def current_rsi(self) -> float:
+        return self.rsi_6
 
 # ============================================================
-# 3. O(1) 增量指标引擎
+# 2. 高性能 O(1) 增量指标引擎
 # ============================================================
-class IncrementalIndicators:
-    """流式增量计算: MACD / RSI / ATR，每 tick O(1)。"""
+
+class IncrementalIndicatorsV52:
+    """增量计算 MACD, 多周期 RSI, MA, 成交量 MA"""
     def __init__(self, p: dict):
         self.p = p
         self.count = 0
-        self.ema_fast = self.ema_slow = self.sig_val = self.prev_close = 0.0
-        self.avg_gain = self.avg_loss = self.atr_val = 0.0
-        self.fa = 2.0 / (p['macd_fast'] + 1)
-        self.sa = 2.0 / (p['macd_slow'] + 1)
-        self.ga = 2.0 / (p['macd_signal'] + 1)
-
-    def update(self, d: MarketData, s: StrategyState):
-        c, h, l = d.close, d.high, d.low
-        self.count += 1
-        if self.count == 1:
-            self.ema_fast = self.ema_slow = self.prev_close = c
-            return
+        self.prev_close = 0.0
+        
         # MACD
-        self.ema_fast += (c - self.ema_fast) * self.fa
-        self.ema_slow += (c - self.ema_slow) * self.sa
-        s.prev_macd_line, s.prev_signal_line = s.macd_line, s.signal_line
-        s.macd_line = self.ema_fast - self.ema_slow
-        self.sig_val += (s.macd_line - self.sig_val) * self.ga
-        s.signal_line = self.sig_val
-        s.prev_histogram = s.histogram
-        s.histogram = s.macd_line - s.signal_line
-        # RSI
-        chg = c - self.prev_close
-        gain, loss = max(chg, 0.0), max(-chg, 0.0)
-        rp = self.p['rsi_period']
-        if self.count <= rp:
-            self.avg_gain += gain / rp
-            self.avg_loss += loss / rp
-        else:
-            self.avg_gain = (self.avg_gain * (rp - 1) + gain) / rp
-            self.avg_loss = (self.avg_loss * (rp - 1) + loss) / rp
-        s.current_rsi = (100.0 - 100.0 / (1 + self.avg_gain / self.avg_loss)
-                         if self.avg_loss > 1e-12
-                         else (100.0 if self.avg_gain > 0 else 50.0))
-        # ATR
-        tr = max(h - l, abs(h - self.prev_close), abs(l - self.prev_close))
-        ap = self.p['atr_period']
-        if self.count <= ap:
-            self.atr_val += tr / ap
-        else:
-            self.atr_val = (self.atr_val * (ap - 1) + tr) / ap
-        s.current_atr = self.atr_val
-        self.prev_close = c
+        self.ema_12 = 0.0
+        self.ema_26 = 0.0
+        self.macd_sig = 0.0
+        
+        # RSI (6, 12, 24) - 使用 Wilder 平滑算法
+        self.rsi_params = [
+            {'p': p['rsi_period_shorter'], 'gain': 0.0, 'loss': 0.0, 'val': 50.0},
+            {'p': p['rsi_period_medium'],  'gain': 0.0, 'loss': 0.0, 'val': 50.0},
+            {'p': p['rsi_period_longer'],  'gain': 0.0, 'loss': 0.0, 'val': 50.0}
+        ]
+        
+        # MA (5, 10) & Volume MA 20 - 使用 deque 维护窗口和
+        self.win_ma5 = deque(maxlen=5)
+        self.win_ma10 = deque(maxlen=10)
+        self.win_vol20 = deque(maxlen=20)
+        self.sum_ma5 = 0.0
+        self.sum_ma10 = 0.0
+        self.sum_ma10 = 0.0
+        self.sum_vol20 = 0.0
+
+        # MACD 系数预计算 (避免 update 中重复计算)
+        self.alpha_12 = 2.0 / (12 + 1)
+        self.alpha_26 = 2.0 / (26 + 1)
+        self.alpha_sig = 2.0 / (9 + 1)
+
+    def update(self, d: MarketData, s: StrategyState, commit: bool = True):
+        """
+        计算并更新指标。
+        commit=True: 永久推进指标曲线 (用于 Bar 切换)
+        commit=False: 仅计算当前预览值并填入 s，不改变类内部的 EMA/MA 状态 (用于 Tick 更新)
+        """
+        c, v = d.close, d.volume
+        
+        # 1. MACD (12, 26, 9)
+        alpha12, alpha26, alphasig = self.alpha_12, self.alpha_26, self.alpha_sig
+        
+        # 预览计算
+        tmp_ema12 = self.ema_12 + (c - self.ema_12) * alpha12
+        tmp_ema26 = self.ema_26 + (c - self.ema_26) * alpha26
+        tmp_macd = tmp_ema12 - tmp_ema26
+        tmp_sig = self.macd_sig + (tmp_macd - self.macd_sig) * alphasig
+        
+        # 2. RSI (6, 12, 24)
+        diff = c - self.prev_close
+        gain = max(diff, 0)
+        loss = max(-diff, 0)
+        
+        tmp_rsi_results = []
+        for item in self.rsi_params:
+            period = item['p']
+            # 计算预览平均涨跌
+            tmp_gain = (item['gain'] * (period - 1) + gain) / period
+            tmp_loss = (item['loss'] * (period - 1) + loss) / period
+            rs = tmp_gain / tmp_loss if tmp_loss > 1e-9 else 100.0
+            val = 100.0 - (100.0 / (1.0 + rs)) if tmp_loss > 1e-9 else 100.0
+            tmp_rsi_results.append(val)
+        
+        # 3. MA (5, 10, 20)
+        # 注意: 此处 MA 预览简化处理，使用当前值替代窗口最旧值计算
+        tmp_ma5 = s.ma5 if not commit else 0 # 占位
+        tmp_ma10 = s.ma10 if not commit else 0 # 占位
+        
+        # 写入状态 (预览)
+        s.macd_line, s.signal_line, s.histogram = tmp_macd, tmp_sig, tmp_macd - tmp_sig
+        s.rsi_6, s.rsi_12, s.rsi_24 = tmp_rsi_results
+        
+        # 如果是 commit 模式，则永久更新内部状态
+        if commit:
+            self.count += 1
+            if self.count == 1:
+                self.ema_12 = self.ema_26 = self.prev_close = c
+                s.ma5 = s.ma10 = c
+                s.vol_ma20 = v
+                return
+
+            self.ema_12, self.ema_26, self.macd_sig = tmp_ema12, tmp_ema26, tmp_sig
+            self.prev_close = c
+            
+            for i, val in enumerate(tmp_rsi_results):
+                period = self.rsi_params[i]['p']
+                self.rsi_params[i]['gain'] = (self.rsi_params[i]['gain'] * (period - 1) + gain) / period
+                self.rsi_params[i]['loss'] = (self.rsi_params[i]['loss'] * (period - 1) + loss) / period
+                
+            # MA 窗口更新
+            if len(self.win_ma5) == self.win_ma5.maxlen: self.sum_ma5 -= self.win_ma5.popleft()
+            self.win_ma5.append(c); self.sum_ma5 += c; s.ma5 = self.sum_ma5 / len(self.win_ma5)
+            
+            if len(self.win_ma10) == self.win_ma10.maxlen: self.sum_ma10 -= self.win_ma10.popleft()
+            self.win_ma10.append(c); self.sum_ma10 += c; s.ma10 = self.sum_ma10 / len(self.win_ma10)
+            
+            if len(self.win_vol20) == self.win_vol20.maxlen: self.sum_vol20 -= self.win_vol20.popleft()
+            self.win_vol20.append(v); self.sum_vol20 += v; s.vol_ma20 = self.sum_vol20 / len(self.win_vol20)
+            s.vol_ratio = v / s.vol_ma20 if s.vol_ma20 > 0 else 1.0
+            
+            s.history_rsi_6.append(s.rsi_6)
 
     @property
     def warmup_done(self) -> bool:
-        return self.count >= max(self.p['rsi_period'],
-                                 self.p['macd_slow'] + self.p['macd_signal'])
+        return self.count >= 25 # 覆盖最长 RSI 24
 
 # ============================================================
-# 4-A. 风控引擎
+# 3. 核心逻辑引擎 (Scorer, Risk, Grid)
 # ============================================================
-class RiskController:
-    def __init__(self, p: dict, symbol: str):
-        self.p, self.symbol = p, symbol
-        self._peaks: Dict[str, float] = {}
 
-    def check_black_swan(self, buf: deque, ts: float, s: StrategyState) -> bool:
-        if ts < s.black_swan_pause_until: return True
-        if len(buf) < 5: return False
-        if buf[-5] > 0 and abs(buf[-1] - buf[-5]) / buf[-5] >= self.p['black_swan_pct']:
-            s.black_swan_pause_until = ts + 1800
-            return True
-        return False
-
-    def check_stop_loss(self, d: MarketData, ctx: StrategyContext, s: StrategyState) -> List[Signal]:
-        sigs: List[Signal] = []
-        cp = d.close
-        for sym, pos in ctx.positions.items():
-            if sym != self.symbol: continue
-            if pos.size <= 0: continue
-            
-            # 使用 entry_price 兜底，防止重启后初始峰值为 0 导致立即止损
-            pk = self._peaks[sym] = max(self._peaks.get(sym, pos.avg_price), cp)
-            
-            if pos.avg_price <= 0: continue
-            pnl = (cp - pos.avg_price) / pos.avg_price
-            
-            # 移动止盈: 盈利 > trigger 且 MACD 柱状图收缩
-            shrink = abs(s.histogram) < abs(s.prev_histogram) and abs(s.prev_histogram) > 1e-12
-            if self.p['trailing_stop'] and pnl >= self.p['trailing_trigger_pct'] and shrink:
-                tp = pk * (1 - self.p['trailing_stop_pct'])
-                if cp <= tp:
-                    sigs.append(self._sell(d, sym, pos.size, f"移动止盈 (Peak:${pk:.2f},PNL:{pnl*100:.1f}%)"))
-                    self._peaks.pop(sym, None); continue
-            
-            # 常规止损 (基于移动峰值或固定均价)
-            sl_pct = self.p['stop_loss_pct']
-            sp = pk * (1 - self.p['trailing_stop_pct']) if self.p['trailing_stop'] and pnl > 0.01 else pos.avg_price * (1 - sl_pct)
-            
-            if cp <= sp:
-                sigs.append(self._sell(d, sym, pos.size, f"止损(Price:${cp:.2f} <= Limit:${sp:.2f})"))
-                self._peaks.pop(sym, None)
-        return sigs
-
-    def check_death_cross(self, d: MarketData, ctx: StrategyContext, s: StrategyState) -> List[Signal]:
-        if not (s.prev_macd_line > s.prev_signal_line and s.macd_line < s.signal_line): return []
-        # 方案A：只在零轴下方的绝对空头趋势中发生死叉才清仓，零轴上方的多头回撤不立刻清仓
-        if s.macd_line >= 0: return []
+class TrendScorerV52:
+    @staticmethod
+    def calculate(s: StrategyState, p: Dict[str, Any]) -> int:
+        score = 0
         
-        # 增加 RSI 保护：如果当前处于超卖区域 (或接近超卖)，则不执行趋势清仓，防止“秒买秒卖”
-        # 理由：网格策略在超卖区是买入持仓期，此时即便 MACD 死叉也多为低位震荡信号
-        rsi_limit = self.p['rsi_zone_oversold'] + 5
-        if s.current_rsi < rsi_limit:
-            return []
-        pos = ctx.positions.get(self.symbol)
-        if pos and pos.size > 0:
-            self._peaks.pop(self.symbol, None)
-            return [self._sell(d, self.symbol, pos.size, f"MACD死叉清仓({s.macd_line:.4f})")]
-        return []
+        # 1. MACD (文档逻辑: MACD > Signal 且 MACD > 0 积 2 分; 仅 MACD > Signal 积 1 分)
+        if s.macd_line > s.signal_line:
+            if s.macd_line > 0:
+                score += 2
+            else:
+                score += 1
+                
+        # 2. RSI 分层 (文档逻辑: RSI1 < 40 积 2 分; RSI1 < 50 积 1 分; RSI3 > 50 额外积 1 分)
+        # 注意: 文档中 RSI1 对应 short (6), RSI3 对应 long (24)
+        if s.rsi_6 < 40:
+            score += 2
+        elif s.rsi_6 < 50:
+            score += 1
+            
+        if s.rsi_24 > 50:
+            score += 1
+            
+        # 3. 成交量 (文档逻辑: Vol > MA20 * 1.3 积 1 分)
+        vol_thr = p.get('volume_threshold', 1.3)
+        if s.vol_ratio > vol_thr:
+            score += 1
+            
+        return min(score, 5)
 
-    def check_anomaly(self, s: StrategyState, rsi_sig: float):
-        bull = s.trend_strength in (STRONG_BULLISH, BULLISH)
-        bear = s.trend_strength in (STRONG_BEARISH, BEARISH)
-        conflict = (bull and rsi_sig < -0.5) or (bear and rsi_sig > 0.5)
-        s.consecutive_conflict = s.consecutive_conflict + 1 if conflict else max(0, s.consecutive_conflict - 1)
-        s.conservative_mode = s.consecutive_conflict >= 3
-
-    def is_in_cooldown(self, ts: float, s: StrategyState) -> bool:
-        return s.last_trade_ts > 0 and (ts - s.last_trade_ts) / 60 < self.p['cooldown_minutes']
+class RiskControllerV52:
+    @staticmethod
+    def check_reversal(s: StrategyState, p: Dict[str, Any], prev_s: Dict[str, Any]) -> str:
+        if not prev_s: return None
+        
+        # 1. MA 交叉 (MA5 下穿 MA10) -> 减 2 层
+        if s.ma5 < s.ma10 and prev_s.get('ma5', 0) >= prev_s.get('ma10', 0):
+            return "MA5下穿MA10"
+            
+        # 2. MACD 死叉 (MACD < Signal 且 MACD > 0) -> 减 1 层
+        if s.macd_line < s.signal_line and s.macd_line > 0:
+            # 【优化补充】: 如果当前是强趋势(Score>=4)，忽略 MACD 死叉以免被频繁洗出，信任 MA 和 RSI 骤降
+            if s.trend_score >= 4:
+                return None
+            
+            if prev_s.get('macd_line', 0) >= prev_s.get('signal_line', 0):
+                return "MACD死叉"
+                
+        # 3. RSI 骤降 (1小时即12根线内跌幅 > 15) -> 减 2 层
+        # 逻辑：需要 state 中维护历史 RSI。若未实装，暂时用简化版。
+        # 已经在 state 中有了 rsi_history_1h 的逻辑。
+        if len(s.history_rsi_6) >= 12:
+            old_rsi = s.history_rsi_6[0]
+            if old_rsi - s.rsi_6 > p.get('stop_loss_rsi_drop', 15):
+                return f"RSI骤降({old_rsi-s.rsi_6:.1f})"
+                
+        # 4. 放量下跌 (文档逻辑: 量比 > 1.5 且价格收阴)
+        if s.vol_ratio > p.get('stop_loss_volume_spike', 1.5) and s.last_candle.get('close', 0) < s.last_candle.get('open', 0):
+            return "放量下跌"
+            
+        return None
 
     @staticmethod
-    def _sell(d: MarketData, sym: str, size: float, reason: str) -> Signal:
-        return Signal(timestamp=d.timestamp, symbol=sym, side=Side.SELL,
-                      size=size, price=None, order_type=OrderType.MARKET,
-                      reason=reason, meta={'size_in_quote': False})
+    def check_take_profit(s: StrategyState, p: dict) -> Optional[Tuple[int, int]]:
+        """阶梯止盈层数判断: 返回 (卖出层数, 阶梯索引)"""
+        if not p.get('take_profit_enable'): return None
+        levels = p['take_profit_rsi_levels']
+        layers = p['take_profit_sell_layers']
+        
+        # 从高到低检查，只触发最高的那一级
+        for i in range(len(levels) - 1, -1, -1):
+            if s.rsi_6 > levels[i]:
+                return layers[i], i + 1
+        return None
 
 # ============================================================
-# 4-B. 网格引擎
+# 5. 策略主类集成
 # ============================================================
-class GridEngine:
-    def __init__(self, p: dict):
-        self.p = p
 
-    def find_pivots(self, highs: np.ndarray, lows: np.ndarray, times: Optional[List[float]] = None) -> Tuple[list, list]:
-        w, n, lb = self.p['pivot_window'], self.p['pivot_n'], self.p['pivot_lookback']
-        if len(highs) < w + 1: return [], []
-        end = len(highs) - 1
-        ph, pl = [], []  # pivot highs, pivot lows
-        for i in range(end, max(w, end - lb), -1):
-            # 支撑位搜索: i 必须是 [i-w, min(i+w, end)] 范围内的最小值
-            win_start = max(0, i - w)
-            win_end = min(end, i + w)
-            
-            if lows[i] <= float(np.min(lows[win_start:win_end+1])):
-                tp = 'confirmed' if i <= end - w else 'realtime'
-                p_data = {'price': float(lows[i]), 'index': i, 'type': tp}
-                if times and i < len(times): p_data['time'] = times[i]
-                pl.append(p_data)
-                    
-            if highs[i] >= float(np.max(highs[win_start:win_end+1])):
-                tp = 'confirmed' if i <= end - w else 'realtime'
-                p_data = {'price': float(highs[i]), 'index': i, 'type': tp}
-                if times and i < len(times): p_data['time'] = times[i]
-                ph.append(p_data)
-        # 1. 计算每个候选点的显著度 (Prominence)
-        # 显著度定义：点位价格与局部窗口 [i-w, i+w] 内均值的偏差
-        for p in ph:
-            idx = p['index']
-            win = highs[max(0, idx-w):min(end, idx+w)+1]
-            p['prominence'] = abs(p['price'] - np.mean(win))
-            
-        for p in pl:
-            idx = p['index']
-            win = lows[max(0, idx-w):min(end, idx+w)+1]
-            p['prominence'] = abs(p['price'] - np.mean(win))
-
-        # 2. 同一波段竞争去重 (如果两个点间距 < w，视为同一个波段事件，仅留最显著的)
-        def filter_cluster(pivots):
-            if not pivots: return []
-            # 先按显著度降序排
-            sorted_p = sorted(pivots, key=lambda x: x['prominence'], reverse=True)
-            kept = []
-            for p in sorted_p:
-                # 如果这个点距离已选中的点太近（在同一个判定窗口内），则舍弃
-                if not any(abs(p['index'] - k['index']) < w for k in kept):
-                    kept.append(p)
-            return kept
-
-        ph_clean = filter_cluster(ph)
-        pl_clean = filter_cluster(pl)
-
-        # 3. 最终选拔：按显著度取前 n 名
-        final_ph = sorted(ph_clean, key=lambda x: x['prominence'], reverse=True)[:n]
-        final_pl = sorted(pl_clean, key=lambda x: x['prominence'], reverse=True)[:n]
-        
-        # 4. 最后按索引(时间)重新排回升序，方便前端绘图
-        final_ph.sort(key=lambda x: x['index'])
-        final_pl.sort(key=lambda x: x['index'])
-        
-        return final_ph, final_pl
-
-    def calculate(self, highs: np.ndarray, lows: np.ndarray,
-                  price: float, s: StrategyState,
-                  rsi_sig: float, times: Optional[List[float]] = None) -> Tuple[float, float, dict]:
-        ph, pl = self.find_pivots(highs, lows, times)
-        lb = min(self.p['pivot_lookback'], len(highs))
-        
-        # 1. 基础边界：周期内的全局最高/最低 (作为保底，确保不会漏掉显著极值)
-        abs_upper = float(np.max(highs[-lb:]))
-        abs_lower = float(np.min(lows[-lb:]))
-        
-        if not ph or not pl:
-            upper, lower = abs_upper, abs_lower
-        else:
-            # 2. 结合 Pivot 点位：选取 Pivot 列表中的最极端值
-            p_upper = max(p['price'] for p in ph)
-            p_lower = min(p['price'] for p in pl)
-            
-            # 3. 综合决策：取 Pivot 极值和全局极值中更极端的那个
-            upper = max(p_upper, abs_upper)
-            lower = min(p_lower, abs_lower)
-            
-        rng = upper - lower if upper > lower else upper * 0.01
-        # ATR 自适应间距
-        atr_sp = s.current_atr / price if s.current_atr > 0 and price > 0 else 0
-        spacing = np.clip(atr_sp, self.p['grid_spacing_min'], self.p['grid_spacing_max'])
-        
-        # 强制最小网格跨度，防止极窄区间导致网格过度密集
-        min_rng = price * spacing * (self.p['grid_levels'] - 1)
-        if rng < min_rng:
-            mid = (upper + lower) / 2
-            upper = mid + min_rng / 2
-            lower = mid - min_rng / 2
-            rng = min_rng
-            
-        # 根据动态扩充后实际跨度和间距计算合理的动态刻度数
-        dyn_num = max(3, int(rng / (price * spacing)) + 1)
-        
-        buf = rng * self.p['grid_buffer_pct']
-        upper += buf; lower -= buf
-        # MACD 趋势偏移
-        p = self.p
-        ts = s.trend_strength
-        if ts == STRONG_BULLISH:
-            upper += (upper - price) * p['trend_shift_strong_u']
-            lower += (price - lower) * p['trend_shift_strong_l']
-        elif ts == BULLISH:
-            upper += (upper - price) * p['trend_shift_weak_u']
-            lower += (price - lower) * p['trend_shift_weak_l']
-        elif ts == BEARISH:
-            upper -= (upper - price) * p['trend_shift_weak_l']
-            lower -= (price - lower) * p['trend_shift_weak_u']
-        elif ts == STRONG_BEARISH:
-            upper -= (upper - price) * p['trend_shift_strong_l']
-            lower -= (price - lower) * p['trend_shift_strong_u']
-        # RSI 微调
-        if self.p['rsi_weight'] > 0:
-            shift = rng * rsi_sig * self.p['rsi_weight'] * 0.2
-            upper += shift; lower += shift
-        return upper, lower, {'pivots_high': ph, 'pivots_low': pl,
-                              'atr_spacing': float(spacing), 'dynamic_grid_num': dyn_num}
-
-# ============================================================
-# 4-C. 双指标矩阵
-# ============================================================
-_DUAL_MATRIX = {
-    (STRONG_BULLISH, 'os'): (5,'heavy_buy'), (STRONG_BULLISH, 'wk'): (4,'buy'),
-    (STRONG_BULLISH, 'nt'): (3,'light_buy'), (STRONG_BULLISH, 'ob'): (2,'hold'),
-    (BULLISH, 'os'): (4,'buy'),   (BULLISH, 'wk'): (3,'buy'),
-    (BULLISH, 'nt'): (2,'light_buy'), (BULLISH, 'ob'): (1,'hold'),
-    (NEUTRAL, 'os'): (3,'light_buy'), (NEUTRAL, 'wk'): (2,'hold'),
-    (NEUTRAL, 'nt'): (1,'hold'),  (NEUTRAL, 'ob'): (1,'reduce'),
-    (BEARISH, 'os'): (2,'light_buy'), (BEARISH, 'wk'): (1,'stop'),
-    (BEARISH, 'nt'): (0,'stop'),  (BEARISH, 'ob'): (2,'sell'),
-    (STRONG_BEARISH, 'os'): (1,'hold'), (STRONG_BEARISH, 'wk'): (0,'stop'),
-    (STRONG_BEARISH, 'nt'): (0,'stop'), (STRONG_BEARISH, 'ob'): (3,'sell'),
-}
-
-def dual_evaluate(trend: str, rsi: float, p: dict) -> Tuple[int, str]:
-    zones = [('os', p['rsi_zone_oversold']), ('wk', p['rsi_zone_mid']),
-             ('nt', p['rsi_zone_overbought'])]
-    z = 'ob'
-    for code, thr in zones:
-        if rsi < thr: z = code; break
-    return _DUAL_MATRIX.get((trend, z), (0, 'hold'))
-
-# ============================================================
-# 5. 策略主类
-# ============================================================
 class GridRSIStrategyV5_2(BaseStrategy):
-    """动态网格 RSI 策略 V5.2 — 高性能解耦 + JSON 热加载"""
-
-    def __init__(self, symbol: str = "BTC-USDT",
-                 config_path: Optional[str] = None, **overrides):
-        super().__init__(name="GridRSI_V5.2")
+    def __init__(self, symbol: str = "BTC-USDT", config_path: str = None):
+        super().__init__(name="GridRSI_V5.2_TrendForce")
         self.symbol = symbol
-
-        # 三层优先级: 默认值 < JSON 文件 < 代码传参
-        self._config_path = Path(config_path) if config_path else None
-        self._last_config_mtime: float = 0.0
-        self._tick_since_check: int = 0
-        self.params: Dict[str, Any] = {**_DEFAULT_PARAMS}
-        self.params_path = self._config_path # 兼容性属性
-        self._apply_config_file()
-        self.params.update({k: v for k, v in overrides.items() if k in _DEFAULT_PARAMS})
-
-        # 元数据加载
-        self.param_metadata: Dict[str, Any] = {}
-        self._load_param_metadata()
-
-        # 组件实例化
-        self.state = StrategyState()
-        self.indicators = IncrementalIndicators(self.params)
-        self.risk_ctrl = RiskController(self.params, self.symbol)
-        self.grid_engine = GridEngine(self.params)
-
-        # deque 缓冲
-        buf = max(self.params['macd_slow'] + self.params['macd_signal'],
-                  self.params['rsi_period'], self.params['atr_period']) * 3 + 100
-        self._close_buf: deque = deque(maxlen=buf)
-        self._high_buf:  deque = deque(maxlen=buf)
-        self._low_buf:   deque = deque(maxlen=buf)
-        self._data_buffer: deque = deque(maxlen=buf) # 兼容性: 存储 MarketData 对象
-        self._current_prices: Dict[str, float] = {}
-        self._equity_history: deque = deque(maxlen=5000)
-
-    # ── 配置热加载 ──
-    def _apply_config_file(self):
-        if not self._config_path or not self._config_path.exists():
-            return
-        try:
-            with open(self._config_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            
-            # 更新参数
-            self.params.update({k: v for k, v in data.items() if k in _DEFAULT_PARAMS or k == 'symbol'})
-            # 如果配置中有 symbol，同步更新策略实例的 symbol 属性
-            if 'symbol' in data:
-                self.symbol = data['symbol']
-            self._last_config_mtime = self._config_path.stat().st_mtime
-        except Exception as e:
-            print(f"[V5.2] 配置加载失败: {e}")
-
-    def _load_param_metadata(self):
-        """加载参数说明元数据 (从 JSON)"""
-        if not self.params_path: return
-        meta_path = self.params_path.with_name(self.params_path.stem.replace('_default', '') + '_meta.json')
-        if not meta_path.exists():
-            # 兜底：尝试固定名称
-            meta_path = self.params_path.parent / "grid_v52_meta.json"
-            
-        if meta_path.exists():
-            try:
-                with open(meta_path, 'r', encoding='utf-8') as f:
-                    self.param_metadata = json.load(f)
-                    print(f"[V5.2] 成功加载参数元数据说明: {meta_path.name}")
-            except Exception as e:
-                print(f"[V5.2] 加载参数元数据失败: {e}")
-
-    def _maybe_reload_params(self):
-        if not self._config_path: return
-        reload_flag = self._config_path.with_suffix('.reload')
-        need_reload = False
-        # 主动 Push: Agent 创建了 .reload 文件
-        if reload_flag.exists():
-            need_reload = True
-            try: reload_flag.unlink()
-            except: pass
-        # 被动轮询: 每 100 tick
-        if not need_reload:
-            self._tick_since_check += 1
-            if self._tick_since_check >= 100:
-                self._tick_since_check = 0
-                try:
-                    mt = self._config_path.stat().st_mtime
-                    if mt > self._last_config_mtime:
-                        need_reload = True
-                except: pass
-        if need_reload:
-            # 备份旧的核心参数用于对此
-            old = {k: self.params.get(k) for k in RESET_PARAMS}
-            self._apply_config_file()
-            self._load_param_metadata() # 同步加载元数据说明
-            # 如果引擎相关参数变了，重建指标引擎
-            if any(self.params.get(k) != old.get(k) for k in RESET_PARAMS):
-                self.indicators = IncrementalIndicators(self.params)
-                print(f"[V5.2] 核心指标参数变更，指标引擎已重建")
-            # 同步组件引用
-            self.risk_ctrl.p = self.params
-            self.grid_engine.p = self.params
-            cfg_name = self._config_path.name if self._config_path else "Unknown"
-            print(f"[V5.2] 参数及元数据已热加载 ({cfg_name})")
-
-    # ── 初始化 ──
-    def initialize(self):
-        super().initialize()
-        n = len(self._close_buf)
-        self.state = StrategyState()
-        self.indicators = IncrementalIndicators(self.params)
-        self.risk_ctrl = RiskController(self.params, self.symbol)
-        self._equity_history.clear()
-        self._data_buffer.clear() # 也要清理数据缓冲
-        print(f"[V5.2] 逻辑重置 (缓冲保留:{n}根)")
-
-    def _update_buffer(self, data: MarketData):
-        """核心状态更新 (O(1) 增量更新，不生成信号)"""
-        self._close_buf.append(data.close)
-        self._high_buf.append(data.high)
-        self._low_buf.append(data.low)
-        self._data_buffer.append(data) # 记录全量数据对象
-        self._current_prices[self.symbol] = data.close
-        self.indicators.update(data, self.state)
-
-    def _get_dataframe(self):
-        """兼容性方法: 将 deque 转换为 DataFrame"""
-        import pandas as pd
-        if not self._data_buffer: return pd.DataFrame()
-        recs = []
-        for d in self._data_buffer:
-            recs.append({
-                'timestamp': d.timestamp, 'open': d.open, 'high': d.high,
-                'low': d.low, 'close': d.close, 'volume': d.volume
-            })
-        df = pd.DataFrame(recs)
-        df.set_index('timestamp', inplace=True)
-        return df
-
-    def _calculate_dynamic_grid(self, df=None, **kwargs):
-        """兼容性接口: 包装 GridEngine 的 calculate 方法"""
-        # 如果提供了 df，优先使用 df
-        if df is not None:
-            h, l, c = df['high'].values, df['low'].values, df['close'].values[-1]
-        else:
-            h, l, c = np.array(self._high_buf), np.array(self._low_buf), self._close_buf[-1] if self._close_buf else 0
         
-        # 为了满足 LiveEngine 对返回值 (upper, lower, meta) 的解构需求
-        # 注意: GridEngine.calculate 需要 rsi_sig 参与平衡，预热时传 0
-        up, lo, meta = self.grid_engine.calculate(h, l, c, self.state, 0.0)
-        return up, lo, meta
+        # 统一路径: 优先使用 config 目录下的 V5.2 配置文件
+        # 注意：此处使用相对路径或从环境变量获取会更好，但为了稳妥先用绝对路径
+        self.config_dir = Path(r"c:\CS\grid_multi\config")
+        self.default_config_path = self.config_dir / "grid_v52_default.json"
+        
+        # 兼容性处理：如果 runtime 不存在，则使用 default
+        self.runtime_config_path = self.config_dir / "grid_v52_runtime.json"
+        self.active_config_path = Path(config_path) if config_path else self.runtime_config_path
+        if not self.active_config_path.exists():
+            self.active_config_path = self.default_config_path
+            
+        # 兼容别名: 供 Runner 识别
+        self.params_path = str(self.active_config_path)
+            
+        self.params = {}
+        self.param_metadata = {}
+        self._last_config_mtime = 0.0
+        self.reload_config(force=True)
+            
+        self.state = StrategyState()
+        self.indicators = IncrementalIndicatorsV52(self.params) 
+        self._data_buffer = deque(maxlen=200) 
+        
+        self._prev_state_mini = {} 
+        self._tick_count = 0
+        self._last_signal_time = None # 信号风暴保护: 同一个时间戳(Bar)只处理一次信号
+        self._last_bar_ts = None # Bar 切换检测
+        self._last_tick_data = None
+        
+    def reload_config(self, force=False):
+        """加载或热重载配置 (支持由 Runner 外部显式触发，移除轮询)"""
+        # 1. 先载入保底默认配置 (如果存在)
+        if self.default_config_path.exists():
+            try:
+                with open(self.default_config_path, 'r', encoding='utf-8') as f:
+                    self.params.update(json.load(f))
+            except: pass
+        
+        # 2. 载入当前活动的配置 (runtime)
+        if self.active_config_path.exists():
+            try:
+                mtime = self.active_config_path.stat().st_mtime
+                if mtime > self._last_config_mtime or force:
+                    with open(self.active_config_path, 'r', encoding='utf-8') as f:
+                        self.params.update(json.load(f))
+                    self._last_config_mtime = mtime
 
-    # ── 趋势判别 ──
-    def _update_trend(self):
-        h, ph = self.state.histogram, self.state.prev_histogram
-        exp = abs(h) > abs(ph) if abs(ph) > 1e-12 else False
-        if abs(h) < 1e-9:
-            self.state.trend_strength = NEUTRAL
-        elif self.state.macd_line > self.state.signal_line and h > 0:
-            self.state.trend_strength = STRONG_BULLISH if exp else BULLISH
-        elif self.state.macd_line < self.state.signal_line and h < 0:
-            self.state.trend_strength = STRONG_BEARISH if exp else BEARISH
-        else:
-            self.state.trend_strength = NEUTRAL
-        self.state.current_regime = _TREND_TO_REGIME.get(self.state.trend_strength, MarketRegime.RANGING)
+                    # 3. 载入 UI 元数据
+                    meta_file = self.config_dir / "grid_v52_meta.json"
+                    if meta_file.exists():
+                        with open(meta_file, 'r', encoding='utf-8') as f:
+                            self.param_metadata = json.load(f)
+                    
+                    print(f"[V5.2] 配置重载成功: {self.active_config_path.name}")
+            except Exception as e:
+                print(f"[V5.2] 重载配置失败: {e}")
 
-    # ── RSI 信号 ──
-    def _rsi_signal(self) -> Tuple[float, float, float]:
-        p = self.params
-        os, ob = p['rsi_zone_oversold'], p['rsi_zone_overbought']
-        # 自适应阈值
-        if len(self._close_buf) >= 20:
-            c = np.array(self._close_buf)
-            vol = float(np.std(np.diff(c) / c[:-1])) * np.sqrt(1440)
-            vf = np.clip(vol / 0.5, 0.5, 2.0)
-            os = np.clip(p['rsi_zone_oversold'] / vf, 20, 40)
-            ob = np.clip(100 - (100 - p['rsi_zone_overbought']) / vf, 60, 80)
-        rsi = self.state.current_rsi
-        mid = p['rsi_zone_mid']
-        if rsi <= os:   sig = 1.0
-        elif rsi >= ob: sig = -1.0
-        elif rsi < mid: sig = (mid - rsi) / (mid - os) * 0.5
-        else:           sig = (mid - rsi) / (ob - mid) * 0.5
-        return sig, float(os), float(ob)
+    def warmup(self, data_list: List[MarketData]):
+        """[标准接口] 实现高效预热与网格初始化"""
+        if not data_list: return
+        
+        print(f"[V5.2] 正在处理 {len(data_list)} 根历史 K 线进行指标预热...")
+        for data in data_list:
+            # 1. 更新内部缓存 (用于 Dashboard 历史记录)
+            self._data_buffer.append(data)
+            # 2. 推进指标计算 (commit=True)
+            self.indicators.update(data, self.state, commit=True)
+            # 3. 更新迷你状态供下次对比
+            self._save_mini_state(data)
+            
+        # 4. 自动初始化网格 (替代原 Engine 中的硬编码逻辑)
+        last_price = data_list[-1].close
+        rng = self.params.get('grid_range_percent', 0.04)
+        self.state.grid_center = last_price
+        self.state.grid_upper = last_price * (1 + rng)
+        self.state.grid_lower = last_price * (1 - rng)
+        
+        # 计算网格点 (兼容旧版状态显示)
+        levels = self.params.get('max_positions', 5)
+        self.state.grid_prices = np.linspace(self.state.grid_lower, self.state.grid_upper, levels + 1).tolist()
+        self.state.last_grid_update = len(self._data_buffer)
+        
+        print(f"  [OK] 指标预热完成，网格已锚定在: {last_price:.2f}")
 
-    # ── 仓位计算 ──
-    def _calc_size(self, ctx: StrategyContext, rsi_sig: float, is_buy: bool) -> float:
-        n = max(1, len(self.state.grid_prices))
-        sz = ctx.total_value / n * (1 + _TREND_BOOST.get(self.state.trend_strength, 0))
-        sz *= 1 - abs(self.state.current_rsi - 50) / 100  # RSI 偏离折扣
-        if is_buy and self.state.macd_line < 0: sz *= 0.5
-        if self.state.conservative_mode: sz *= 0.5
-        return min(max(sz, self.params['min_order_usdt']), ctx.cash * 0.95)
-
-    def _pos_layers(self, ctx: StrategyContext, cp: float) -> int:
-        pos = ctx.positions.get(self.symbol)
-        if not pos or pos.size <= 0: return 0
-        sz_per_layer = self._calc_size(ctx, 0, True) # USDT 价值
-        # 修正单位错误: 将 BTC 数量 * 当前价格 换算回 USDT 再计算层数
-        pos_val = pos.size * cp
-        return max(1, int(round(pos_val / sz_per_layer)))
-
-    # ── 周期重置 ──
-    def _check_reset(self, ctx: StrategyContext) -> Tuple[bool, str]:
-        if len(self._close_buf) - self.state.last_grid_update >= self.params['cycle_reset_period']:
-            return True, "强制重置周期"
-        if self._equity_history:
-            pk = max(self._equity_history)
-            if pk > 0:
-                dd = (self._equity_history[-1] - pk) / pk
-                if dd <= -self.params['max_drawdown_reset']:
-                    return True, f"最大回撤({dd:.2%})"
-        return False, ""
-
-    # ── 网格交易信号 ──
-    def _grid_orders(self, d: MarketData, ctx: StrategyContext,
-                     action: str, strength: int, rsi_sig: float) -> List[Signal]:
-        sigs: List[Signal] = []
-        p, s = self.params, self.state
-        cp, ch, cl = d.close, d.high, d.low
-        if not s.grid_prices or not s.last_candle: return sigs
-
-        # 最小间距
-        min_iv = p['min_trade_interval_pct']
-        gip = min_iv
-        if s.grid_upper and s.grid_lower and s.actual_levels > 1 and cp > 0:
-            gi = abs(s.grid_upper - s.grid_lower) / (s.actual_levels - 1)
-            gip = np.clip((gi / cp) * 0.8, min_iv, 0.02)
-
-        lh, ll = s.last_candle['high'], s.last_candle['low']
-
-        # 买入
-        for gp in s.grid_prices:
-            if ll > gp and cl <= gp:
-                if action not in ('heavy_buy', 'buy', 'light_buy'): continue
-                if self._pos_layers(ctx, cp) >= p['max_positions']: continue
-                if s.current_rsi >= p['rsi_extreme_buy']: continue
-                pos = ctx.positions.get(self.symbol)
-                if pos and pos.size > 0 and cp > pos.avg_price * (1 - gip): continue
-                sz = self._calc_size(ctx, rsi_sig, True)
-                if sz > ctx.cash * 0.95: continue
-                if action == 'light_buy': sz = max(sz * 0.5, p['min_order_usdt'])
-                sigs.append(Signal(
-                    timestamp=d.timestamp, symbol=self.symbol, side=Side.BUY,
-                    size=sz, price=None, order_type=OrderType.MARKET,
-                    confidence=abs(rsi_sig),
-                    reason=f"网格买入@{gp:.2f}(RSI:{s.current_rsi:.1f} {s.trend_strength} ★{strength})",
-                    meta={'size_in_quote': True}))
-                break
-
-        # 卖出
-        for gp in s.grid_prices:
-            if lh < gp and ch >= gp:
-                pos = ctx.positions.get(self.symbol)
-                if not pos or pos.size <= 0: continue
-                profitable = pos.avg_price < cp * (1 - gip)
-                if action in ('sell', 'reduce') or profitable:
-                    if s.current_rsi <= p['rsi_extreme_sell']: continue
-                    layers = self._pos_layers(ctx, cp)
-                    sz = min(pos.size, pos.size / max(1, layers))
-                    if action == 'reduce': sz *= 0.5
-                    sigs.append(Signal(
-                        timestamp=d.timestamp, symbol=self.symbol, side=Side.SELL,
-                        size=sz, price=None, order_type=OrderType.MARKET,
-                        confidence=abs(rsi_sig),
-                        reason=f"网格卖出@{gp:.2f}(RSI:{s.current_rsi:.1f} {s.trend_strength} ★{strength})",
-                        meta={'size_in_quote': False}))
-                    break
-        return sigs
-
-    # ══════════════════════════════════════════════
-    # on_data 主循环
-    # ══════════════════════════════════════════════
     def on_data(self, data: MarketData, context: StrategyContext) -> List[Signal]:
-        signals: List[Signal] = []
-        try: ts = data.timestamp.timestamp()
-        except: ts = _time.time()
+        signals = []
+        
+        # 0. 信号风暴保护 (同一个 Tick 不发多单，保留基础逻辑)
+        if self._last_signal_time == data.timestamp and self._tick_count > 0:
+            # 注意: 如果是实时 Tick 内部，同一个秒可能收到多个包。
+            # 这里简单用上一条 data 对象对比也可以，但为了支持 2s 逻辑，我们往下走。
+            pass
 
-        # 0. 热加载检查
-        self._maybe_reload_params()
+        # 1. 指标引擎核心: 5m 级别演进 vs 2s 级别预览
+        if self._last_bar_ts is None:
+            # 启动后第一个 Tick，正式初始化
+            self.indicators.update(data, self.state, commit=True)
+            self._last_bar_ts = data.timestamp
+        elif data.timestamp > self._last_bar_ts:
+            # 周期切换 (比如从 08:55 到了 09:00)
+            # 1.1 先用上一根 Bar 的最终数据(last_tick_data)正式锁定上一根指标
+            if self._last_tick_data:
+                self.indicators.update(self._last_tick_data, self.state, commit=True)
+            # 1.2 更新当前基准时间
+            self._last_bar_ts = data.timestamp
+            
+        # 2. 无论是否切换，每个 Tick 都进行“预览计算”，确保 RSI 展示和风控是最新的
+        self.indicators.update(data, self.state, commit=False)
+        self._last_tick_data = data
+        self._tick_count += 1
 
-        # 1 & 2. 缓冲与指标更新 (复用兼容性方法)
-        self._update_buffer(data)
-
-        # 检查预热是否完成 (IncrementalIndicators 的逻辑)
+        # 3. 检查反转保护 (防守优先)
         if not self.indicators.warmup_done:
-            self.state.last_candle = {'open': data.open, 'high': data.high, 'low': data.low, 'close': data.close}
+            self._save_mini_state(data)
             return []
+            
+        # 2. 计算趋势分与目标仓位
+        is_reversal = False
+        rev_reason = RiskControllerV52.check_reversal(self.state, self.params, self._prev_state_mini)
+        
+        # 如果检测到反转，强制目标仓位归零 (防守优先)
+        if rev_reason:
+            self.state.target_layers = 0
+            is_reversal = True
+        else:
+            self.state.trend_score = TrendScorerV52.calculate(self.state, self.params)
+            
+            # 根据评分决定目标层数与网格状态
+            if self.state.trend_score >= self.params.get('trend_score_high', 4):
+                self.state.target_layers = self.params.get('trend_target_high', 5)
+                self.state.dynamic_grid = False 
+                if self.state.grid_center is None: self.state.grid_center = data.close
+            elif self.state.trend_score >= self.params.get('trend_score_mid', 2):
+                self.state.target_layers = self.params.get('trend_target_mid', 3)
+                self.state.dynamic_grid = True
+            else:
+                self.state.target_layers = self.params.get('trend_target_low', 1)
+                self.state.dynamic_grid = True
 
-        # 3. 趋势
-        self._update_trend()
+        # 3. 计算持仓层数 (用于决定是否需要买入或网格触发)
+        pos_size = context.positions[self.symbol].size if context and self.symbol in context.positions else 0
+        avg_price = context.positions[self.symbol].avg_price if pos_size > 0 else data.close
+        current_layers = self._get_current_pos_layers(pos_size, avg_price)
+        self.state.current_layers = current_layers
 
-        # 4. RSI
-        rsi_sig, oversold, overbought = self._rsi_signal()
+        if pos_size > 0:
+            # A. 反转保护 (已经计算过 rev_reason)
+            if is_reversal:
+                # 减仓逻辑 (根据文档)
+                layers_to_sell = 2 if "RSI骤降" in rev_reason else 1
+                
+                # 【关键修复】: 如果当前持仓哪怕不足 1 层 (如 dust)，在反转保护时也应视为 1 层以便清空
+                eff_layers = max(1, current_layers)
+                actual_sell = min(layers_to_sell, eff_layers)
+                
+                if actual_sell > 0:
+                    signals.append(self._make_signal(Side.SELL, actual_sell, data, f"反转保护:{rev_reason}", pos_size=pos_size))
+                    current_layers -= actual_sell
+        
+            # B. 动态分批止盈
+            tp_info = RiskControllerV52.check_take_profit(self.state, self.params)
+            if tp_info and pos_size > 0:
+                sell_num, idx = tp_info
+                eff_layers = max(1, current_layers)
+                actual_sell = min(sell_num, eff_layers)
+                signals.append(self._make_signal(Side.SELL, actual_sell, data, f"阶梯止盈({idx}/3) RSI:{self.state.rsi_6:.1f}", pos_size=pos_size))
+                current_layers -= actual_sell
 
-        # 5. 网格
-        h_arr, l_arr = np.array(self._high_buf), np.array(self._low_buf)
-        t_arr = [d.timestamp.isoformat() if hasattr(d.timestamp, 'isoformat') else d.timestamp for d in self._data_buffer]
-        upper, lower, meta = self.grid_engine.calculate(h_arr, l_arr, data.close, self.state, rsi_sig, t_arr)
-        dyn = meta.get('dynamic_grid_num', self.params['grid_levels'])
-        al = max(3, min(dyn, self.params['grid_levels'] * 3))
-        self.state.grid_upper, self.state.grid_lower = upper, lower
-        self.state.grid_prices = np.linspace(lower, upper, al).tolist()
-        self.state.last_grid_update = len(self._close_buf)
-        self.state.pivots = meta
-        self.state.actual_levels = al
+        # 4. 趋势建仓逻辑
+        if current_layers < self.state.target_layers:
+            # 买入信号: 文档逻辑 - 强趋势放宽至 55，否则使用配置(默认40)
+            buy_thr = 55 if self.state.trend_score >= 4 else self.params.get('rsi_buy_threshold', 40)
+            
+            # 【优化补充】: 如果当前是首层建仓(持仓为0)，硬性要求 RSI < 45，避免在波峰追高冷启动
+            if current_layers == 0:
+                buy_thr = min(buy_thr, 45)
+                
+            if self.state.rsi_6 < buy_thr:
+                needed = self.state.target_layers - current_layers
+                # 文档要求: 一次补齐差额的一半 (batch = max(1, needed // 2))
+                batch = max(1, needed // 2)
+                # 【关键修复】: 确保补仓量不超过最大限制
+                batch = min(batch, self.params.get('max_positions', 5) - current_layers)
+                
+                if batch > 0:
+                    signals.append(self._make_signal(Side.BUY, batch, data, f"趋势建仓(分:{self.state.trend_score})"))
+                    current_layers += batch
 
-        # 6. 风控
-        self.risk_ctrl.check_anomaly(self.state, rsi_sig)
-        if self.risk_ctrl.check_black_swan(self._close_buf, ts, self.state):
-            for sym, pos in context.positions.items():
-                if sym == self.symbol and pos.size > 0:
-                    signals.append(RiskController._sell(data, sym, pos.size, "黑天鹅紧急止损"))
-            self.state.last_candle = {'open': data.open, 'high': data.high, 'low': data.low, 'close': data.close}
-            return signals
+        # 5. 网格辅助 (仅在震荡/中等趋势下)
+        if self.state.dynamic_grid and self.state.grid_center and not signals:
+            rng = self.params.get('grid_range_percent', 0.04)
+            up = self.state.grid_center * (1 + rng)
+            lo = self.state.grid_center * (1 - rng)
+            
+            if data.close > up and pos_size > 0:
+                signals.append(self._make_signal(Side.SELL, 1, data, "网格上轨止盈", pos_size=pos_size))
+                self.state.grid_center = data.close # 移动网格
+            elif data.close < lo and current_layers < self.params.get('max_positions', 5):
+                signals.append(self._make_signal(Side.BUY, 1, data, "网格下轨补仓"))
+                self.state.grid_center = data.close
 
-        ok, reason = self._check_reset(context)
-        if ok:
-            for sym, pos in context.positions.items():
-                if sym == self.symbol and pos.size > 0:
-                    signals.append(RiskController._sell(data, sym, pos.size, f"周期重置:{reason}"))
-            self.state.grid_upper = self.state.grid_lower = None
-            self.state.last_grid_update = len(self._close_buf)
-            self.state.conservative_mode = False; self.state.consecutive_conflict = 0
-
-        signals.extend(self.risk_ctrl.check_stop_loss(data, context, self.state))
-        signals.extend(self.risk_ctrl.check_death_cross(data, context, self.state))
-
-        # 7. 矩阵 + 网格触发
-        strength, action = dual_evaluate(self.state.trend_strength, self.state.current_rsi, self.params)
-        self.state.last_action = action
-        if not self.risk_ctrl.is_in_cooldown(ts, self.state):
-            signals.extend(self._grid_orders(data, context, action, strength, rsi_sig))
-
-        self.state.last_candle = {'open': data.open, 'high': data.high, 'low': data.low, 'close': data.close}
+        self._save_mini_state(data)
         return signals
 
-    def on_fill(self, fill: FillEvent):
-        if fill.side == Side.BUY: self.state.grid_touch_count += 1
-        try: self.state.last_trade_ts = fill.timestamp.timestamp()
-        except: self.state.last_trade_ts = _time.time()
+    def _get_current_pos_layers(self, size: float, avg_price: float) -> int:
+        if size <= 0: return 0
+        layer_val = self.params.get('layer_size_usdt', 2000)
+        # 用【成本】而非【现价】计算层数，因为层数代表资金占用
+        total_cost = size * avg_price
+        return int(round(total_cost / layer_val))
 
-    # ── 状态报告 ──
-    def get_status(self, context: Optional[StrategyContext] = None) -> Dict[str, Any]:
-        # 确保 Dashboard 获取的是最新的参数值
-        self._maybe_reload_params()
-        s, p = self.state, self.params
-        rsi_sig, os_v, ob_v = self._rsi_signal()
-        strength, action = dual_evaluate(s.trend_strength, s.current_rsi, p)
-        # 信号文字
-        _ACT_TEXT = {
-            'heavy_buy': ('buy', lambda st, rs: f"买入信号 ★{st} ({rs:+.2f})"),
-            'buy':       ('buy', lambda st, rs: f"买入信号 ★{st} ({rs:+.2f})"),
-            'light_buy': ('buy', lambda st, rs: f"轻仓买入 ★{st} ({rs:+.2f})"),
-            'sell':      ('sell', lambda st, rs: f"卖出信号 ★{st} ({rs:+.2f})"),
-            'reduce':    ('sell', lambda st, rs: f"卖出信号 ★{st} ({rs:+.2f})"),
-            'stop':      ('sell', lambda st, rs: "停止交易"),
-        }
-        color, fmt = _ACT_TEXT.get(action, ('neutral', lambda st, rs: "观望"))
-        cp = self._current_prices.get(self.symbol, 0)
-        in_grid = ""
-        if s.grid_lower is not None and s.grid_upper is not None and cp > 0:
-            in_grid = "低于网格" if cp < s.grid_lower else ("高于网格" if cp > s.grid_upper else "网格内")
-        pos_count = self._pos_layers(context, cp) if context and self.symbol in context.positions else 0
-        pos_obj = context.positions.get(self.symbol) if context else None
+    def _make_signal(self, side: Side, layers: int, d: MarketData, reason: str, pos_size: float = 0) -> Signal:
+        # 将层数转换为具体的数量
+        layer_val_usdt = self.params.get('layer_size_usdt', 2000)
         
+        if side == Side.BUY:
+            # 买单使用报价币金额 (USDT)，设置 size_in_quote=True
+            val = layers * layer_val_usdt
+            return Signal(
+                timestamp=d.timestamp,
+                symbol=self.symbol,
+                side=side,
+                size=val,
+                price=None,
+                order_type=OrderType.MARKET,
+                reason=reason,
+                meta={'size_in_quote': True, 'layers': layers}
+            )
+        else:
+            # 卖单: 比例减仓逻辑 (修复 insufficient_position)
+            if pos_size <= 0: return None
+            
+            # 使用当前状态的层数作为基准
+            total_layers = max(1, self.state.current_layers)
+            
+            # 如果要卖出的层数 >= 当前总层数，或者是最后一层，直接清空
+            if layers >= total_layers:
+                qty = pos_size
+            else:
+                # 按比例减仓，例如 3 层减 1 层，卖出 1/3 的持仓数量
+                qty = (layers / total_layers) * pos_size
+            
+            return Signal(
+                timestamp=d.timestamp,
+                symbol=self.symbol,
+                side=side,
+                size=qty,
+                price=None,
+                order_type=OrderType.MARKET,
+                reason=reason,
+                meta={'size_in_quote': False, 'layers': layers, 'value_usdt': layers * layer_val_usdt}
+            )
+
+    def _save_mini_state(self, d: MarketData):
+        self._prev_state_mini = {
+            'ma5': self.state.ma5,
+            'ma10': self.state.ma10,
+            'histogram': self.state.histogram,
+            'rsi_6': self.state.rsi_6,
+            'price': d.close
+        }
+        self.state.last_candle = {'open': d.open, 'high': d.high, 'low': d.low, 'close': d.close, 'volume': d.volume}
+
+    def _calculate_pivots(self) -> Dict[str, List[Dict[str, Any]]]:
+        """计算局部波段高低点 (Top 3)"""
+        if len(self._data_buffer) < 15:
+            return {'pivots_high': [], 'pivots_low': []}
+
+        # 简单识别分形 (左3右3)
+        window = 3
+        highs, lows = [], []
+        data = list(self._data_buffer)
+        
+        for i in range(window, len(data) - window):
+            curr = data[i]
+            # 识别高点
+            if all(curr.high > data[i-j].high for j in range(1, window+1)) and \
+               all(curr.high > data[i+j].high for j in range(1, window+1)):
+                highs.append({'price': curr.high, 'time': curr.timestamp})
+            # 识别低点
+            if all(curr.low < data[i-j].low for j in range(1, window+1)) and \
+               all(curr.low < data[i+j].low for j in range(1, window+1)):
+                lows.append({'price': curr.low, 'time': curr.timestamp})
+
+        # 取最近的最显著的 3 个
+        pivots_high = sorted(highs, key=lambda x: x['price'], reverse=True)[:3]
+        pivots_low = sorted(lows, key=lambda x: x['price'])[:3]
+        return {'pivots_high': pivots_high, 'pivots_low': pivots_low}
+
+    def get_status(self, context: StrategyContext = None) -> Dict[str, Any]:
+        s, p = self.state, self.params
+        # 计算网格线供 Dashboard 绘图
+        grid_lines = []
+        if s.grid_center:
+            rng = p.get('grid_range_percent', 0.04)
+            up, lo = s.grid_center * (1 + rng), s.grid_center * (1 - rng)
+            grid_lines = np.linspace(lo, up, p.get('max_positions', 5) + 1).tolist()
+
+        # 转换趋势强度为文字
+        score_labels = {5: "极强爆发", 4: "趋势上行", 3: "偏多整理", 2: "区间震荡", 1: "弱势消耗", 0: "极度低迷"}
+        trend_label = score_labels.get(s.trend_score, "等待数据")
+
         return {
-            'grid_upper': s.grid_upper or 0, 'grid_lower': s.grid_lower or 0,
-            'grid_count': len(s.grid_prices), 'grid_lines': s.grid_prices,
-            'max_positions': p['max_positions'], 'position_count': pos_count,
-            'position_size': pos_obj.size if pos_obj else 0.0,
-            'position_avg_price': pos_obj.avg_price if pos_obj else 0.0,
-            'position_unrealized_pnl': pos_obj.unrealized_pnl if pos_obj else 0.0,
-            'current_rsi': s.current_rsi, 'rsi_oversold': os_v, 'rsi_overbought': ob_v,
-            'rsi_signal': rsi_sig,
-            'market_regime': s.current_regime.value,
-            'signal_text': fmt(strength, rsi_sig), 'signal_color': color,
-            'action_intent': s.last_action, 'in_grid': in_grid,
-            'trade_executed': False, 'grid_touch_count': s.grid_touch_count,
-            'pivots': s.pivots, 'params': {**p, 'symbol': self.symbol},
-            'macd': s.macd_line, 'macdsignal': s.signal_line, 'macdhist': s.histogram,
-            'macd_trend': _TREND_LABELS.get(s.trend_strength, "未知"),
-            'trend_strength': s.trend_strength, 'current_atr': s.current_atr,
-            'dual_strength': strength, 'dual_action': action,
-            'conservative_mode': s.conservative_mode,
-            'param_metadata': getattr(self, 'param_metadata', {}),
+            # 策略核心指标
+            'trend_score': s.trend_score,
+            'target_layers': s.target_layers,
+            'position_count': s.current_layers,
+            'signal_text': f"趋势分:{s.trend_score} ({trend_label})",
+            'signal_strength': f"{s.trend_score}/5",
+            'signal_color': 'buy' if s.trend_score >= 3 else ('sell' if s.trend_score <= 1 else 'neutral'),
+            
+            # 技术指标组件
+            'current_rsi': s.rsi_6,
+            'rsi_oversold': p.get('rsi_buy_threshold', 40),
+            'rsi_overbought': p.get('rsi_sell_threshold', 65),
+            'macd_trend': f"{'红柱' if s.histogram < 0 else '绿柱'}({s.histogram:.2f})",
+            'macd': s.macd_line,
+            'macdsignal': s.signal_line,
+            'macdhist': s.histogram,
+            'atrVal': (s.ma5 - s.ma10) if s.ma10 > 0 else 0, # 对齐 Dashboard ID
+            'marketRegime': "强制满仓模式" if not s.dynamic_grid else "动态网格模式", # 对齐 Dashboard ID
+            
+            # 成交量扩展
+            'current_volume': s.last_candle.get('volume', 0),
+            'vol_ratio': s.vol_ratio,
+            'vol_trend': f"量比:{s.vol_ratio:.2f} ({'缩量' if s.vol_ratio < 1.0 else ('爆发' if s.vol_ratio > 1.3 else '正常')})",
+            
+            # 网格状态
+            'grid_upper': grid_lines[-1] if grid_lines else 0,
+            'grid_lower': grid_lines[0] if grid_lines else 0,
+            'grid_lines': grid_lines,
+            
+            # 持仓详情兼容字段
+            'position_size': (context.positions[self.symbol].size if context and self.symbol in context.positions else 0),
+            'position_avg_price': (context.positions[self.symbol].avg_price if context and self.symbol in context.positions else 0),
+            'position_unrealized_pnl': (context.positions[self.symbol].unrealized_pnl if context and self.symbol in context.positions else 0),
+            
+            # 元数据与参数
+            'params': p,
+            'param_metadata': self.param_metadata,
+            'pivots': self._calculate_pivots()
         }

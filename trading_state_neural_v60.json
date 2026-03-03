@@ -3,8 +3,8 @@
     "initial_capital": 10000.0,
     "positions": {},
     "slot_metadata": {
-        "is_running": true,
+        "is_running": false,
         "is_paused": false,
-        "last_save_time": "2026-03-03T10:13:37.424245"
+        "last_save_time": "2026-03-03T10:13:37.432240"
     }
 }
