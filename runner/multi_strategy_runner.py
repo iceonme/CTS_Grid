@@ -56,15 +56,17 @@ class StrategySlot:
 
     def pause(self):
         self._pause_event.clear()
-        print(f"[Slot:{self.slot_id}] 已暂停（不处理新 bar）")
+        print(f"[Slot:{self.slot_id}] 指令执行: 暂停 (pause_event.clear)")
 
     def resume(self):
         self._pause_event.set()
-        print(f"[Slot:{self.slot_id}] 已恢复运行")
+        print(f"[Slot:{self.slot_id}] 指令执行: 恢复 (pause_event.set)")
 
     def start(self):
+        print(f"[Slot:{self.slot_id}] 指令执行: 启动中...")
         self._is_running = True
-        self._pause_event.set()
+        self.resume()
+        print(f"[Slot:{self.slot_id}] 启动成功: running={self._is_running}, paused={self.is_paused}")
         print(f"[Slot:{self.slot_id}] 已启动")
 
     def stop(self):

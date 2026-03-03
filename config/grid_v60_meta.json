@@ -1,0 +1,77 @@
+{
+    "total_capital": {
+        "label": "总投入资金",
+        "desc": "策略运行的总投入本金 (USDT)，用于计算金字塔仓位",
+        "default": 10000
+    },
+    "rsi_period": {
+        "label": "RSI:计算周期",
+        "desc": "用于判断 5m 超买超卖的 RSI 周期 (默认 14)",
+        "default": 14
+    },
+    "rsi_buy_threshold": {
+        "label": "RSI:买入阈值",
+        "desc": "允许买入的 RSI 上限，通常设在 30 以下的超卖区 (默认 28)",
+        "default": 28
+    },
+    "rsi_sell_threshold": {
+        "label": "RSI:卖出阈值",
+        "desc": "常规市场下的卖出/止盈 RSI 下限 (默认 70)",
+        "default": 70
+    },
+    "rsi_bull_adjust": {
+        "label": "RSI:牛市止盈",
+        "desc": "在 15m MACD 强势上涨时，提前分批止盈的 RSI 降低阈值 (默认 60)",
+        "default": 60
+    },
+    "macd_fast": {
+        "label": "MACD:快线周期",
+        "desc": "15m 重采样 MACD 的快线参数 (默认 12)",
+        "default": 12
+    },
+    "macd_slow": {
+        "label": "MACD:慢线周期",
+        "desc": "15m 重采样 MACD 的慢线参数 (默认 26)",
+        "default": 26
+    },
+    "macd_signal": {
+        "label": "MACD:信号线",
+        "desc": "15m 重采样 MACD 的信号线参数 (默认 9)",
+        "default": 9
+    },
+    "atr_period": {
+        "label": "ATR:计算周期",
+        "desc": "用于波动率检测和熔断的 ATR 周期 (默认 14)",
+        "default": 14
+    },
+    "grid_layers": {
+        "label": "网格层数",
+        "desc": "动态网格划分的层数，6.0 版默认仅在底部 2 层买入",
+        "default": 5
+    },
+    "grid_buffer": {
+        "label": "网格:边缘缓冲",
+        "desc": "基于历史 6 小时高低点向外延伸的缓冲区比例 (默认 0.02)",
+        "default": 0.02
+    },
+    "grid_readjust": {
+        "label": "网格:重置偏移",
+        "desc": "当价格偏离网格中轨超过此比例时，强制重新计算网格 (默认 0.05)",
+        "default": 0.05
+    },
+    "grid_lookback_hours": {
+        "label": "网格:回溯时间",
+        "desc": "计算网格上下沿参考的历史数据小时数 (默认 6)",
+        "default": 6
+    },
+    "atr_blackswan_mult": {
+        "label": "风控:黑天鹅倍数",
+        "desc": "当实时 ATR 超过均值的此倍数时，触发熔断停止交易 (默认 3.0)",
+        "default": 3.0
+    },
+    "atr_cooldown_min": {
+        "label": "风控:熔断时长",
+        "desc": "触发黑天鹅熔断后的冷却封闭时间（分钟）",
+        "default": 30
+    }
+}

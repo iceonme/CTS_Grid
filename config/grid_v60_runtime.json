@@ -1,0 +1,18 @@
+{
+    "symbol": "BTC-USDT-SWAP",
+    "total_capital": 10000,
+    "rsi_period": 14,
+    "rsi_buy_threshold": 28,
+    "rsi_sell_threshold": 70,
+    "rsi_bull_adjust": 60,
+    "macd_fast": 12,
+    "macd_slow": 26,
+    "macd_signal": 9,
+    "atr_period": 14,
+    "atr_blackswan_mult": 3.0,
+    "atr_cooldown_min": 30,
+    "grid_layers": 5,
+    "grid_buffer": 0.02,
+    "grid_readjust": 0.05,
+    "grid_lookback_hours": 6
+}
