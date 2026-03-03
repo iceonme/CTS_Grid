@@ -75,10 +75,11 @@ function convertTime(timestamp) {
     } else {
         return null;
     }
+    if (isNaN(ms)) return null;
     const seconds = Math.floor(ms / 1000);
-    // LightweightCharts 默认展示为 UTC，我们需要根据本地时区调整
     const localOffset = new Date().getTimezoneOffset() * 60;
-    return seconds - localOffset;
+    const t = seconds - localOffset;
+    return isFinite(t) ? t : null;
 }
 
 function convertAndValidateCandle(c) {
@@ -88,13 +89,13 @@ function convertAndValidateCandle(c) {
         if (c[key] === undefined || c[key] === null) return null;
     }
     const time = convertTime(c.t);
-    if (!time) return null;
+    if (time === null) return null;
     const open = parseFloat(c.o);
     const high = parseFloat(c.h);
     const low = parseFloat(c.l);
     const close = parseFloat(c.c);
     const volume = parseFloat(c.v) || 0;
-    if (!Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) return null;
+    if (!isFinite(open) || !isFinite(high) || !isFinite(low) || !isFinite(close)) return null;
     if (high < low || high < 0 || low < 0) return null;
     return { time, open, high, low, close, volume };
 }
@@ -272,18 +273,25 @@ function initCharts() {
 }
 
 function updateMACD(macdData, timestamp) {
-    if (!macdHistSeries || !timestamp || !macdData) return;
+    if (!timestamp || !macdData) return;
     const time = convertTime(timestamp);
-    if (!time) return;
+    if (time === null) return;
     if (lastMacdUpdateTime !== null && time < lastMacdUpdateTime) return;
+
     try {
         const hist = (macdData.macdhist === null || macdData.macdhist === undefined) ? null : parseFloat(macdData.macdhist);
         const macdLine = (macdData.macd === null || macdData.macd === undefined) ? null : parseFloat(macdData.macd);
         const signalLine = (macdData.macdsignal === null || macdData.macdsignal === undefined) ? null : parseFloat(macdData.macdsignal);
 
-        if (hist === null) macdHistSeries.update({ time }); else macdHistSeries.update({ time, value: hist, color: hist > 0 ? '#26a69a' : '#ef5350' });
-        if (macdLine === null) macdMacdSeries.update({ time }); else macdMacdSeries.update({ time, value: macdLine });
-        if (signalLine === null) macdSignalSeries.update({ time }); else macdSignalSeries.update({ time, value: signalLine });
+        if (macdHistSeries && isFinite(hist) && hist !== null) {
+            macdHistSeries.update({ time, value: hist, color: hist > 0 ? '#26a69a' : '#ef5350' });
+        }
+        if (macdMacdSeries && isFinite(macdLine) && macdLine !== null) {
+            macdMacdSeries.update({ time, value: macdLine });
+        }
+        if (macdSignalSeries && isFinite(signalLine) && signalLine !== null) {
+            macdSignalSeries.update({ time, value: signalLine });
+        }
         lastMacdUpdateTime = time;
     } catch (err) { console.error('[Chart] MACD Update Error:', err); }
 }
@@ -291,36 +299,42 @@ function updateMACD(macdData, timestamp) {
 function updateRSI(rsiValue, timestamp) {
     if (!rsiSeries || !timestamp) return;
     const time = convertTime(timestamp);
-    if (!time) return;
+    if (time === null) return;
     if (lastRsiUpdateTime !== null && time < lastRsiUpdateTime) return;
-    if (rsiStartTime === null && rsiValue !== null) {
-        rsiStartTime = time;
-        if (!window.rsiLinesDrawn) {
-            rsiSeries.createPriceLine({ price: 70, color: '#ff4757', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超买(70)' });
-            rsiSeries.createPriceLine({ price: 30, color: '#00d084', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超卖(30)' });
-            window.rsiLinesDrawn = true;
-        }
-    }
+
     const val = (rsiValue === null || rsiValue === undefined) ? null : parseFloat(rsiValue);
-    rsiSeries.update(val === null ? { time } : { time, value: val });
-    lastRsiUpdateTime = time;
+    if (isFinite(val) && val !== null) {
+        if (rsiStartTime === null) {
+            rsiStartTime = time;
+            if (!window.rsiLinesDrawn) {
+                rsiSeries.createPriceLine({ price: 70, color: '#ff4757', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超买(70)' });
+                rsiSeries.createPriceLine({ price: 30, color: '#00d084', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超卖(30)' });
+                window.rsiLinesDrawn = true;
+            }
+        }
+        rsiSeries.update({ time, value: val });
+        lastRsiUpdateTime = time;
+    }
 }
 
 function updateEquity(totalValue, timestamp) {
     if (!equitySeries || !timestamp) return;
     const time = convertTime(timestamp);
-    if (!time) return;
+    if (time === null) return;
     if (lastEquityUpdateTime !== null && time < lastEquityUpdateTime) return;
-    if (equityStartTime === null && totalValue !== null) {
-        equityStartTime = time;
-        if (!window.equityLineDrawn && initialBalanceForChart !== null) {
-            equitySeries.createPriceLine({ price: parseFloat(initialBalanceForChart), color: '#64748b', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '初始资金' });
-            window.equityLineDrawn = true;
-        }
-    }
+
     const val = (totalValue === null || totalValue === undefined) ? null : parseFloat(totalValue);
-    equitySeries.update(val === null ? { time } : { time, value: val });
-    lastEquityUpdateTime = time;
+    if (isFinite(val) && val !== null) {
+        if (equityStartTime === null) {
+            equityStartTime = time;
+            if (!window.equityLineDrawn && initialBalanceForChart !== null) {
+                equitySeries.createPriceLine({ price: parseFloat(initialBalanceForChart), color: '#64748b', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '初始资金' });
+                window.equityLineDrawn = true;
+            }
+        }
+        equitySeries.update({ time, value: val });
+        lastEquityUpdateTime = time;
+    }
 }
 
 function updateChart(data, tradeHistory) {
@@ -347,8 +361,10 @@ function updateChart(data, tradeHistory) {
 
             // 如果是当前周期，实时更新
             if (currentTimeframe === 1) {
-                candleSeries.update(lastCandle);
-                if (volumeSeries) {
+                if (lastCandle && isFinite(lastCandle.open)) {
+                    candleSeries.update(lastCandle);
+                }
+                if (volumeSeries && lastCandle && isFinite(lastCandle.volume)) {
                     volumeSeries.update({
                         time: lastCandle.time,
                         value: lastCandle.volume,
@@ -422,9 +438,16 @@ function updatePivotMarkers(pivots) {
 
 function refreshMarkers() {
     if (!candleSeries) return;
-    // 合并并去重 (基于 time 和 id)
-    const all = [...globalTradeMarkers, ...globalPivotMarkers].sort((a, b) => a.time - b.time);
-    candleSeries.setMarkers(all);
+    // 合并并去重 (基于 time 和 id)，同时严格过滤掉无效时间戳以防崩溃
+    const all = [...globalTradeMarkers, ...globalPivotMarkers]
+        .filter(m => m && isFinite(m.time) && m.time !== null)
+        .sort((a, b) => a.time - b.time);
+
+    try {
+        candleSeries.setMarkers(all);
+    } catch (err) {
+        console.error('[Chart] setMarkers Error:', err, all);
+    }
 }
 
 function drawGridLines(gridLower, gridUpper, gridLevels) {
