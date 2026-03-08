@@ -266,6 +266,7 @@ class MultiStrategyRunner:
                                     'fee': getattr(order, 'fee', 0),
                                     'type': 'BUY' if 'buy' in str(sig.side).lower() else 'SELL',
                                     'reason': getattr(sig, 'reason', ''),
+                                    'symbol': data.symbol,
                                     'quote_amount': order.filled_size * order.avg_price,
                                 }
                                 self._trades[slot.slot_id].append(trade)

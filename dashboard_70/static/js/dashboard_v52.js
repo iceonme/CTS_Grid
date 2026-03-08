@@ -20,8 +20,9 @@ let equitySeries = null;
 let latestStrategyInfo = null;
 let isConnected = false;
 let reconnectAttempts = 0;
-let currentStrategyId = 'grid_v60';
+let currentStrategyId = 'grid_v52';
 let currentSlotStatus = 'stopped';
+let candleDataBuffer = [];
 let lastCandleTime = null;
 let rsiStartTime = null;
 let lastRsiUpdateTime = null;
@@ -30,24 +31,15 @@ let initialBalanceForChart = null;
 let equityStartTime = null;
 let lastEquityUpdateTime = null;
 
-// --- 分页与列表状态 ---
+// 标记缓存
+let globalTradeMarkers = [];
+let globalPivotMarkers = [];
 let tradePaginationState = {
     allTrades: [],
     currentPage: 1,
-    pageSize: 10,
+    pageSize: 20,
     totalPages: 1
 };
-
-// --- 多周期聚合引擎变量 ---
-let currentTimeframe = 1; // 默认 1 分钟
-let rawCandleBuffer = []; // 原始 1m 数据缓存 (不受聚合影响)
-let aggregatedCandleBuffer = []; // 当前显示周期下的聚合数据
-window.isInitializingCharts = true; // 确保加载历史数据后自动缩放图表
-let globalTradeMarkers = [];
-let globalPivotMarkers = [];
-
-// --- 图表系列数据就绪跟踪 (防止 "Value is null" 异步渲染错误) ---
-let seriesHasData = { candle: false, rsi: false, macd: false, volume: false, equity: false };
 
 // 工具函数
 function fmtPct(v) {
@@ -78,11 +70,10 @@ function convertTime(timestamp) {
     } else {
         return null;
     }
-    if (isNaN(ms)) return null;
     const seconds = Math.floor(ms / 1000);
+    // LightweightCharts 默认展示为 UTC，我们需要根据本地时区调整
     const localOffset = new Date().getTimezoneOffset() * 60;
-    const t = seconds - localOffset;
-    return isFinite(t) ? t : null;
+    return seconds - localOffset;
 }
 
 function convertAndValidateCandle(c) {
@@ -92,13 +83,13 @@ function convertAndValidateCandle(c) {
         if (c[key] === undefined || c[key] === null) return null;
     }
     const time = convertTime(c.t);
-    if (time === null) return null;
+    if (!time) return null;
     const open = parseFloat(c.o);
     const high = parseFloat(c.h);
     const low = parseFloat(c.l);
     const close = parseFloat(c.c);
     const volume = parseFloat(c.v) || 0;
-    if (!isFinite(open) || !isFinite(high) || !isFinite(low) || !isFinite(close)) return null;
+    if (!Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) return null;
     if (high < low || high < 0 || low < 0) return null;
     return { time, open, high, low, close, volume };
 }
@@ -112,103 +103,13 @@ function prepareBatchData(dataList) {
         const ts = convertTime(item.t);
         if (!ts || seen.has(ts)) continue;
         seen.add(ts);
-        if (item.v !== undefined && item.v !== null) {
+        if (item.v === undefined || item.v === null) {
+            batch.push({ time: ts });
+        } else {
             batch.push({ time: ts, value: parseFloat(item.v) });
         }
     }
     return batch.sort((a, b) => a.time - b.time);
-}
-
-// --- 聚合引擎逻辑 ---
-function aggregateCandles(rawData, timeframeMinutes) {
-    if (timeframeMinutes <= 1) return rawData;
-    if (!rawData || rawData.length === 0) return [];
-
-    const aggregated = [];
-    let currentBar = null;
-    const intervalSeconds = timeframeMinutes * 60;
-
-    rawData.forEach(bar => {
-        // 计算所属周期的起始时间戳
-        const barStartTime = Math.floor(bar.time / intervalSeconds) * intervalSeconds;
-
-        if (!currentBar || barStartTime > currentBar.time) {
-            if (currentBar) aggregated.push(currentBar);
-            currentBar = {
-                time: barStartTime,
-                open: bar.open,
-                high: bar.high,
-                low: bar.low,
-                close: bar.close,
-                volume: bar.volume
-            };
-        } else {
-            currentBar.high = Math.max(currentBar.high, bar.high);
-            currentBar.low = Math.min(currentBar.low, bar.low);
-            currentBar.close = bar.close;
-            currentBar.volume += bar.volume;
-        }
-    });
-
-    if (currentBar) aggregated.push(currentBar);
-    return aggregated;
-}
-
-function switchTimeframe(tf) {
-    currentTimeframe = parseInt(tf);
-    console.log(`[Aggregation] 切换到周期: ${tf}m`);
-
-    // 更新 UI 状态
-    document.querySelectorAll('.tf-btn').forEach(btn => {
-        btn.classList.toggle('active', parseInt(btn.dataset.tf) === currentTimeframe);
-    });
-    const label = tf >= 60 ? (tf >= 1440 ? `${tf / 1440}d` : `${tf / 60}h`) : `${tf}m`;
-    document.getElementById('currentTfLabel').textContent = `(${label})`;
-
-    // 重新聚合并刷新图表
-    refreshAggregatedChart();
-}
-
-function refreshAggregatedChart() {
-    if (!candleSeries) return;
-    if (rawCandleBuffer.length === 0) return;  // 无原始数据时跳过
-    const startCount = rawCandleBuffer.length;
-    // 聚合数据
-    let rawAggregated = aggregateCandles(rawCandleBuffer, currentTimeframe);
-
-    // 严格过滤，确保 open, high, low, close 都是有限数值
-    aggregatedCandleBuffer = rawAggregated.filter(d =>
-        d && isFinite(d.open) && isFinite(d.high) && isFinite(d.low) && isFinite(d.close)
-    );
-
-    console.log(`[Aggregation] 刷新图表: 原始=${startCount}, 聚合后=${aggregatedCandleBuffer.length}, 周期=${currentTimeframe}m`);
-
-    // 强制全量更新
-    try {
-        candleSeries.setData(aggregatedCandleBuffer);
-        seriesHasData.candle = aggregatedCandleBuffer.length > 0;
-    } catch (err) {
-        console.error('[Chart] candleSeries.setData Error:', err);
-    }
-
-    if (volumeSeries) {
-        const volData = aggregatedCandleBuffer
-            .filter(d => isFinite(d.volume))
-            .map(d => ({
-                time: d.time,
-                value: d.volume,
-                color: d.close >= d.open ? 'rgba(0, 208, 132, 0.5)' : 'rgba(255, 71, 87, 0.5)'
-            }));
-        try {
-            volumeSeries.setData(volData);
-            seriesHasData.volume = volData.length > 0;
-        } catch (err) {
-            console.error('[Chart] volumeSeries.setData Error:', err);
-        }
-    }
-
-    // 重新应用 Markers (会自动落到正确的 Bar 上)
-    refreshMarkers();
 }
 
 // 图表逻辑
@@ -265,114 +166,76 @@ function initCharts() {
 
     function syncCharts(sourceChart) {
         const logicalRange = sourceChart.timeScale().getVisibleLogicalRange();
-        if (!logicalRange) return;
-        // 只同步主 series 有数据的图表，防止空 series 触发异步 "Value is null" 错误
-        const chartDataMap = [
-            { chart: mainChart, hasData: seriesHasData.candle },
-            { chart: rsiChart, hasData: seriesHasData.rsi },
-            { chart: macdChart, hasData: seriesHasData.macd },
-            { chart: volumeChart, hasData: seriesHasData.volume },
-            { chart: equityChart, hasData: seriesHasData.equity }
-        ];
-        chartDataMap.forEach(({ chart: c, hasData }) => {
-            if (c && c !== sourceChart && hasData) {
-                try {
-                    c.timeScale().setVisibleLogicalRange(logicalRange);
-                } catch (e) { /* 静默忽略 */ }
-            }
-        });
+        if (logicalRange) {
+            [mainChart, rsiChart, macdChart, volumeChart, equityChart].forEach(c => {
+                if (c && c !== sourceChart) c.timeScale().setVisibleLogicalRange(logicalRange);
+            });
+        }
     }
     [mainChart, rsiChart, macdChart, volumeChart, equityChart].forEach(c => {
         if (c) c.timeScale().subscribeVisibleTimeRangeChange(() => syncCharts(c));
     });
 
     const resizeObserver = new ResizeObserver(() => {
-        const container = document.querySelector('.chart-container');
-        if (!container) return;
-
-        const w = container.clientWidth;
-        const h = container.clientHeight;
-
-        // 根据 CSS 定义的比例分配高度 (或简单分配)
-        if (mainChart) mainChart.applyOptions({ width: w, height: h * 0.48 });
-        if (rsiChart) rsiChart.applyOptions({ width: w, height: h * 0.14 });
-        if (macdChart) macdChart.applyOptions({ width: w, height: h * 0.14 });
-        if (volumeChart) volumeChart.applyOptions({ width: w, height: h * 0.10 });
-        if (equityChart) equityChart.applyOptions({ width: w, height: h * 0.14 });
+        [mainChart, rsiChart, macdChart, volumeChart, equityChart].forEach(c => {
+            if (!c) return;
+            const container = c.chartElement().parentElement;
+            if (container) c.applyOptions({ width: container.clientWidth });
+        });
     });
-    resizeObserver.observe(document.querySelector('.chart-panel'));
+    resizeObserver.observe(document.getElementById('tv-chart-main'));
 }
 
 function updateMACD(macdData, timestamp) {
-    if (!timestamp || !macdData) return;
+    if (!macdHistSeries || !timestamp || !macdData) return;
     const time = convertTime(timestamp);
-    if (time === null) return;
+    if (!time) return;
     if (lastMacdUpdateTime !== null && time < lastMacdUpdateTime) return;
+    try {
+        const hist = (macdData.macdhist === null || macdData.macdhist === undefined) ? null : parseFloat(macdData.macdhist);
+        const macdLine = (macdData.macd === null || macdData.macd === undefined) ? null : parseFloat(macdData.macd);
+        const signalLine = (macdData.macdsignal === null || macdData.macdsignal === undefined) ? null : parseFloat(macdData.macdsignal);
 
-    const hist = (macdData.macdhist === null || macdData.macdhist === undefined) ? null : parseFloat(macdData.macdhist);
-    const macdLine = (macdData.macd === null || macdData.macd === undefined) ? null : parseFloat(macdData.macd);
-    const signalLine = (macdData.macdsignal === null || macdData.macdsignal === undefined) ? null : parseFloat(macdData.macdsignal);
-
-    try {
-        if (macdHistSeries && hist !== null && isFinite(hist)) {
-            macdHistSeries.update({ time, value: hist, color: hist > 0 ? '#26a69a' : '#ef5350' });
-        }
-    } catch (err) { console.warn('[Chart] MACD Hist update skipped:', err.message); }
-    try {
-        if (macdMacdSeries && typeof macdLine === 'number' && isFinite(macdLine)) {
-            macdMacdSeries.update({ time, value: macdLine });
-        }
-    } catch (err) { console.warn('[Chart] MACD Line update skipped:', err.message); }
-    try {
-        if (macdSignalSeries && typeof signalLine === 'number' && isFinite(signalLine)) {
-            macdSignalSeries.update({ time, value: signalLine });
-        }
-    } catch (err) { console.warn('[Chart] MACD Signal update skipped:', err.message); }
-    seriesHasData.macd = true;
-    lastMacdUpdateTime = time;
+        if (hist === null) macdHistSeries.update({ time }); else macdHistSeries.update({ time, value: hist, color: hist > 0 ? '#26a69a' : '#ef5350' });
+        if (macdLine === null) macdMacdSeries.update({ time }); else macdMacdSeries.update({ time, value: macdLine });
+        if (signalLine === null) macdSignalSeries.update({ time }); else macdSignalSeries.update({ time, value: signalLine });
+        lastMacdUpdateTime = time;
+    } catch (err) { console.error('[Chart] MACD Update Error:', err); }
 }
 
 function updateRSI(rsiValue, timestamp) {
     if (!rsiSeries || !timestamp) return;
     const time = convertTime(timestamp);
-    if (time === null) return;
+    if (!time) return;
     if (lastRsiUpdateTime !== null && time < lastRsiUpdateTime) return;
-
-    const val = (rsiValue === null || rsiValue === undefined) ? null : parseFloat(rsiValue);
-    if (isFinite(val) && val !== null) {
-        if (rsiStartTime === null) {
-            rsiStartTime = time;
-            if (!window.rsiLinesDrawn) {
-                rsiSeries.createPriceLine({ price: 70, color: '#ff4757', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超买(70)' });
-                rsiSeries.createPriceLine({ price: 30, color: '#00d084', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超卖(30)' });
-                window.rsiLinesDrawn = true;
-            }
+    if (rsiStartTime === null && rsiValue !== null) {
+        rsiStartTime = time;
+        if (!window.rsiLinesDrawn) {
+            rsiSeries.createPriceLine({ price: 70, color: '#ff4757', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超买(70)' });
+            rsiSeries.createPriceLine({ price: 30, color: '#00d084', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '超卖(30)' });
+            window.rsiLinesDrawn = true;
         }
-        rsiSeries.update({ time, value: val });
-        seriesHasData.rsi = true;
-        lastRsiUpdateTime = time;
     }
+    const val = (rsiValue === null || rsiValue === undefined) ? null : parseFloat(rsiValue);
+    rsiSeries.update(val === null ? { time } : { time, value: val });
+    lastRsiUpdateTime = time;
 }
 
 function updateEquity(totalValue, timestamp) {
     if (!equitySeries || !timestamp) return;
     const time = convertTime(timestamp);
-    if (time === null) return;
+    if (!time) return;
     if (lastEquityUpdateTime !== null && time < lastEquityUpdateTime) return;
-
-    const val = (totalValue === null || totalValue === undefined) ? null : parseFloat(totalValue);
-    if (isFinite(val) && val !== null) {
-        if (equityStartTime === null) {
-            equityStartTime = time;
-            if (!window.equityLineDrawn && initialBalanceForChart !== null) {
-                equitySeries.createPriceLine({ price: parseFloat(initialBalanceForChart), color: '#64748b', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '初始资金' });
-                window.equityLineDrawn = true;
-            }
+    if (equityStartTime === null && totalValue !== null) {
+        equityStartTime = time;
+        if (!window.equityLineDrawn && initialBalanceForChart !== null) {
+            equitySeries.createPriceLine({ price: parseFloat(initialBalanceForChart), color: '#64748b', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Dashed, title: '初始资金' });
+            window.equityLineDrawn = true;
         }
-        equitySeries.update({ time, value: val });
-        seriesHasData.equity = true;
-        lastEquityUpdateTime = time;
     }
+    const val = (totalValue === null || totalValue === undefined) ? null : parseFloat(totalValue);
+    equitySeries.update(val === null ? { time } : { time, value: val });
+    lastEquityUpdateTime = time;
 }
 
 function updateChart(data, tradeHistory) {
@@ -381,53 +244,41 @@ function updateChart(data, tradeHistory) {
     if (candles.length === 0 && (!tradeHistory || tradeHistory.length === 0)) return;
     const tvData = candles.map(c => convertAndValidateCandle(c)).filter(x => x);
     if (tvData.length === 0) return;
-
     try {
         if (Array.isArray(data) && data.length > 1) {
-            // 历史数据更新
-            rawCandleBuffer = tvData.sort((a, b) => a.time - b.time).slice(-1000); // 增加缓存长度
-            refreshAggregatedChart();
-
+            candleDataBuffer = tvData.sort((a, b) => a.time - b.time).slice(-500);
+            candleSeries.setData(candleDataBuffer);
+            if (volumeSeries) {
+                const volData = candleDataBuffer.map(d => ({
+                    time: d.time,
+                    value: d.volume,
+                    color: d.close >= d.open ? 'rgba(0, 208, 132, 0.5)' : 'rgba(255, 71, 87, 0.5)'
+                }));
+                volumeSeries.setData(volData);
+            }
+            if (candleDataBuffer.length > 0) lastCandleTime = candleDataBuffer[candleDataBuffer.length - 1].time;
             if (window.isInitializingCharts) {
-                try {
-                    if (seriesHasData.candle && aggregatedCandleBuffer.length > 0) {
-                        mainChart.timeScale().fitContent();
-                    }
-                    window.isInitializingCharts = false;
-                } catch (e) {
-                    console.warn('[Chart] updateChart fitContent 跳过:', e.message);
-                }
+                mainChart.timeScale().fitContent();
+                window.isInitializingCharts = false;
             }
         } else {
-            // 实时增量更新
             const lastCandle = tvData[tvData.length - 1];
-            upsertCandle(rawCandleBuffer, lastCandle);
-
-            // 如果是当前周期，实时更新
-            if (currentTimeframe === 1) {
-                if (lastCandle && isFinite(lastCandle.open)) {
-                    candleSeries.update(lastCandle);
-                }
-                if (volumeSeries && lastCandle && isFinite(lastCandle.volume)) {
-                    volumeSeries.update({
-                        time: lastCandle.time,
-                        value: lastCandle.volume,
-                        color: lastCandle.close >= lastCandle.open ? 'rgba(0, 208, 132, 0.5)' : 'rgba(255, 71, 87, 0.5)'
-                    });
-                }
-            } else {
-                // 触发重新聚合渲染 (为了简化实时逻辑，非 1m 周期我们全量刷一下，或者只刷最后一根)
-                refreshAggregatedChart();
+            upsertCandle(candleDataBuffer, lastCandle);
+            candleSeries.update(lastCandle);
+            if (volumeSeries) {
+                volumeSeries.update({
+                    time: lastCandle.time,
+                    value: lastCandle.volume,
+                    color: lastCandle.close >= lastCandle.open ? 'rgba(0, 208, 132, 0.5)' : 'rgba(255, 71, 87, 0.5)'
+                });
             }
+            lastCandleTime = lastCandle.time;
         }
-
-        if (rawCandleBuffer.length > 0) lastCandleTime = rawCandleBuffer[rawCandleBuffer.length - 1].time;
     } catch (err) { console.error('[Chart] Candle Update Error:', err); }
     if (tradeHistory) updateTradeMarkers(tradeHistory);
 }
 
-// 辅助函数：更新单根 K 线进入缓冲区
-function upsertCandle(buffer, candle, limit = 1000) {
+function upsertCandle(buffer, candle) {
     if (!buffer || buffer.length === 0) { buffer.push(candle); return; }
     const last = buffer[buffer.length - 1];
     if (candle.time > last.time) { buffer.push(candle); }
@@ -436,7 +287,7 @@ function upsertCandle(buffer, candle, limit = 1000) {
         const idx = buffer.findIndex(x => x.time === candle.time);
         if (idx >= 0) buffer[idx] = candle; else { buffer.push(candle); buffer.sort((a, b) => a.time - b.time); }
     }
-    if (buffer.length > limit) buffer.splice(0, buffer.length - limit);
+    if (buffer.length > 500) buffer.splice(0, buffer.length - 500);
 }
 
 function updateTradeMarkers(tradeHistory) {
@@ -444,13 +295,13 @@ function updateTradeMarkers(tradeHistory) {
     globalTradeMarkers = tradeHistory.map(trade => {
         const time = convertTime(trade.time);
         const price = parseFloat(trade.price);
-        if (time === null || isNaN(price) || isNaN(time)) return null;
+        if (!time || isNaN(price)) return null;
         return {
             time, position: trade.type === 'BUY' ? 'belowBar' : 'aboveBar',
             color: trade.type === 'BUY' ? '#00d084' : '#ff4757',
             shape: trade.type === 'BUY' ? 'arrowUp' : 'arrowDown',
             text: trade.type === 'BUY' ? `买入` : `卖出`,
-            size: 2,
+            size: 1.5,
             id: `trade_${trade.time}_${trade.id || ''}`
         };
     }).filter(x => x);
@@ -464,17 +315,17 @@ function updatePivotMarkers(pivots) {
     globalPivotMarkers = [];
     ph.forEach(p => {
         const t = convertTime(p.time);
-        if (t !== null && !isNaN(t)) {
+        if (t) {
             // 使用 index 作为 ID 的一部分，确保同一根 K 线上的标记会覆盖而非堆叠
             const markerId = p.index !== undefined ? `pivot_h_idx_${p.index}` : `pivot_h_t_${t}`;
-            globalPivotMarkers.push({ time: t, position: 'aboveBar', color: '#f59e0b', shape: 'circle', text: '阻力', size: 1, id: markerId });
+            globalPivotMarkers.push({ time: t, position: 'aboveBar', color: '#f59e0b', shape: 'circle', text: '阻力', size: 0.8, id: markerId });
         }
     });
     pl.forEach(p => {
         const t = convertTime(p.time);
-        if (t !== null && !isNaN(t)) {
+        if (t) {
             const markerId = p.index !== undefined ? `pivot_l_idx_${p.index}` : `pivot_l_t_${t}`;
-            globalPivotMarkers.push({ time: t, position: 'belowBar', color: '#a855f7', shape: 'circle', text: '支撑', size: 1, id: markerId });
+            globalPivotMarkers.push({ time: t, position: 'belowBar', color: '#a855f7', shape: 'circle', text: '支撑', size: 0.8, id: markerId });
         }
     });
     refreshMarkers();
@@ -482,54 +333,13 @@ function updatePivotMarkers(pivots) {
 
 function refreshMarkers() {
     if (!candleSeries) return;
-    if (aggregatedCandleBuffer.length === 0) return;  // 无 K 线数据时跳过
-
-    const intervalSeconds = currentTimeframe * 60;
-    const snappedMarkers = new Map();
-
-    // 获取当前 K 线数据的时间范围，过滤超出的标记
-    const firstBarTime = aggregatedCandleBuffer[0].time;
-    const lastBarTime = aggregatedCandleBuffer[aggregatedCandleBuffer.length - 1].time;
-    const validTimes = new Set(aggregatedCandleBuffer.map(d => d.time));
-
-    // 合并交易标记和波段标记
-    const all = [...globalTradeMarkers, ...globalPivotMarkers]
-        .filter(m => m && m.time !== null && typeof m.time === 'number' && !isNaN(m.time));
-
-    all.forEach(m => {
-        // 将时间戳对齐到当前聚合周期的起始位置
-        const snappedTime = Math.floor(m.time / intervalSeconds) * intervalSeconds;
-
-        // 跳过不在图表数据内的标记！这是 Lightweight Charts 的严格要求
-        if (!validTimes.has(snappedTime)) return;
-
-        // 改进 ID 逻辑：确保同一位置的同类标记不堆叠
-        const typeKey = m.id && m.id.startsWith('trade') ? 'trade' : (m.position === 'aboveBar' ? 'res' : 'sup');
-        const key = `${snappedTime}_${typeKey}`;
-
-        if (!snappedMarkers.has(key)) {
-            snappedMarkers.set(key, { ...m, time: snappedTime });
-        } else {
-            // 如果已有标记，如果是交易标记则保留（交易更重要），否则保留已有的
-            const existing = snappedMarkers.get(key);
-            if (m.id && m.id.startsWith('trade') && (!existing.id || !existing.id.startsWith('trade'))) {
-                snappedMarkers.set(key, { ...m, time: snappedTime });
-            }
-        }
-    });
-
-    const finalMarkers = Array.from(snappedMarkers.values()).sort((a, b) => a.time - b.time);
-
-    try {
-        candleSeries.setMarkers(finalMarkers);
-    } catch (err) {
-        console.error('[Chart] setMarkers Error:', err, finalMarkers);
-    }
+    // 合并并去重 (基于 time 和 id)
+    const all = [...globalTradeMarkers, ...globalPivotMarkers].sort((a, b) => a.time - b.time);
+    candleSeries.setMarkers(all);
 }
 
 function drawGridLines(gridLower, gridUpper, gridLevels) {
     if (!candleSeries || !gridLevels || gridLevels < 2) return;
-    if (typeof gridLower !== 'number' || typeof gridUpper !== 'number' || isNaN(gridLower) || isNaN(gridUpper) || !isFinite(gridLower) || !isFinite(gridUpper)) return;
 
     // 决定哪些标签需要显示 (保留 3-5 个)
     const showIndices = new Set();
@@ -723,13 +533,6 @@ socket.on('reset_ui', (data) => {
         else el.textContent = '--';
     });
 
-    // 清空聚合缓存
-    rawCandleBuffer = [];
-    aggregatedCandleBuffer = [];
-
-    // 重置数据就绪标志
-    seriesHasData = { candle: false, rsi: false, macd: false, volume: false, equity: false };
-
     updateControlButtons('stopped');
 });
 
@@ -739,61 +542,30 @@ socket.on('strategy_status_changed', (data) => {
 });
 
 socket.on('history_update', (data) => {
-    console.log('[SocketIO] 收到历史数据快照, keys:', Object.keys(data));
     if (data.history_candles) {
-        const candles = data.history_candles.map(c => convertAndValidateCandle(c)).filter(x => x);
-        rawCandleBuffer = candles.sort((a, b) => a.time - b.time).slice(-1000);
-        refreshAggregatedChart();
-        if (window.isInitializingCharts && rawCandleBuffer.length > 0) {
-            setTimeout(() => {
-                try {
-                    if (seriesHasData.candle && aggregatedCandleBuffer.length > 0) {
-                        mainChart.timeScale().fitContent();
-                    }
-                    window.isInitializingCharts = false;
-                    console.log('[Chart] 缩放至适应历史内容');
-                } catch (e) {
-                    console.warn('[Chart] fitContent 跳过，等待数据就绪:', e.message);
-                }
-            }, 200);
-        }
+        updateChart(data.history_candles, []);
     }
-    if (data.trade_history) {
-        updateTradeMarkers(data.trade_history);
-        tradePaginationState.allTrades = data.trade_history.slice().reverse();
-        renderTradeList();
-    }
-    if (data.history_rsi && rsiSeries) {
-        const rsiData = prepareBatchData(data.history_rsi);
-        rsiSeries.setData(rsiData);
-        seriesHasData.rsi = rsiData.length > 0;
-    }
-    if (data.history_equity && equitySeries) {
-        const eqData = prepareBatchData(data.history_equity);
-        equitySeries.setData(eqData);
-        seriesHasData.equity = eqData.length > 0;
-    }
+    if (data.history_rsi && rsiSeries) rsiSeries.setData(prepareBatchData(data.history_rsi));
+    if (data.history_equity && equitySeries) equitySeries.setData(prepareBatchData(data.history_equity));
     if (data.history_macd) {
         const batch = data.history_macd;
         const macdData = [], signalData = [], histData = [];
         batch.forEach(item => {
             const time = convertTime(item.time);
             if (!time) return;
-            // 严格过滤 null 和 undefined，只有有效数字才推入数组
-            if (typeof item.macd === 'number' && isFinite(item.macd)) {
-                macdData.push({ time, value: item.macd });
-            }
-            if (typeof item.macdsignal === 'number' && isFinite(item.macdsignal)) {
-                signalData.push({ time, value: item.macdsignal });
-            }
-            if (typeof item.macdhist === 'number' && isFinite(item.macdhist)) {
+            // null 值作为留白占位（只push {time}），保持数据点数量与K线一致
+            // 这样 syncCharts 的 LogicalRange 才能正确对齐
+            macdData.push(item.macd !== null && item.macd !== undefined ? { time, value: item.macd } : { time });
+            signalData.push(item.macdsignal !== null && item.macdsignal !== undefined ? { time, value: item.macdsignal } : { time });
+            if (item.macdhist !== null && item.macdhist !== undefined) {
                 histData.push({ time, value: item.macdhist, color: item.macdhist > 0 ? '#26a69a' : '#ef5350' });
+            } else {
+                histData.push({ time });
             }
         });
         if (macdMacdSeries) macdMacdSeries.setData(macdData);
         if (macdSignalSeries) macdSignalSeries.setData(signalData);
         if (macdHistSeries) macdHistSeries.setData(histData);
-        seriesHasData.macd = (macdData.length > 0 || signalData.length > 0 || histData.length > 0);
     }
 });
 
@@ -927,33 +699,15 @@ socket.on('update', (data) => {
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
     initCharts();
-    document.getElementById('startBtn').onclick = () => {
-        console.log('[Control] 点击启动按钮, sid:', currentStrategyId);
-        socket.emit('start_strategy', { strategy_id: currentStrategyId });
-    };
-    document.getElementById('pauseBtn').onclick = () => {
-        console.log('[Control] 点击暂停按钮, sid:', currentStrategyId);
-        socket.emit('pause_strategy', { strategy_id: currentStrategyId });
-    };
-    document.getElementById('resetBtn').onclick = () => {
-        console.log('[Control] 打开重置确认框');
-        document.getElementById('resetConfirmModal').style.display = 'flex';
-    };
-    document.getElementById('confirmResetAction').onclick = () => {
-        console.log('[Control] 确认重置, sid:', currentStrategyId);
-        socket.emit('reset_strategy', { strategy_id: currentStrategyId });
-        document.getElementById('resetConfirmModal').style.display = 'none';
-    };
+    document.getElementById('startBtn').onclick = () => socket.emit('start_strategy', { strategy_id: currentStrategyId });
+    document.getElementById('pauseBtn').onclick = () => socket.emit('pause_strategy', { strategy_id: currentStrategyId });
+    document.getElementById('resetBtn').onclick = () => document.getElementById('resetConfirmModal').style.display = 'flex';
+    document.getElementById('confirmResetAction').onclick = () => { socket.emit('reset_strategy', { strategy_id: currentStrategyId }); document.getElementById('resetConfirmModal').style.display = 'none'; };
     document.getElementById('cancelReset').onclick = () => document.getElementById('resetConfirmModal').style.display = 'none';
     document.getElementById('openStrategyDocBtn').onclick = () => { renderStrategyDoc(latestStrategyInfo); document.getElementById('strategyDocModal').classList.add('show'); };
     document.getElementById('closeStrategyDocBtn').onclick = () => document.getElementById('strategyDocModal').classList.remove('show');
     document.getElementById('prevTradePage').onclick = () => { if (tradePaginationState.currentPage > 1) { tradePaginationState.currentPage--; renderTradeList(); } };
     document.getElementById('nextTradePage').onclick = () => { if (tradePaginationState.currentPage < tradePaginationState.totalPages) { tradePaginationState.currentPage++; renderTradeList(); } };
-
-    // 周期切换按钮绑定
-    document.querySelectorAll('.tf-btn').forEach(btn => {
-        btn.onclick = () => switchTimeframe(btn.dataset.tf);
-    });
 
     // 保存参数逻辑
     document.getElementById('saveParamsBtn').onclick = () => {

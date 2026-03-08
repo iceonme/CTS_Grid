@@ -1,0 +1,17 @@
+{
+    "cash": 8021.090353494277,
+    "initial_capital": 10000.0,
+    "positions": {
+        "BTC-USDT": {
+            "symbol": "BTC-USDT",
+            "size": 0.029756119204837055,
+            "avg_price": 67213.06586494944,
+            "entry_time": "2026-03-08T08:17:00"
+        }
+    },
+    "slot_metadata": {
+        "is_running": true,
+        "is_paused": false,
+        "last_save_time": "2026-03-08T16:17:17.099163"
+    }
+}

@@ -13,21 +13,18 @@ from core import (
 )
 from strategies.base import BaseStrategy
 
-class GridMTFStrategyV6_0(BaseStrategy):
+class GridStrategyV65A(BaseStrategy):
     """
-    V6.0-MTF 多周期自适应网格策略
+    V6.5c 动态网格交易策略
     
-    核心特性：
-    1. MTF (Multi-Timeframe): 5m 进场，15m 趋势过滤
-    2. 动态网格：基于过去 6 小时 ATR 和高低点动态重置边界
-    3. 非线性加仓：金字塔加仓模型
-    4. 趋势自适应止盈：根据 15m MACD 强度调整卖出阈值
-    5. 黑天鹅熔断：ATR 异常检测
+    核心改进：去除 MACD 对交易信号的影响，采用 "RSI + 成交量 + K线形态" 三维验证模型。
+    MACD 仍计算并展示在 Dashboard 上，但不参与买卖决策。
+    新增：回撤熔断 (max_drawdown) 和连续亏损熔断 (max_consecutive_losses)。
     """
 
-    def __init__(self, name: str = "Grid_V60_MTF", **params):
+    def __init__(self, name: str = "Grid_V65_MTF", **params):
         super().__init__(name, **params)
-        self.params_path = params.get('config_path', 'config/grid_v60_runtime.json')
+        self.params_path = params.get('config_path', 'config/grid_v65_runtime.json')
         # 自动推导 meta 路径 (例如 runtime.json -> meta.json)
         self.meta_path = self.params_path.replace('runtime.json', 'meta.json')
         self.symbol = params.get('symbol', 'BTC-USDT-SWAP')
@@ -43,12 +40,19 @@ class GridMTFStrategyV6_0(BaseStrategy):
         @dataclass
         class StrategyState:
             current_rsi: float = 50.0
+            # MACD 仅用于 Dashboard 展示，不参与交易决策
             macd: float = 0.0
             macdsignal: float = 0.0
             macdhist: float = 0.0
+            macd_prev: float = 0.0
+            macdsignal_prev: float = 0.0
             macdhist_prev: float = 0.0
             atr: float = 0.0
             atr_ma: float = 0.0
+            
+            # V6.5c 新增：成交量与K线形态
+            volume_ma: float = 0.0
+            is_bullish_candle: bool = False
             
             grid_lower: float = 0.0
             grid_upper: float = 0.0
@@ -63,6 +67,13 @@ class GridMTFStrategyV6_0(BaseStrategy):
             last_grid_reset: Optional[datetime] = None
             last_buy_time: Optional[datetime] = None
             last_buy_price: float = 0.0
+            
+            # V6.5c 新增：风控状态
+            peak_equity: float = 0.0
+            current_drawdown: float = 0.0
+            consecutive_losses: int = 0
+            drawdown_halted: bool = False
+            loss_halted: bool = False
 
         self.state = StrategyState()
 
@@ -102,8 +113,8 @@ class GridMTFStrategyV6_0(BaseStrategy):
         # 2. 计算指标
         self._calculate_indicators()
 
-        # 3. 熔断检测 (黑天鹅)
-        if self._check_halt(data):
+        # 3. 多层风控检测
+        if self._check_halt(data, context):
             return []
 
         # 4. 网格管理 (边界计算与重置)
@@ -182,7 +193,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
 
 
     def _calculate_indicators(self):
-        """计算 RSI(5m), MACD(15m), ATR(5m)"""
+        """计算 RSI(5m), MACD(15m 仅展示), ATR(5m), 成交量MA(5m), K线形态"""
         # 5m RSI
         closes_5m = pd.Series([d.close for d in self._data_5m])
         self.state.current_rsi = self._rsi(closes_5m, self.params.get('rsi_period', 14))
@@ -196,7 +207,17 @@ class GridMTFStrategyV6_0(BaseStrategy):
         # 统计过去 6 小时的 ATR 均值 (72 根 5m)
         self.state.atr_ma = pd.Series([d.atr for d in list(self._data_5m)[-72:] if hasattr(d, 'atr')]).mean() if len(self._data_5m) >= 72 else atr_val
 
-        # 15m MACD
+        # V6.5c：成交量 MA (20根5m K线)
+        volumes = pd.Series([d.volume for d in self._data_5m])
+        vol_ma_period = self.params.get('volume_ma_period', 20)
+        vol_ma = volumes.rolling(window=vol_ma_period).mean().iloc[-1]
+        self.state.volume_ma = vol_ma if not np.isnan(vol_ma) else 0.0
+
+        # V6.5c：K线形态（当前最新K线是否阳线）
+        latest = self._data_5m[-1]
+        self.state.is_bullish_candle = latest.close > latest.open
+
+        # 15m MACD (仅用于 Dashboard 展示，不参与交易决策)
         df_15m = pd.DataFrame(list(self._data_15m))
         macd, signal, hist = self._macd(
             df_15m['close'], 
@@ -204,6 +225,10 @@ class GridMTFStrategyV6_0(BaseStrategy):
             self.params.get('macd_slow', 26),
             self.params.get('macd_signal', 9)
         )
+        self.state.macd_prev = self.state.macd
+        self.state.macdsignal_prev = self.state.macdsignal
+        self.state.macdhist_prev = self.state.macdhist
+
         self.state.macd = macd
         self.state.macdsignal = signal
         self.state.macdhist = hist
@@ -242,118 +267,131 @@ class GridMTFStrategyV6_0(BaseStrategy):
         self.state.grid_lines = np.linspace(self.state.grid_lower, self.state.grid_upper, layers + 1).tolist()
         self.state.last_grid_reset = now
 
-    def _check_halt(self, data: MarketData) -> bool:
-        """黑天鹅检测"""
+    def _check_halt(self, data: MarketData, context: Optional[StrategyContext] = None) -> bool:
+        """多层风控检测：黑天鹅 + 回撤熔断 + 连续亏损"""
         if self.state.is_halted:
             if self.state.resume_time and data.timestamp >= self.state.resume_time:
                 self.state.is_halted = False
-                print(f"[V6.0] 恢复交易")
+                print(f"[V6.5c] 恢复交易")
             else:
                 return True
         
-        # ATR 异常检测
+        # Layer 3: ATR 黑天鹅检测
         if self.state.atr > self.state.atr_ma * self.params.get('atr_blackswan_mult', 3.0):
             self.state.is_halted = True
-            self.state.halt_reason = "High Volatility (ATR Blackswan)"
+            self.state.halt_reason = "波动风控 (ATR异常)"
             self.state.resume_time = data.timestamp + timedelta(minutes=self.params.get('atr_cooldown_min', 30))
-            print(f"[V6.0] 触发熔断: {self.state.halt_reason}")
+            print(f"[V6.5c] 触发熔断: {self.state.halt_reason}")
+            return True
+
+        # Layer 2: 回撤风控
+        if context:
+            pos = context.positions.get(self.symbol)
+            pos_val = float(pos.size) * data.close if pos else 0.0
+            equity = context.cash + pos_val
+            if equity > self.state.peak_equity:
+                self.state.peak_equity = equity
+            if self.state.peak_equity > 0:
+                self.state.current_drawdown = (self.state.peak_equity - equity) / self.state.peak_equity
+            
+            max_dd = self.params.get('max_drawdown', 0.10)
+            if self.state.current_drawdown > max_dd:
+                if not self.state.drawdown_halted:
+                    self.state.drawdown_halted = True
+                    self.state.halt_reason = f"回撤风控 ({self.state.current_drawdown:.1%} > {max_dd:.0%})"
+                    print(f"[V6.5c] 触发熔断: {self.state.halt_reason}")
+                return True
+            else:
+                self.state.drawdown_halted = False
+
+        # Layer 4: 连续亏损风控
+        max_losses = self.params.get('max_consecutive_losses', 5)
+        if self.state.consecutive_losses >= max_losses:
+            if not self.state.loss_halted:
+                self.state.loss_halted = True
+                self.state.halt_reason = f"连续亏损风控 ({self.state.consecutive_losses}次)"
+                print(f"[V6.5c] 触发熔断: {self.state.halt_reason} — 需人工确认恢复")
             return True
             
         return False
 
     def _generate_signals(self, data: MarketData, context: StrategyContext) -> List[Signal]:
+        """V6.5c 信号生成：RSI + 成交量 + K线形态 三维验证"""
         signals = []
         pos = context.positions.get(self.symbol)
         pos_size = float(pos.size) if pos else 0.0
-        
-        # --- 全局买卖锁定：解决买入秒卖出问题 ---
+
+        # 层数计算
+        layer_value = self.params.get('total_capital', 10000) / self.params.get('grid_layers', 5)
+        current_layers = int(round(pos_size * data.close / layer_value)) if pos_size > 0 else 0
+
+        # --- 全局冷却锁 ---
         cooldown_lock = False
         cooldown_min = self.params.get('buy_cooldown_min', 15)
         if getattr(self.state, 'last_buy_time', None) is not None:
-            from datetime import timedelta
             if data.timestamp < self.state.last_buy_time + timedelta(minutes=cooldown_min):
                 cooldown_lock = True
-        
-        # 趋势强度 (15m MACD)
-        is_bullish = self.state.macdhist > 0
-        is_strong_bull = is_bullish and self.state.macd > 0 and self.state.macdhist > self.state.macdhist_prev if hasattr(self.state, 'macdhist_prev') else False
-        self.state.macdhist_prev = self.state.macdhist
 
-        # 1. 卖出逻辑 (加入全局锁定)
+        # --- 三维条件分量 ---
+        vol_threshold = self.params.get('volume_threshold', 1.3)
+        current_vol = data.volume
+        vol_confirmed = self.state.volume_ma > 0 and current_vol > self.state.volume_ma * vol_threshold
+
+        # 1. 卖出逻辑：RSI超买 + 放量 + 阴线
         if pos_size > 0 and not cooldown_lock:
-            sell_threshold = self.params.get('rsi_sell_threshold', 70)
-            if is_strong_bull:
-                sell_threshold = self.params.get('rsi_bull_adjust', 60)
-            
-            if self.state.current_rsi > sell_threshold:
-                if getattr(self.state, 'grid_lines', []) and len(self.state.grid_lines) >= 2:
-                    if data.close >= self.state.grid_lines[-2]:
-                        sell_ratio = 1.0 # 简化全部卖出
-                        reason = f"MTF Sell: RSI={self.state.current_rsi:.1f} Bullish={is_bullish} Vol={pos_size:.4f}"
-                        signals.append(Signal(
-                            timestamp=data.timestamp,
-                            symbol=self.symbol,
-                            side=Side.SELL,
-                            size=pos_size * sell_ratio,
-                            reason=reason
-                        ))
+            rsi_sell = self.params.get('rsi_sell_threshold', 70)
+            is_bearish_candle = not self.state.is_bullish_candle  # close < open
 
-        # 2. 买入逻辑
-        rsi_buy_threshold = self.params.get('rsi_buy_threshold', 35)
-        rsi_condition = self.state.current_rsi < rsi_buy_threshold
-        
-        pivot_condition = False
-        if getattr(self.state, 'pivots_low', []):
-            lowest_pivot_low = min(p['price'] for p in self.state.pivots_low)
-            margin = self.params.get('pivot_buy_margin', 0.005)
-            if data.close <= lowest_pivot_low * (1 + margin) and self.state.current_rsi < 45:
-                pivot_condition = True
-        
-        macd_improving = hasattr(self.state, 'macdhist_prev') and self.state.macdhist > self.state.macdhist_prev
-        
-        can_buy = False
-        if rsi_condition and (is_bullish or macd_improving): can_buy = True
-        if pivot_condition and self.state.current_rsi < 40: can_buy = True
+            if self.state.current_rsi > rsi_sell and vol_confirmed and is_bearish_candle:
+                sell_layers = min(1, current_layers) if current_layers > 0 else 1
+                sell_ratio = sell_layers / current_layers if current_layers > 0 else 1.0
+                reason = (f"V6.5c Sell: RSI={self.state.current_rsi:.1f}>{rsi_sell} "
+                          f"放量={current_vol:.0f}/{self.state.volume_ma:.0f}({vol_threshold}x) "
+                          f"阴线 抛售{sell_layers}层 剩余~{max(0, current_layers-sell_layers)}层")
+                signals.append(Signal(
+                    timestamp=data.timestamp,
+                    symbol=self.symbol,
+                    side=Side.SELL,
+                    size=pos_size * sell_ratio,
+                    reason=reason
+                ))
+                # 卖出后判断盈亏，更新连续亏损计数
+                if self.state.last_buy_price > 0:
+                    if data.close < self.state.last_buy_price:
+                        self.state.consecutive_losses += 1
+                    else:
+                        self.state.consecutive_losses = 0
 
-        if cooldown_lock: can_buy = False
+        # 2. 买入逻辑：RSI超卖 + 放量 + 阳线
+        rsi_buy = self.params.get('rsi_buy_threshold', 30)
+        max_layers = self.params.get('grid_layers', 5)
 
-        if can_buy and pos_size > 0:
-            price_buffer = self.params.get('buy_price_buffer', 0.003)
-            price_dropped = True
-            if getattr(self.state, 'last_buy_price', 0) > 0:
-                price_dropped = data.close <= self.state.last_buy_price * (1.0 - price_buffer)
-            if not price_dropped: can_buy = False
+        can_buy = (
+            self.state.current_rsi < rsi_buy
+            and vol_confirmed
+            and self.state.is_bullish_candle
+            and current_layers < max_layers
+            and not cooldown_lock
+            and not self.state.drawdown_halted
+            and not self.state.loss_halted
+        )
 
-        if can_buy and getattr(self.state, 'grid_lines', []):
-            forbidden_zone = self.state.grid_lower + (self.state.grid_upper - self.state.grid_lower) * 0.66
-            if data.close > forbidden_zone: can_buy = False
-
-        if can_buy and getattr(self.state, 'grid_lines', []):
-            idx = -1
-            for i in range(len(self.state.grid_lines) - 1):
-                if self.state.grid_lines[i] <= data.close < self.state.grid_lines[i+1]:
-                    idx = i
-                    break
-            if idx != -1:
-                layers = self.params.get('grid_layers', 5)
-                weight = (layers - idx) / sum(range(1, layers + 1))
-                if pivot_condition: weight *= 1.2
-                
-                buy_usdt = self.params.get('total_capital', 10000) * weight
-                
-                if context.cash >= buy_usdt * 0.95:
-                    pt_str = "(Pivot Support)" if pivot_condition else ""
-                    reason = f"MTF Grid Buy: Layer={idx} RSI={self.state.current_rsi:.1f} {pt_str}"
-                    signals.append(Signal(
-                        timestamp=data.timestamp,
-                        symbol=self.symbol,
-                        side=Side.BUY,
-                        size=buy_usdt,
-                        meta={'size_in_quote': True},
-                        reason=reason
-                    ))
-                    self.state.last_buy_time = data.timestamp
-                    self.state.last_buy_price = data.close
+        if can_buy:
+            buy_usdt = layer_value  # 每次固定 1 层
+            if context.cash >= buy_usdt * 0.95:
+                reason = (f"V6.5c Buy: RSI={self.state.current_rsi:.1f}<{rsi_buy} "
+                          f"放量={current_vol:.0f}/{self.state.volume_ma:.0f}({vol_threshold}x) "
+                          f"阳线 买入1层 当前={current_layers}层")
+                signals.append(Signal(
+                    timestamp=data.timestamp,
+                    symbol=self.symbol,
+                    side=Side.BUY,
+                    size=buy_usdt,
+                    meta={'size_in_quote': True},
+                    reason=reason
+                ))
+                self.state.last_buy_time = data.timestamp
+                self.state.last_buy_price = data.close
 
         return signals
 
@@ -446,43 +484,59 @@ class GridMTFStrategyV6_0(BaseStrategy):
 
 
     def get_status(self, context: Optional[StrategyContext] = None) -> Dict[str, Any]:
-        # 计算辅助显示指标
+        # MACD 趋势 (仅展示用)
         is_bullish = self.state.macdhist > 0
         macd_trend = "强牛" if is_bullish and self.state.macdhist > self.state.macdhist_prev else "牛市" if is_bullish else "震荡"
         if self.state.macdhist < 0:
             macd_trend = "强熊" if self.state.macdhist < self.state.macdhist_prev else "熊市"
         
-        # 信号状态判定 (用于 UI 显示)
-        signal_text = "等待趋势"
+        # V6.5c：三维信号状态判定
+        vol_threshold = self.params.get('volume_threshold', 1.3)
+        vol_ok = self.state.volume_ma > 0 and self._data_5m and self._data_5m[-1].volume > self.state.volume_ma * vol_threshold
+        rsi_buy = self.params.get('rsi_buy_threshold', 30)
+
+        signal_text = "等待信号"
         signal_color = "neutral"
         signal_strength = "--"
 
-        if self.state.is_halted:
-            signal_text = f"熔断: {self.state.halt_reason}"
+        if self.state.is_halted or self.state.drawdown_halted or self.state.loss_halted:
+            reason = self.state.halt_reason
+            if self.state.drawdown_halted:
+                reason = f"回撤熔断 ({self.state.current_drawdown:.1%})"
+            elif self.state.loss_halted:
+                reason = f"连亏熔断 ({self.state.consecutive_losses}次)"
+            signal_text = f"熔断: {reason}"
             signal_color = "sell"
-        elif is_bullish:
+        elif self.state.current_rsi < rsi_buy:
+            # RSI 超卖区
+            conditions_met = sum([True, vol_ok, self.state.is_bullish_candle])  # RSI 已满足
             signal_color = "buy"
-            # 计算信号强度: 基于 RSI 接近程度和 MACD 增长
-            rsi_dist = max(0, self.params.get('rsi_buy_threshold', 28) - self.state.current_rsi)
-            if self.state.current_rsi < self.params.get('rsi_buy_threshold', 28):
-                signal_text = "多头择时买入"
-                signal_strength = "强" if rsi_dist > 5 else "高"
-            else:
-                signal_text = "趋势持有中"
+            if conditions_met == 3:
+                signal_text = "三维验证通过 → 买入"
+                signal_strength = "强"
+            elif conditions_met == 2:
+                signal_text = f"RSI超卖 等待{'放量' if not vol_ok else '阳线'}"
                 signal_strength = "中"
+            else:
+                signal_text = "RSI超卖 等待确认"
+                signal_strength = "低"
+        elif self.state.current_rsi > self.params.get('rsi_sell_threshold', 70):
+            signal_color = "sell"
+            signal_text = "RSI超买 关注卖出"
+            signal_strength = "中"
         else:
-            signal_strength = "弱" if self.state.macdhist < -5 else "低"
+            signal_text = "区间运行"
+            signal_strength = "--"
 
         # 量能分析
         vol_current = 0
         vol_trend = "持平"
         if self._data_5m:
-            df = pd.DataFrame(list(self._data_5m))
-            vol_current = df['volume'].iloc[-1]
-            vol_ma = df['volume'].rolling(20).mean().iloc[-1]
-            if not np.isnan(vol_ma) and vol_ma > 0:
-                ratio = vol_current / vol_ma
+            vol_current = self._data_5m[-1].volume
+            if self.state.volume_ma > 0:
+                ratio = vol_current / self.state.volume_ma
                 if ratio > 1.5: vol_trend = "放量"
+                elif ratio > vol_threshold: vol_trend = "温和放量"
                 elif ratio < 0.6: vol_trend = "缩量"
 
         pos_count = 0
@@ -495,8 +549,8 @@ class GridMTFStrategyV6_0(BaseStrategy):
             pos_avg_price = float(pos.avg_price)
             pos_unrealized_pnl = float(pos.unrealized_pnl)
             if pos_size > 0:
-                # 简单估算层数: 当前持仓对比网格单层期望
-                pos_count = max(1, int(pos_size / (self.params.get('total_capital', 10000) / 70000 / 5))) 
+                layer_value = self.params.get('total_capital', 10000) / self.params.get('grid_layers', 5)
+                pos_count = max(1, int(round(pos_size * (pos_avg_price if pos_avg_price > 0 else 1) / layer_value)))
 
         return {
             'name': self.name,
@@ -517,14 +571,16 @@ class GridMTFStrategyV6_0(BaseStrategy):
             'grid_upper': round(self.state.grid_upper, 2),
             'grid_range': f"{self.state.grid_lower:.1f} - {self.state.grid_upper:.1f}",
             'grid_lines': self.state.grid_lines,
-            'rsi_oversold': self.params.get('rsi_buy_threshold', 28),
+            'rsi_oversold': self.params.get('rsi_buy_threshold', 30),
             'rsi_overbought': self.params.get('rsi_sell_threshold', 70),
             'position_count': pos_count,
             'marketRegime': "上升通道" if is_bullish else "震荡下行" if self.state.macdhist < -5 else "调整阶段",
             'vol_trend': vol_trend,
             'current_volume': round(vol_current, 2),
-            'is_halted': self.state.is_halted,
+            'is_halted': self.state.is_halted or self.state.drawdown_halted or self.state.loss_halted,
             'halt_reason': self.state.halt_reason,
+            'current_drawdown': round(self.state.current_drawdown, 4),
+            'consecutive_losses': self.state.consecutive_losses,
             'pivots': {
                 'pivots_high': getattr(self.state, 'pivots_high', []),
                 'pivots_low': getattr(self.state, 'pivots_low', [])

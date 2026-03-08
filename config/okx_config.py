@@ -130,25 +130,63 @@ class OKXAPI:
         return None
     
     def get_candles(self, inst_id='BTC-USDT', bar='1m', limit=100):
-        """获取K线数据"""
-        params = {
-            'instId': inst_id,
-            'bar': bar,
-            'limit': str(limit)
-        }
-        result = self._request('GET', '/api/v5/market/candles', params)
-        
-        if result and result.get('code') == '0':
-            # 转换为DataFrame
-            df = pd.DataFrame(result['data'], columns=[
-                'timestamp', 'open', 'high', 'low', 'close', 'volume', 'volCcy', 'volCcyQuote', 'confirm'
-            ])
-            df['timestamp'] = pd.to_datetime(df['timestamp'].astype(float), unit='ms')
-            df.set_index('timestamp', inplace=True)
-            df = df.sort_index()
-            df = df[['open', 'high', 'low', 'close', 'volume']].astype(float)
-            return df
-        return None
+        """
+        获取K线数据
+        如果 limit > 100, 自动通过 history-candles 翻页获取
+        """
+        if limit <= 100:
+            params = {
+                'instId': inst_id,
+                'bar': bar,
+                'limit': str(limit)
+            }
+            result = self._request('GET', '/api/v5/market/candles', params)
+            if result and result.get('code') == '0':
+                return self._process_candle_data(result['data'])
+            return None
+        else:
+            # 翻页逻辑
+            all_data = []
+            after = ""
+            remaining = limit
+            
+            while remaining > 0:
+                step_limit = min(remaining, 100)
+                params = {
+                    'instId': inst_id,
+                    'bar': bar,
+                    'limit': str(step_limit)
+                }
+                if after:
+                    params['after'] = after
+                
+                # history-candles 接口支持更远的数据
+                result = self._request('GET', '/api/v5/market/history-candles', params)
+                
+                if result and result.get('code') == '0' and result['data']:
+                    batch = result['data']
+                    all_data.extend(batch)
+                    after = batch[-1][0] # 最后一根的时间戳作为下一次的 after
+                    remaining -= len(batch)
+                    if len(batch) < step_limit:
+                        break # 没数据了
+                else:
+                    break
+            
+            if all_data:
+                return self._process_candle_data(all_data)
+            return None
+
+    def _process_candle_data(self, data):
+        """处理原始K线数据为 DataFrame"""
+        df = pd.DataFrame(data, columns=[
+            'timestamp', 'open', 'high', 'low', 'close', 'volume', 'volCcy', 'volCcyQuote', 'confirm'
+        ])
+        df['timestamp'] = pd.to_datetime(df['timestamp'].astype(float), unit='ms')
+        df.set_index('timestamp', inplace=True)
+        df = df.sort_index()
+        df = df[['open', 'high', 'low', 'close', 'volume']].astype(float)
+        return df
     
     def place_order(self, inst_id='BTC-USDT', side='buy', ord_type='market',
                     sz='0.01', px=None, td_mode='cash', ccy=None, force_server=False,

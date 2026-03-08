@@ -6,26 +6,19 @@
 // 全局变量容器 (避免污染全局作用域的最佳实践，但此处为了保持与原 HTML 逻辑兼容性，暂沿用全局变量)
 let mainChart = null;
 let rsiChart = null;
-let macdChart = null;
-let volumeChart = null;
-let equityChart = null;
-let candleSeries = null;
-let rsiSeries = null;
-let macdHistSeries = null;
-let macdMacdSeries = null;
-let macdSignalSeries = null;
+// MACD removed
 let volumeSeries = null;
 let equitySeries = null;
 
 let latestStrategyInfo = null;
 let isConnected = false;
 let reconnectAttempts = 0;
-let currentStrategyId = 'grid_v60';
+let currentStrategyId = 'grid_v80';
 let currentSlotStatus = 'stopped';
 let lastCandleTime = null;
 let rsiStartTime = null;
 let lastRsiUpdateTime = null;
-let lastMacdUpdateTime = null;
+// MACD removed
 let initialBalanceForChart = null;
 let equityStartTime = null;
 let lastEquityUpdateTime = null;
@@ -47,7 +40,7 @@ let globalTradeMarkers = [];
 let globalPivotMarkers = [];
 
 // --- 图表系列数据就绪跟踪 (防止 "Value is null" 异步渲染错误) ---
-let seriesHasData = { candle: false, rsi: false, macd: false, volume: false, equity: false };
+let seriesHasData = { candle: false, rsi: false, volume: false, equity: false };
 
 // 工具函数
 function fmtPct(v) {
@@ -234,17 +227,7 @@ function initCharts() {
     });
     rsiSeries = rsiChart.addLineSeries({ color: '#a855f7', lineWidth: 2, title: 'RSI' });
 
-    macdChart = LightweightCharts.createChart(document.getElementById('tv-chart-macd'), {
-        layout: { background: { color: 'transparent' }, textColor: '#94a3b8', fontFamily: "'Noto Sans SC', sans-serif" },
-        grid: { vertLines: { color: 'rgba(255, 255, 255, 0.03)' }, horzLines: { color: 'rgba(255, 255, 255, 0.03)' } },
-        crosshair: { mode: LightweightCharts.CrosshairMode.Magnet, vertLine: { color: '#00d4ff' } },
-        rightPriceScale: { borderColor: 'rgba(255, 255, 255, 0.1)', autoScale: true, scaleMargins: { top: 0.1, bottom: 0.1 }, visible: true, minimumWidth: 72 },
-        timeScale: { visible: false },
-    });
-    macdHistSeries = macdChart.addHistogramSeries({ color: '#26a69a', priceFormat: { type: 'volume' }, priceScaleId: 'right' });
-    macdMacdSeries = macdChart.addLineSeries({ color: '#2962FF', lineWidth: 1, title: 'MACD', priceScaleId: 'right' });
-    macdSignalSeries = macdChart.addLineSeries({ color: '#FF6D00', lineWidth: 1, title: 'Signal', priceScaleId: 'right' });
-    macdHistSeries.createPriceLine({ price: 0, color: 'rgba(255, 255, 255, 0.2)', lineWidth: 1, lineStyle: LightweightCharts.LineStyle.Solid, axisLabelVisible: false });
+    // MACD 图表已移除
 
     volumeChart = LightweightCharts.createChart(document.getElementById('tv-chart-volume'), {
         layout: { background: { color: 'transparent' }, textColor: '#94a3b8', fontFamily: "'Noto Sans SC', sans-serif" },
@@ -270,7 +253,7 @@ function initCharts() {
         const chartDataMap = [
             { chart: mainChart, hasData: seriesHasData.candle },
             { chart: rsiChart, hasData: seriesHasData.rsi },
-            { chart: macdChart, hasData: seriesHasData.macd },
+            // MACD 已移除
             { chart: volumeChart, hasData: seriesHasData.volume },
             { chart: equityChart, hasData: seriesHasData.equity }
         ];
@@ -282,7 +265,7 @@ function initCharts() {
             }
         });
     }
-    [mainChart, rsiChart, macdChart, volumeChart, equityChart].forEach(c => {
+    [mainChart, rsiChart, volumeChart, equityChart].forEach(c => {
         if (c) c.timeScale().subscribeVisibleTimeRangeChange(() => syncCharts(c));
     });
 
@@ -294,43 +277,15 @@ function initCharts() {
         const h = container.clientHeight;
 
         // 根据 CSS 定义的比例分配高度 (或简单分配)
-        if (mainChart) mainChart.applyOptions({ width: w, height: h * 0.48 });
-        if (rsiChart) rsiChart.applyOptions({ width: w, height: h * 0.14 });
-        if (macdChart) macdChart.applyOptions({ width: w, height: h * 0.14 });
-        if (volumeChart) volumeChart.applyOptions({ width: w, height: h * 0.10 });
-        if (equityChart) equityChart.applyOptions({ width: w, height: h * 0.14 });
+        if (mainChart) mainChart.applyOptions({ width: w, height: h * 0.55 });
+        if (rsiChart) rsiChart.applyOptions({ width: w, height: h * 0.15 });
+        if (volumeChart) volumeChart.applyOptions({ width: w, height: h * 0.15 });
+        if (equityChart) equityChart.applyOptions({ width: w, height: h * 0.15 });
     });
     resizeObserver.observe(document.querySelector('.chart-panel'));
 }
 
-function updateMACD(macdData, timestamp) {
-    if (!timestamp || !macdData) return;
-    const time = convertTime(timestamp);
-    if (time === null) return;
-    if (lastMacdUpdateTime !== null && time < lastMacdUpdateTime) return;
-
-    const hist = (macdData.macdhist === null || macdData.macdhist === undefined) ? null : parseFloat(macdData.macdhist);
-    const macdLine = (macdData.macd === null || macdData.macd === undefined) ? null : parseFloat(macdData.macd);
-    const signalLine = (macdData.macdsignal === null || macdData.macdsignal === undefined) ? null : parseFloat(macdData.macdsignal);
-
-    try {
-        if (macdHistSeries && hist !== null && isFinite(hist)) {
-            macdHistSeries.update({ time, value: hist, color: hist > 0 ? '#26a69a' : '#ef5350' });
-        }
-    } catch (err) { console.warn('[Chart] MACD Hist update skipped:', err.message); }
-    try {
-        if (macdMacdSeries && typeof macdLine === 'number' && isFinite(macdLine)) {
-            macdMacdSeries.update({ time, value: macdLine });
-        }
-    } catch (err) { console.warn('[Chart] MACD Line update skipped:', err.message); }
-    try {
-        if (macdSignalSeries && typeof signalLine === 'number' && isFinite(signalLine)) {
-            macdSignalSeries.update({ time, value: signalLine });
-        }
-    } catch (err) { console.warn('[Chart] MACD Signal update skipped:', err.message); }
-    seriesHasData.macd = true;
-    lastMacdUpdateTime = time;
-}
+// MACD 更新函数弃用
 
 function updateRSI(rsiValue, timestamp) {
     if (!rsiSeries || !timestamp) return;
@@ -583,7 +538,7 @@ function renderTradeList() {
         const item = document.createElement('div');
         item.className = `trade-item ${trade.type.toLowerCase()}`;
         const amountText = (trade.quote_amount > 0 ? trade.quote_amount : (trade.price * trade.size));
-        item.innerHTML = `<div class="trade-icon">${trade.type === 'BUY' ? '买' : '卖'}</div><div class="trade-info"><div class="trade-type">${trade.type === 'BUY' ? '买入' : '卖出'} BTC</div><div style="font-size:12px;color:#888;">${trade.size.toFixed(6)} BTC @ $${trade.price.toFixed(2)}</div><div class="trade-time">${formatLocalTime(trade.time)}</div></div><div class="trade-price" style="color:${trade.type === 'BUY' ? 'var(--loss)' : 'var(--profit)'}">${trade.type === 'BUY' ? '-' : '+'}${amountText.toFixed(2)} USDT</div>`;
+        item.innerHTML = `<div class="trade-icon">${trade.type === 'BUY' ? '买' : '卖'}</div><div class="trade-info"><div class="trade-type">${trade.type === 'BUY' ? '买入' : '卖出'} ${trade.symbol || ''}</div><div style="font-size:12px;color:#888;">${trade.size.toFixed(trade.symbol && trade.symbol.includes('DOGE') ? 2 : 6)} ${trade.symbol || ''} @ $${trade.price.toFixed(trade.price < 1 ? 4 : 2)}</div><div class="trade-time">${formatLocalTime(trade.time)}</div></div><div class="trade-price" style="color:${trade.type === 'BUY' ? 'var(--loss)' : 'var(--profit)'}">${trade.type === 'BUY' ? '-' : '+'}${amountText.toFixed(2)} USDT</div>`;
         container.appendChild(item);
     });
     document.getElementById('tradeCount').textContent = `${allTrades.length} 笔`;
@@ -612,17 +567,45 @@ function renderStrategyDoc(strategyData) {
         <div style="background: rgba(0,212,255,0.03); border: 1px solid rgba(0,212,255,0.1); border-radius: 8px; padding: 18px; margin-bottom: 24px;">
             <h5 style="margin: 0 0 12px 0; color: var(--primary); font-size: 16px;">🧠 策略核心判别逻辑</h5>
             <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: var(--text-secondary); line-height: 1.7;">
-                <li><strong>趋势判别：</strong>使用 MACD (12,26,9) 柱状图斜率判断 5 级市场状态（强牛至强熊）。</li>
-                <li><strong>入场择时：</strong>基于自适应 RSI (14) 识别超买超卖，强牛市网格上移，强熊市网格下移。</li>
-                <li><strong>网格执行：</strong>结合 ATR 波动率动态计算网格上下边界及间距，实现自适应网格。</li>
-                <li><strong>多维风控：</strong>包含 RSI 高位禁买、移动止盈（基于指标背离）、黑天鹅检测及冷却期机制。</li>
+                <li><strong>核心指标：</strong>纯 RSI (14) 动态网格，彻底剔除 MACD 和其他延迟指标。</li>
+                <li><strong>阶梯止盈：</strong>随短线 RSI 过热（70/80），分批抛售止盈，锁定趋势利润。</li>
+                <li><strong>动态网格：</strong>通过 ATR（基于真实波动幅度）实时调节每层网格吃挂单的间距（波动大则拉大间距）。</li>
+                <li><strong>多维风控：</strong>针对极端行情特有黑天鹅熔断（例如 ATR 瞬间暴涨触发强制平仓与冷却机制）。</li>
             </ul>
         </div>
     `;
 
-    // 2. 将参数渲染为 2 列网格布局
-    const gridHtml = Object.entries(params).map(([k, v]) => {
-        const meta = metadata[k] || { label: k, desc: '暂无说明', default: '--' };
+    // 递归拍平嵌套的 JSON 对象以便渲染
+    function flattenObject(ob) {
+        var toReturn = {};
+        for (var i in ob) {
+            if (!ob.hasOwnProperty(i)) continue;
+            if ((typeof ob[i]) == 'object' && ob[i] !== null && !Array.isArray(ob[i])) {
+                var flatObject = flattenObject(ob[i]);
+                for (var x in flatObject) {
+                    if (!flatObject.hasOwnProperty(x)) continue;
+                    toReturn[i + '.' + x] = flatObject[x];
+                }
+            } else {
+                toReturn[i] = ob[i];
+            }
+        }
+        return toReturn;
+    }
+
+    const flatParams = flattenObject(params);
+    const gridHtml = Object.entries(flatParams).map(([k, v]) => {
+        // 由于 meta_path 中嵌套关系与 params 相同，我们也尝试访问深层 meta
+        const keys = k.split('.');
+        let meta = metadata;
+        for (let key of keys) {
+            if (meta && meta[key]) meta = meta[key];
+            else { meta = null; break; }
+        }
+        if (!meta || typeof meta !== 'object' || meta.label === undefined) {
+            meta = { label: k, desc: '暂无说明', default: '--' };
+        }
+
         let displayVal = v;
         if (typeof v === 'boolean') displayVal = v ? 'true' : 'false';
         return `
@@ -633,13 +616,13 @@ function renderStrategyDoc(strategyData) {
                         <div style="font-weight: normal; color: #475569; font-size: 13px; font-family: monospace;">${k}</div>
                     </div>
                     <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 6px;">
-                        <input type="text" class="param-input" id="input-${k}" data-key="${k}" value="${displayVal}" 
+                        <input type="text" class="param-input" id="input-${k.replace(/\./g, '-')}" data-key="${k}" value="${displayVal}" 
                                style="width: 85px; text-align: right; background: #0f172a; border: 1px solid #334155; color: var(--primary); padding: 5px 10px; border-radius: 6px; font-size: 15px; font-family: monospace; transition: all 0.3s;">
                         <div style="font-size: 12px; color: #10b981;">
                             <span style="color: #475569;">默认:</span>
                             <span style="cursor: pointer; text-decoration: underline dotted; font-weight: bold; padding: 2px 4px; background: rgba(16,185,129,0.1); border-radius: 3px;" 
                                   title="点击恢复默认值"
-                                  onclick="const el=document.getElementById('input-${k}'); el.value='${meta.default}'; el.focus(); el.style.boxShadow='0 0 12px var(--primary)'; setTimeout(()=>el.style.boxShadow='', 600);">
+                                  onclick="const el=document.getElementById('input-${k.replace(/\./g, '-')}'); el.value='${meta.default}'; el.focus(); el.style.boxShadow='0 0 12px var(--primary)'; setTimeout(()=>el.style.boxShadow='', 600);">
                                 ${meta.default}
                             </span>
                         </div>
@@ -654,13 +637,10 @@ function renderStrategyDoc(strategyData) {
     box.innerHTML = `
         <div class="strategy-block">
             ${logicHtml}
-            <h4 style="margin-bottom: 20px; color: var(--text-primary); border-left: 4px solid var(--primary); padding-left: 12px; font-size: 18px;">策略参数配置</h4>
+            <h4 style="margin-bottom: 20px; color: var(--text-primary); border-left: 4px solid var(--primary); padding-left: 12px; font-size: 18px;">策略配置 (深层解析模式)</h4>
             <div class="param-list" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">${gridHtml}</div>
             <div style="margin-top:24px; padding: 15px; background: rgba(0,212,255,0.05); border: 1px dashed var(--primary); border-radius: 8px; font-size:14px; color: var(--text-primary); line-height: 1.6;">
-                <strong>💡 操作提示：</strong><br>
-                1. 修改数值后，点击页面下方的“<strong>保存并应用</strong>”按钮。<br>
-                2. 点击绿色的“<strong>默认值</strong>”数字可快速恢复初始配置。<br>
-                3. 修改核心周期参数（MACD/RSI/ATR）会重置指标引擎。
+                <strong>💡 提示：</strong> 修改数值后点击“保存并应用”。嵌套的值将被重建送达深度合并字典引擎中。
             </div>
         </div>`;
 }
@@ -668,7 +648,18 @@ function renderStrategyDoc(strategyData) {
 // Socket 事件
 socket.on('connect', () => { isConnected = true; reconnectAttempts = 0; document.getElementById('statusDot').className = 'status-dot connected'; document.getElementById('statusText').textContent = '已连接'; });
 socket.on('disconnect', () => { isConnected = false; document.getElementById('statusDot').className = 'status-dot disconnected'; document.getElementById('statusText').textContent = '已断开'; });
-socket.on('strategies_list', () => { socket.emit('join', { strategy_id: currentStrategyId }); });
+socket.on('strategies_list', (data) => {
+    console.log('[SocketIO] Available strategies:', data.strategies);
+    if (data.strategies && data.strategies.length > 0) {
+        // 如果当前 ID 不在列表中，或者还是默认的 grid_v65，则自动切换到第一个可用策略
+        const ids = data.strategies.map(s => s.id);
+        if (!ids.includes(currentStrategyId)) {
+            currentStrategyId = ids[0];
+            console.log('[SocketIO] Auto-switching to available strategy:', currentStrategyId);
+        }
+    }
+    socket.emit('join', { strategy_id: currentStrategyId });
+});
 socket.on('reset_ui', (data) => {
     const isSoft = data && data.soft;
     console.log(`[SocketIO] 执行重置信号: sid=${currentStrategyId}, soft=${isSoft}`);
@@ -689,9 +680,7 @@ socket.on('reset_ui', (data) => {
         console.log('[SocketIO] 执行全量硬重置 - 清空行情历史');
         if (window.candleSeries) window.candleSeries.setData([]);
         if (window.rsiSeries) window.rsiSeries.setData([]);
-        if (window.macdMacdSeries) window.macdMacdSeries.setData([]);
-        if (window.macdSignalSeries) window.macdSignalSeries.setData([]);
-        if (window.macdHistSeries) window.macdHistSeries.setData([]);
+        // MACD 已移除
 
         // 移除 markers 和网格线
         candleSeries?.setMarkers([]);
@@ -712,7 +701,7 @@ socket.on('reset_ui', (data) => {
     const resetFields = [
         'totalValue', 'pnlRate', 'cashValue', 'positionSize',
         'positionAvgPrice', 'positionUnrealizedPnl', 'positionLayers',
-        'signalText', 'macdTrend', 'atrVal', 'marketRegime'
+        'signalText', 'atrVal', 'marketRegime'
     ];
     resetFields.forEach(id => {
         const el = document.getElementById(id);
@@ -773,28 +762,7 @@ socket.on('history_update', (data) => {
         equitySeries.setData(eqData);
         seriesHasData.equity = eqData.length > 0;
     }
-    if (data.history_macd) {
-        const batch = data.history_macd;
-        const macdData = [], signalData = [], histData = [];
-        batch.forEach(item => {
-            const time = convertTime(item.time);
-            if (!time) return;
-            // 严格过滤 null 和 undefined，只有有效数字才推入数组
-            if (typeof item.macd === 'number' && isFinite(item.macd)) {
-                macdData.push({ time, value: item.macd });
-            }
-            if (typeof item.macdsignal === 'number' && isFinite(item.macdsignal)) {
-                signalData.push({ time, value: item.macdsignal });
-            }
-            if (typeof item.macdhist === 'number' && isFinite(item.macdhist)) {
-                histData.push({ time, value: item.macdhist, color: item.macdhist > 0 ? '#26a69a' : '#ef5350' });
-            }
-        });
-        if (macdMacdSeries) macdMacdSeries.setData(macdData);
-        if (macdSignalSeries) macdSignalSeries.setData(signalData);
-        if (macdHistSeries) macdHistSeries.setData(histData);
-        seriesHasData.macd = (macdData.length > 0 || signalData.length > 0 || histData.length > 0);
-    }
+    // MACD rendering skipped for V7.0
 });
 
 socket.on('update', (data) => {
@@ -809,8 +777,14 @@ socket.on('update', (data) => {
 
     // 价格与权益
     const currentSymbol = (latestStrategyInfo && latestStrategyInfo.params) ? latestStrategyInfo.params.symbol : (Object.keys(data.prices || {})[0] || 'BTC-USDT');
-    const btcPrice = (data.prices && data.prices[currentSymbol]) || (data.prices && data.prices['BTC-USDT']) || (data.prices && data.prices['BTC-USDT-SWAP']) || null;
-    if (btcPrice) updateElement('btcPrice', btcPrice.toLocaleString());
+    updateElement('symbolPairLabel', currentSymbol.replace('-', ' / '));
+    updateElement('positionSymbolLabel', currentSymbol.split('-')[0]);
+
+    const currentMarketPrice = (data.prices && data.prices[currentSymbol]) || (data.prices && data.prices['BTC-USDT']) || (data.prices && data.prices['BTC-USDT-SWAP']) || null;
+    if (currentMarketPrice) {
+        const priceFormatted = currentMarketPrice < 1 ? currentMarketPrice.toFixed(4) : currentMarketPrice.toLocaleString();
+        updateElement('btcPrice', priceFormatted);
+    }
 
     if (data.total_value !== undefined) updateElement('totalValue', data.total_value.toLocaleString() + ' USDT');
     if (data.cash !== undefined) updateElement('cashValue', data.cash.toLocaleString());
@@ -855,7 +829,11 @@ socket.on('update', (data) => {
         if (s.grid_lower && s.grid_upper) {
             updateElement('gridRange', `${s.grid_lower.toFixed(1)} - ${s.grid_upper.toFixed(1)}`);
         }
-        updateElement('positionLayers', s.position_count !== undefined ? `${s.position_count} 层` : '--');
+        if (s.layer_holdings && s.layer_holdings.length > 0) {
+            updateElement('positionLayers', `已锁: [${s.layer_holdings.join(', ')}]`);
+        } else {
+            updateElement('positionLayers', s.position_count !== undefined && s.position_count > 0 ? `${s.position_count} 层` : '未建仓');
+        }
 
         // 波段参考
         const pivotBox = document.getElementById('pivotInfo');
@@ -877,7 +855,8 @@ socket.on('update', (data) => {
         // 持仓详情逻辑 (多来源兼容)
         const activeSymbol = (s && s.params && s.params.symbol) ? s.params.symbol : 'BTC-USDT';
         const posSize = (data.positions && data.positions[activeSymbol]) ? data.positions[activeSymbol].size : (s.position_size || 0);
-        updateElement('positionSize', parseFloat(posSize).toFixed(4));
+        const sizePrecision = activeSymbol.includes('DOGE') ? 2 : 6;
+        updateElement('positionSize', parseFloat(posSize).toFixed(sizePrecision));
 
         const posAvg = (data.positions && data.positions[activeSymbol]) ? data.positions[activeSymbol].avg_price : (s.position_avg_price || 0);
         updateElement('positionAvgPrice', posAvg > 0 ? posAvg.toLocaleString() : '--');
@@ -898,7 +877,6 @@ socket.on('update', (data) => {
         // 图表标记与网格线
         if (ts) {
             updatePivotMarkers(s.pivots);
-            updateMACD({ macd: s.macd, macdsignal: s.macdsignal, macdhist: s.macdhist }, ts);
             if (s.grid_lines) drawGridLines(s.grid_lines[0], s.grid_lines[s.grid_lines.length - 1], s.grid_lines.length);
         }
     }
@@ -969,10 +947,30 @@ document.addEventListener('DOMContentLoaded', () => {
             newParams[key] = val;
         });
 
-        console.log('[Dashboard] 发送参数更新请求:', newParams);
+        // 重构回嵌套 JSON
+        function unflattenObject(data) {
+            var result = {};
+            for (var i in data) {
+                var keys = i.split('.');
+                var current = result;
+                for (var j = 0; j < keys.length; j++) {
+                    var key = keys[j];
+                    if (j === keys.length - 1) {
+                        current[key] = data[i];
+                    } else {
+                        current[key] = current[key] || {};
+                        current = current[key];
+                    }
+                }
+            }
+            return result;
+        }
+
+        const finalParams = unflattenObject(newParams);
+        console.log('[Dashboard] 发送参数更新请求 (嵌套):', finalParams);
         socket.emit('save_strategy_params', {
             strategy_id: currentStrategyId,
-            params: newParams
+            params: finalParams
         });
 
         // 提示并关闭弹窗

@@ -1,0 +1,30 @@
+{
+  "version": "7.0-Razor-BTC",
+  "port": 5070,
+  "symbol": "BTC-USDT",
+  "trading": {
+    "initial_capital": 10000,
+    "grid_layers": 5,
+    "layer_size_percent": 20
+  },
+  "signals": {
+    "rsi_period": 14,
+    "rsi_buy_extreme": 20,
+    "rsi_buy_normal": 28,
+    "rsi_sell_normal": 70,
+    "rsi_sell_extreme": 80
+  },
+  "grid": {
+    "dynamic_spacing": true,
+    "min_spacing": 0.003,
+    "atr_multiplier": 0.15
+  },
+  "risk": {
+    "black_swan_atr_mult": 3,
+    "ladder_take_profit": [
+      0.3,
+      0.4,
+      0.3
+    ]
+  }
+}

@@ -8,10 +8,10 @@ from pathlib import Path
 # 确保项目根目录在 path 中
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from strategies import GridMTFStrategyV6_0
+from strategies import GridStrategyV65A
 from executors.paper import PaperExecutor
 from datafeeds import OKXDataFeed
-from dashboard.server_60 import create_dashboard_60
+from dashboard_65.server_65 import create_dashboard_65
 from runner import MultiStrategyRunner, StrategySlot
 from config.api_config import OKX_DEMO_CONFIG, DEFAULT_SYMBOL, DEFAULT_TIMEFRAME
 
@@ -19,22 +19,22 @@ from config.api_config import OKX_DEMO_CONFIG, DEFAULT_SYMBOL, DEFAULT_TIMEFRAME
 # 策略配置
 # ──────────────────────────────────────────────────────────────
 INITIAL_BALANCE = 10000.0
-V60_RUNTIME_PATH = "config/grid_v60_runtime.json"
-V60_FACTORY_PATH = "config/grid_v60_default.json"
+V65_RUNTIME_PATH = "config/grid_v65_runtime.json"
+V65_FACTORY_PATH = "config/grid_v65_default.json"
 
 STRATEGY_CATALOG = {
-    'grid_v60': {
-        'display_name': 'Grid MTF V6.0 (JeffHuang Optimized)',
-        'cls': GridMTFStrategyV6_0,
+    'grid_v65': {
+        'display_name': 'Grid MTF V6.5c (RSI+Vol+Pattern)',
+        'cls': GridStrategyV65A,
         'params': {
             'symbol': DEFAULT_SYMBOL,
-            'config_path': V60_RUNTIME_PATH,
+            'config_path': V65_RUNTIME_PATH,
         }
     }
 }
 
 def build_history_data(strategy_cls, strategy_params, initial_balance, trades_sorted, data_source):
-    """重建 V6.0 MTF 指标历史"""
+    """重建 V6.5A MTF 指标历史"""
     history_candles = []
     history_rsi = []
     history_equity = []
@@ -47,7 +47,7 @@ def build_history_data(strategy_cls, strategy_params, initial_balance, trades_so
     sim_pos = 0.0
     trade_idx = 0
 
-    print(f"[V6.0] 重建指标历史 ({len(data_source)} bars)...")
+    print(f"[V6.5c] 重建指标历史 ({len(data_source)} bars)...")
     
     for i, data in enumerate(data_source):
         ts_ms = int(data.timestamp.timestamp() * 1000)
@@ -100,20 +100,20 @@ def build_history_data(strategy_cls, strategy_params, initial_balance, trades_so
 
 def main():
     print("\n" + "="*60)
-    print("CTS 6.0 — 策略运行环境 (V6.0 MTF 专用)")
+    print("CTS 6.0 — 策略运行环境 (V6.5c RSI+Vol+Pattern)")
     print("="*60)
     
     # 1. 配置检查
-    config_path = Path(V60_RUNTIME_PATH)
+    config_path = Path(V65_RUNTIME_PATH)
     if not config_path.exists():
-        factory_path = Path(V60_FACTORY_PATH)
+        factory_path = Path(V65_FACTORY_PATH)
         if factory_path.exists():
             import shutil
             shutil.copy(factory_path, config_path)
             print(f"[系统] 已初始化运行配置: {config_path}")
 
     # 2. 启动 Dashboard (Port: 5066)
-    dashboard = create_dashboard_60(port=5066)
+    dashboard = create_dashboard_65(port=5065)
     dashboard.start_background()
 
     # 3. 初始化 Runner
@@ -143,7 +143,7 @@ def main():
     )
 
     # 5. 预热 (200 bars for 15m MACD and 6h lookback)
-    print("[V6.0] 预热数据中...")
+    print("[V6.5c] 预热数据中...")
     from engines import LiveEngine
     first_slot = next(iter(runner._slots.values()))
     warmup_engine = LiveEngine(first_slot.strategy, first_slot.executor, data_feed, warmup_bars=200)
@@ -151,38 +151,38 @@ def main():
     if warmup_engine.warmup():
         data_source = list(first_slot.strategy._data_5m)
         trades_sorted = sorted(runner._trades.get(first_slot.slot_id, []), key=lambda x: str(x.get('time', '')))
-        hc, hrsi, heq, hmacd = build_history_data(GridMTFStrategyV6_0, STRATEGY_CATALOG['grid_v60']['params'], INITIAL_BALANCE, trades_sorted, data_source)
+        hc, hrsi, heq, hmacd = build_history_data(GridStrategyV65A, STRATEGY_CATALOG['grid_v65']['params'], INITIAL_BALANCE, trades_sorted, data_source)
         runner.push_warmup(first_slot, hc, hrsi, heq, hmacd)
-        print(f"[V6.0] 预热完成: {len(hc)} 根历史数据")
+        print(f"[V6.5c] 预热完成: {len(hc)} 根历史数据")
 
     # 6. 控制回调
     def on_control(action: str, str_id: str, **kwargs):
-        print(f"[V6.0 Control] 接收控制指令: action={action}, str_id={str_id}, data={kwargs.get('data')}")
+        print(f"[V6.5A Control] 接收控制指令: action={action}, str_id={str_id}, data={kwargs.get('data')}")
         try:
             if action == 'save_params':
                 new_params = kwargs.get('data')
                 slot = runner._slots.get(str_id)
                 if slot and new_params:
-                    cp = getattr(slot.strategy, 'params_path', V60_RUNTIME_PATH)
+                    cp = getattr(slot.strategy, 'params_path', V65_RUNTIME_PATH)
                     with open(cp, 'r', encoding='utf-8') as f: config = json.load(f)
                     config.update(new_params)
                     with open(cp, 'w', encoding='utf-8') as f: json.dump(config, f, indent=2)
                     if hasattr(slot.strategy, '_load_params'): slot.strategy._load_params()
-                    print(f"[V6.0] 参数已热加载: {str_id}")
+                    print(f"[V6.5c] 参数已热加载: {str_id}")
             elif action in ['start', 'pause', 'reset']:
                 func = getattr(runner, action, None)
                 if func:
                     func(str_id)
-                    print(f"[V6.0] 指令执行成功: {action} ({str_id})")
+                    print(f"[V6.5c] 指令执行成功: {action} ({str_id})")
                 else:
-                    print(f"[V6.0 Error] MultiStrategyRunner 缺少方法: {action}")
+                    print(f"[V6.5A Error] MultiStrategyRunner 缺少方法: {action}")
         except Exception as e:
-            print(f"[V6.0 Error] 控制回调执行失败: {e}")
+            print(f"[V6.5A Error] 控制回调执行失败: {e}")
             import traceback; traceback.print_exc()
 
     dashboard.on_control_callback = on_control
 
-    print("\n[V6.0] 顺利启动! 请访问 http://localhost:5066")
+    print("\n[V6.5c] 顺利启动! 请访问 http://localhost:5065")
     
     while True:
         try:
@@ -194,10 +194,10 @@ def main():
             print("\n控制台捕获 KeyboardInterrupt，程序正常退出")
             break
         except Exception as e:
-            print(f"\n[V6.0 Error] 数据流中断或处理异常: {e}")
+            print(f"\n[V6.5A Error] 数据流中断或处理异常: {e}")
             import traceback
             traceback.print_exc()
-            print("[V6.0] 5秒后尝试重启数据流...")
+            print("[V6.5c] 5秒后尝试重启数据流...")
             time.sleep(5)
             runner.save_all() # 尝试保存当前状态以防再次崩溃
 

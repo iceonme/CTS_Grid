@@ -7,6 +7,7 @@
 - [ ] 清理冗余的回测脚本代码
 
 ## DONE
+- [x] 2026-03-05_08-10: 【致命Bug】修复 V6.0/V6.5 _update_data 将2秒快照当5分钟K线追加的问题，修复Pivot选点算法（取最近N个转折点） [2026-03-05_08-10_fix_update_data_dedup_and_pivot.md](history/2026-03-05_08-10_fix_update_data_dedup_and_pivot.md)
 - [x] 2026-03-02_17-30: 项目代码库深度瘦身，移除冗余的回测与测试脚本，并将 V4 系列的策略逻辑与 HTML 文件彻底归档，强制将 `main.py` 统一切换至标准的 V5.2 环境。 [[归档]](file:///c:/Projects/TradingGarage/CTS1/docs/task/history/2026-03-02_17-30_cleanup_and_archive.md)
 - [x] 2026-03-02_17-30: CTS 全系统 5.2 版本标准化处理，完成文件名、类名、配置及看板的统一清理。 [[归档]](file:///c:/Projects/TradingGarage/CTS1/docs/task/history/2026-03-02_17-30_standardize_v52_renaming.md)
 - [x] 2026-03-01_20-30: 优化 V5.1 状态同步逻辑，解决网格在数据更新后消失的问题。 [[归档]](file:///c:/Projects/TradingGarage/CTS1/docs/task/history/2026-03-01_20-30_fix_v51_grid_stability.md)

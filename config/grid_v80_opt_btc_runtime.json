@@ -1,0 +1,56 @@
+{
+  "version": "8.0-OPT-FINAL-BTC",
+  "port": 5080,
+  "symbol": "BTC-USDT",
+  "trading": {
+    "initial_capital": 10000,
+    "max_position_pct": 0.8
+  },
+  "grid": {
+    "lookback_hours": 6,
+    "sample_points": 5,
+    "trim_extremes": 2,
+    "rebalance_interval_minutes": 60
+  },
+  "layer": {
+    "base_layers": 5,
+    "virtual_layers": 2,
+    "volatility_threshold": 0.012
+  },
+  "rsi": {
+    "period": 14,
+    "dynamic_adjustment": true,
+    "buy_threshold": 25,
+    "sell_threshold": 75,
+    "adjustment_factors": {
+      "high_volatility": {
+        "volatility_min": 0.02,
+        "buy": 20,
+        "sell": 80
+      },
+      "normal": {
+        "buy": 25,
+        "sell": 75
+      },
+      "low_volatility": {
+        "volatility_max": 0.012,
+        "buy": 30,
+        "sell": 70
+      }
+    }
+  },
+  "atr_period": 14,
+  "atr_ma_lookback": 120,
+  "circuit_breaker": {
+    "enabled": true,
+    "trigger_beyond_virtual": true,
+    "cooldown_hours": 2.0,
+    "consecutive_limit": 3
+  },
+  "black_swan": {
+    "enabled": true,
+    "atr_lookback_hours": 6,
+    "atr_multiplier": 3
+  },
+  "config_path": "C:\\CS\\grid_multi\\config\\grid_v80_opt_btc_runtime.json"
+}

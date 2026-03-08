@@ -8,6 +8,7 @@ import numpy as np
 import time as _time
 from typing import List, Optional, Tuple, Dict, Any
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from collections import deque
 
@@ -55,6 +56,12 @@ class StrategyState:
     grid_lower: float = 0.0
     grid_prices: List[float] = field(default_factory=list)
     last_grid_update: int = 0
+    
+    # 信号抑制状态
+    last_buy_price: float = 0.0
+    last_buy_bar_ts: Optional[datetime] = None
+    last_sell_price: float = 0.0
+    last_sell_bar_ts: Optional[datetime] = None
     
     @property
     def current_rsi(self) -> float:
@@ -375,9 +382,20 @@ class GridRSIStrategyV5_2(BaseStrategy):
             self._save_mini_state(data)
             return []
             
-        # 2. 计算趋势分与目标仓位
+        # 3. 计算账户持仓与层数 (提前到决策前，确保互斥判断准确)
+        pos_size = context.positions[self.symbol].size if context and self.symbol in context.positions else 0
+        avg_price = context.positions[self.symbol].avg_price if pos_size > 0 else data.close
+        current_layers = self._get_current_pos_layers(pos_size, avg_price)
+        self.state.current_layers = current_layers
+
+        # 4. 检查反转保护 (防守优先)
         is_reversal = False
         rev_reason = RiskControllerV52.check_reversal(self.state, self.params, self._prev_state_mini)
+        
+        # 【互斥逻辑】如果在同一 Bar 内已经趋势买入，屏蔽非紧急的反转卖出 (解决秒买秒卖)
+        if rev_reason and self.state.last_buy_bar_ts == data.timestamp:
+            if "RSI骤降" not in rev_reason and "放量下跌" not in rev_reason:
+                rev_reason = None # 过滤掉 MACD/MA 噪音
         
         # 如果检测到反转，强制目标仓位归零 (防守优先)
         if rev_reason:
@@ -385,6 +403,10 @@ class GridRSIStrategyV5_2(BaseStrategy):
             is_reversal = True
         else:
             self.state.trend_score = TrendScorerV52.calculate(self.state, self.params)
+            
+            # 【互斥逻辑】如果在同一 Bar 内已经卖出（或反转卖出），除非行情剧变，否则不立即买回
+            if self.state.last_sell_bar_ts == data.timestamp:
+                self.state.target_layers = min(self.state.target_layers, current_layers) # 不允许在这个 Bar 内增加层数
             
             # 根据评分决定目标层数与网格状态
             if self.state.trend_score >= self.params.get('trend_score_high', 4):
@@ -398,25 +420,23 @@ class GridRSIStrategyV5_2(BaseStrategy):
                 self.state.target_layers = self.params.get('trend_target_low', 1)
                 self.state.dynamic_grid = True
 
-        # 3. 计算持仓层数 (用于决定是否需要买入或网格触发)
-        pos_size = context.positions[self.symbol].size if context and self.symbol in context.positions else 0
-        avg_price = context.positions[self.symbol].avg_price if pos_size > 0 else data.close
-        current_layers = self._get_current_pos_layers(pos_size, avg_price)
-        self.state.current_layers = current_layers
-
         if pos_size > 0:
             # A. 反转保护 (已经计算过 rev_reason)
             if is_reversal:
-                # 减仓逻辑 (根据文档)
-                layers_to_sell = 2 if "RSI骤降" in rev_reason else 1
-                
-                # 【关键修复】: 如果当前持仓哪怕不足 1 层 (如 dust)，在反转保护时也应视为 1 层以便清空
-                eff_layers = max(1, current_layers)
-                actual_sell = min(layers_to_sell, eff_layers)
-                
-                if actual_sell > 0:
-                    signals.append(self._make_signal(Side.SELL, actual_sell, data, f"反转保护:{rev_reason}", pos_size=pos_size))
-                    current_layers -= actual_sell
+                # 再次确认 rev_reason 不为空 (防护性编程)
+                if not rev_reason:
+                    is_reversal = False
+                else:
+                    # 减仓逻辑 (根据文档)
+                    layers_to_sell = 2 if "RSI骤降" in rev_reason else 1
+                    
+                    # 【关键修复】: 如果当前持仓哪怕不足 1 层 (如 dust)，在反转保护时也应视为 1 层以便清空
+                    eff_layers = max(1, current_layers)
+                    actual_sell = min(layers_to_sell, eff_layers)
+                    
+                    if actual_sell > 0:
+                        signals.append(self._make_signal(Side.SELL, actual_sell, data, f"反转保护:{rev_reason}", pos_size=pos_size))
+                        current_layers -= actual_sell
         
             # B. 动态分批止盈
             tp_info = RiskControllerV52.check_take_profit(self.state, self.params)
@@ -444,8 +464,17 @@ class GridRSIStrategyV5_2(BaseStrategy):
                 batch = min(batch, self.params.get('max_positions', 5) - current_layers)
                 
                 if batch > 0:
-                    signals.append(self._make_signal(Side.BUY, batch, data, f"趋势建仓(分:{self.state.trend_score})"))
-                    current_layers += batch
+                    # 【抑制逻辑】检查是否在同一 Bar 且价格波动不足
+                    price_buff = self.params.get('signal_price_buffer', 0.005) # 默认 0.5%
+                    is_duplicate = False
+                    if self.state.last_buy_bar_ts == data.timestamp:
+                        price_diff = abs(data.close - self.state.last_buy_price) / self.state.last_buy_price if self.state.last_buy_price > 0 else 1.0
+                        if price_diff < price_buff:
+                            is_duplicate = True
+                    
+                    if not is_duplicate:
+                        signals.append(self._make_signal(Side.BUY, batch, data, f"趋势建仓(分:{self.state.trend_score})"))
+                        current_layers += batch
 
         # 5. 网格辅助 (仅在震荡/中等趋势下)
         if self.state.dynamic_grid and self.state.grid_center and not signals:
@@ -454,11 +483,19 @@ class GridRSIStrategyV5_2(BaseStrategy):
             lo = self.state.grid_center * (1 - rng)
             
             if data.close > up and pos_size > 0:
-                signals.append(self._make_signal(Side.SELL, 1, data, "网格上轨止盈", pos_size=pos_size))
-                self.state.grid_center = data.close # 移动网格
+                # 卖出加锁校验
+                price_buff = self.params.get('signal_price_buffer', 0.005)
+                if self.state.last_sell_bar_ts != data.timestamp or \
+                   (self.state.last_sell_price > 0 and abs(data.close - self.state.last_sell_price)/self.state.last_sell_price > price_buff):
+                    signals.append(self._make_signal(Side.SELL, 1, data, "网格上轨止盈", pos_size=pos_size))
+                    self.state.grid_center = data.close # 移动网格
             elif data.close < lo and current_layers < self.params.get('max_positions', 5):
-                signals.append(self._make_signal(Side.BUY, 1, data, "网格下轨补仓"))
-                self.state.grid_center = data.close
+                # 买入加锁校验
+                price_buff = self.params.get('signal_price_buffer', 0.005)
+                if self.state.last_buy_bar_ts != data.timestamp or \
+                   (self.state.last_buy_price > 0 and abs(data.close - self.state.last_buy_price)/self.state.last_buy_price > price_buff):
+                    signals.append(self._make_signal(Side.BUY, 1, data, "网格下轨补仓"))
+                    self.state.grid_center = data.close
 
         self._save_mini_state(data)
         return signals
@@ -468,7 +505,8 @@ class GridRSIStrategyV5_2(BaseStrategy):
         layer_val = self.params.get('layer_size_usdt', 2000)
         # 用【成本】而非【现价】计算层数，因为层数代表资金占用
         total_cost = size * avg_price
-        return int(round(total_cost / layer_val))
+        # 使用 0.8 的偏移来降低因手续费导致的舍入误差，确保 0.9 层也被视为 1 层
+        return int((total_cost + layer_val * 0.2) // layer_val)
 
     def _make_signal(self, side: Side, layers: int, d: MarketData, reason: str, pos_size: float = 0) -> Signal:
         # 将层数转换为具体的数量
@@ -477,7 +515,7 @@ class GridRSIStrategyV5_2(BaseStrategy):
         if side == Side.BUY:
             # 买单使用报价币金额 (USDT)，设置 size_in_quote=True
             val = layers * layer_val_usdt
-            return Signal(
+            sig = Signal(
                 timestamp=d.timestamp,
                 symbol=self.symbol,
                 side=side,
@@ -487,6 +525,10 @@ class GridRSIStrategyV5_2(BaseStrategy):
                 reason=reason,
                 meta={'size_in_quote': True, 'layers': layers}
             )
+            # 更新买入记忆
+            self.state.last_buy_price = d.close
+            self.state.last_buy_bar_ts = d.timestamp
+            return sig
         else:
             # 卖单: 比例减仓逻辑 (修复 insufficient_position)
             if pos_size <= 0: return None
@@ -501,7 +543,7 @@ class GridRSIStrategyV5_2(BaseStrategy):
                 # 按比例减仓，例如 3 层减 1 层，卖出 1/3 的持仓数量
                 qty = (layers / total_layers) * pos_size
             
-            return Signal(
+            sig = Signal(
                 timestamp=d.timestamp,
                 symbol=self.symbol,
                 side=side,
@@ -511,6 +553,10 @@ class GridRSIStrategyV5_2(BaseStrategy):
                 reason=reason,
                 meta={'size_in_quote': False, 'layers': layers, 'value_usdt': layers * layer_val_usdt}
             )
+            # 更新卖出记忆
+            self.state.last_sell_price = d.close
+            self.state.last_sell_bar_ts = d.timestamp
+            return sig
 
     def _save_mini_state(self, d: MarketData):
         self._prev_state_mini = {

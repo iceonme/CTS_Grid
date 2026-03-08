@@ -1,10 +1,10 @@
 {
-    "cash": 9843.51080894946,
+    "cash": 9666.514040758648,
     "initial_capital": 10000.0,
     "positions": {},
     "slot_metadata": {
         "is_running": true,
         "is_paused": false,
-        "last_save_time": "2026-03-04T12:27:50.683576"
+        "last_save_time": "2026-03-06T23:56:44.029476"
     }
 }

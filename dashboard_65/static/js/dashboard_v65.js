@@ -20,7 +20,7 @@ let equitySeries = null;
 let latestStrategyInfo = null;
 let isConnected = false;
 let reconnectAttempts = 0;
-let currentStrategyId = 'grid_v60';
+let currentStrategyId = 'grid_v65';
 let currentSlotStatus = 'stopped';
 let lastCandleTime = null;
 let rsiStartTime = null;
@@ -583,7 +583,7 @@ function renderTradeList() {
         const item = document.createElement('div');
         item.className = `trade-item ${trade.type.toLowerCase()}`;
         const amountText = (trade.quote_amount > 0 ? trade.quote_amount : (trade.price * trade.size));
-        item.innerHTML = `<div class="trade-icon">${trade.type === 'BUY' ? '买' : '卖'}</div><div class="trade-info"><div class="trade-type">${trade.type === 'BUY' ? '买入' : '卖出'} BTC</div><div style="font-size:12px;color:#888;">${trade.size.toFixed(6)} BTC @ $${trade.price.toFixed(2)}</div><div class="trade-time">${formatLocalTime(trade.time)}</div></div><div class="trade-price" style="color:${trade.type === 'BUY' ? 'var(--loss)' : 'var(--profit)'}">${trade.type === 'BUY' ? '-' : '+'}${amountText.toFixed(2)} USDT</div>`;
+        item.innerHTML = `<div class="trade-icon">${trade.type === 'BUY' ? '买' : '卖'}</div><div class="trade-info"><div class="trade-type">${trade.type === 'BUY' ? '买入' : '卖出'} ${trade.symbol || ''}</div><div style="font-size:12px;color:#888;">${trade.size.toFixed(trade.symbol && trade.symbol.includes('DOGE') ? 2 : 6)} ${trade.symbol || ''} @ $${trade.price.toFixed(trade.price < 1 ? 4 : 2)}</div><div class="trade-time">${formatLocalTime(trade.time)}</div></div><div class="trade-price" style="color:${trade.type === 'BUY' ? 'var(--loss)' : 'var(--profit)'}">${trade.type === 'BUY' ? '-' : '+'}${amountText.toFixed(2)} USDT</div>`;
         container.appendChild(item);
     });
     document.getElementById('tradeCount').textContent = `${allTrades.length} 笔`;
@@ -668,7 +668,18 @@ function renderStrategyDoc(strategyData) {
 // Socket 事件
 socket.on('connect', () => { isConnected = true; reconnectAttempts = 0; document.getElementById('statusDot').className = 'status-dot connected'; document.getElementById('statusText').textContent = '已连接'; });
 socket.on('disconnect', () => { isConnected = false; document.getElementById('statusDot').className = 'status-dot disconnected'; document.getElementById('statusText').textContent = '已断开'; });
-socket.on('strategies_list', () => { socket.emit('join', { strategy_id: currentStrategyId }); });
+socket.on('strategies_list', (data) => {
+    console.log('[SocketIO] Available strategies:', data.strategies);
+    if (data.strategies && data.strategies.length > 0) {
+        // 如果当前 ID 不在列表中，或者还是默认的 grid_v65，则自动切换到第一个可用策略
+        const ids = data.strategies.map(s => s.id);
+        if (!ids.includes(currentStrategyId)) {
+            currentStrategyId = ids[0];
+            console.log('[SocketIO] Auto-switching to available strategy:', currentStrategyId);
+        }
+    }
+    socket.emit('join', { strategy_id: currentStrategyId });
+});
 socket.on('reset_ui', (data) => {
     const isSoft = data && data.soft;
     console.log(`[SocketIO] 执行重置信号: sid=${currentStrategyId}, soft=${isSoft}`);
@@ -809,8 +820,14 @@ socket.on('update', (data) => {
 
     // 价格与权益
     const currentSymbol = (latestStrategyInfo && latestStrategyInfo.params) ? latestStrategyInfo.params.symbol : (Object.keys(data.prices || {})[0] || 'BTC-USDT');
-    const btcPrice = (data.prices && data.prices[currentSymbol]) || (data.prices && data.prices['BTC-USDT']) || (data.prices && data.prices['BTC-USDT-SWAP']) || null;
-    if (btcPrice) updateElement('btcPrice', btcPrice.toLocaleString());
+    updateElement('symbolPairLabel', currentSymbol.replace('-', ' / '));
+    updateElement('positionSymbolLabel', currentSymbol.split('-')[0]);
+
+    const currentMarketPrice = (data.prices && data.prices[currentSymbol]) || (data.prices && data.prices['BTC-USDT']) || (data.prices && data.prices['BTC-USDT-SWAP']) || null;
+    if (currentMarketPrice) {
+        const priceFormatted = currentMarketPrice < 1 ? currentMarketPrice.toFixed(4) : currentMarketPrice.toLocaleString();
+        updateElement('btcPrice', priceFormatted);
+    }
 
     if (data.total_value !== undefined) updateElement('totalValue', data.total_value.toLocaleString() + ' USDT');
     if (data.cash !== undefined) updateElement('cashValue', data.cash.toLocaleString());
@@ -877,7 +894,8 @@ socket.on('update', (data) => {
         // 持仓详情逻辑 (多来源兼容)
         const activeSymbol = (s && s.params && s.params.symbol) ? s.params.symbol : 'BTC-USDT';
         const posSize = (data.positions && data.positions[activeSymbol]) ? data.positions[activeSymbol].size : (s.position_size || 0);
-        updateElement('positionSize', parseFloat(posSize).toFixed(4));
+        const sizePrecision = activeSymbol.includes('DOGE') ? 2 : 6;
+        updateElement('positionSize', parseFloat(posSize).toFixed(sizePrecision));
 
         const posAvg = (data.positions && data.positions[activeSymbol]) ? data.positions[activeSymbol].avg_price : (s.position_avg_price || 0);
         updateElement('positionAvgPrice', posAvg > 0 ? posAvg.toLocaleString() : '--');

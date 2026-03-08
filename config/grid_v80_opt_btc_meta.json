@@ -1,0 +1,94 @@
+{
+    "trading": {
+        "initial_capital": {
+            "label": "初始本金",
+            "desc": "策略回测或模拟分配的总资金（USDT）",
+            "default": 10000
+        },
+        "max_position_pct": {
+            "label": "最大仓位比例",
+            "desc": "策略可动用的最大资金比例（0.8表示80%）",
+            "default": 0.8
+        }
+    },
+    "grid": {
+        "lookback_hours": {
+            "label": "抗插针回望周期(小时)",
+            "desc": "网格高低点计算的基准周期长度",
+            "default": 6
+        },
+        "sample_points": {
+            "label": "极值采样段数",
+            "desc": "将回望周期切分为多少段去提取极值",
+            "default": 5
+        },
+        "trim_extremes": {
+            "label": "去除极值数量",
+            "desc": "掐头去尾剔除的上下极大/极小值个数",
+            "default": 2
+        },
+        "rebalance_interval_minutes": {
+            "label": "网格重平衡周期(分)",
+            "desc": "在此周期内价格中枢和网格边界将保持稳定",
+            "default": 60
+        }
+    },
+    "layer": {
+        "base_layers": {
+            "label": "常规基础层数",
+            "desc": "实体区间的默认建仓/平仓层数",
+            "default": 5
+        },
+        "virtual_layers": {
+            "label": "双向扩展虚拟层数",
+            "desc": "在核心网格上下额外延伸用于RSI过滤探测的缓冲地带级数",
+            "default": 2
+        },
+        "volatility_threshold": {
+            "label": "升维激进波动阈值",
+            "desc": "(最高-最低)/最低。大于此值将切换更密集的7层模式",
+            "default": 0.012
+        }
+    },
+    "rsi": {
+        "period": {
+            "label": "RSI 计算周期",
+            "desc": "核心相对强弱指标的基础计算窗口",
+            "default": 14
+        },
+        "dynamic_adjustment": {
+            "label": "开启动态阈值适应",
+            "desc": "根据市场波动率(低迷/正常/高波)自适应改变进出场RSI限制条件",
+            "default": true
+        }
+    },
+    "circuit_breaker": {
+        "enabled": {
+            "label": "开启双向熔断保护",
+            "desc": "防瀑布或踏空机制开关",
+            "default": true
+        },
+        "cooldown_hours": {
+            "label": "熔断观察冷却(小时)",
+            "desc": "熔断触发后停止接针，直到冷却满后根据当前市价重置基点",
+            "default": 1.5
+        },
+        "consecutive_limit": {
+            "label": "日连续熔断容忍上限",
+            "desc": "24小时内熔断超此次数，将被强制封印休眠12小时",
+            "default": 3
+        }
+    },
+    "black_swan": {
+        "enabled": {
+            "label": "开启ATR黑天鹅护盾",
+            "desc": "基于1分钟突发波幅进行独立异常切断",
+            "default": true
+        },
+        "atr_multiplier": {
+            "label": "ATR爆量触发倍数",
+            "desc": "当前瞬时波动是6小时均值的倍数",
+            "default": 3.0
+        }
+    }
+}

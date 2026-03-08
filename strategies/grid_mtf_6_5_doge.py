@@ -13,24 +13,22 @@ from core import (
 )
 from strategies.base import BaseStrategy
 
-class GridMTFStrategyV6_0(BaseStrategy):
+class GridStrategyV65B(BaseStrategy):
     """
-    V6.0-MTF 多周期自适应网格策略
+    V6.5B 动态网格交易策略 (DOGE-PRO)
     
-    核心特性：
-    1. MTF (Multi-Timeframe): 5m 进场，15m 趋势过滤
-    2. 动态网格：基于过去 6 小时 ATR 和高低点动态重置边界
-    3. 非线性加仓：金字塔加仓模型
-    4. 趋势自适应止盈：根据 15m MACD 强度调整卖出阈值
-    5. 黑天鹅熔断：ATR 异常检测
+    基于 V6.5A 架构，针对 DOGE 等高波动币种优化：
+    - 放宽 RSI 阈值，提高参与度
+    - 缩短冷却时间，捕捉快速机会
+    - 减少最大持仓层数，控制极端风险
     """
 
-    def __init__(self, name: str = "Grid_V60_MTF", **params):
+    def __init__(self, name: str = "Grid_V65B_DOGE", **params):
         super().__init__(name, **params)
-        self.params_path = params.get('config_path', 'config/grid_v60_runtime.json')
+        self.params_path = params.get('config_path', 'config/grid_v65b_doge_runtime.json')
         # 自动推导 meta 路径 (例如 runtime.json -> meta.json)
         self.meta_path = self.params_path.replace('runtime.json', 'meta.json')
-        self.symbol = params.get('symbol', 'BTC-USDT-SWAP')
+        self.symbol = params.get('symbol', 'DOGE-USDT')
         self.param_metadata = {}
         self._load_params()
 
@@ -46,6 +44,8 @@ class GridMTFStrategyV6_0(BaseStrategy):
             macd: float = 0.0
             macdsignal: float = 0.0
             macdhist: float = 0.0
+            macd_prev: float = 0.0
+            macdsignal_prev: float = 0.0
             macdhist_prev: float = 0.0
             atr: float = 0.0
             atr_ma: float = 0.0
@@ -74,7 +74,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
                 with open(self.params_path, 'r', encoding='utf-8') as f:
                     self.params.update(json.load(f))
             except Exception as e:
-                print(f"[V6.0] 加载参数失败: {e}")
+                print(f"[V6.5B] 加载参数失败: {e}")
         
         # 2. 加载元数据 (用于 Dashboard 说明面板)
         if os.path.exists(self.meta_path):
@@ -82,11 +82,11 @@ class GridMTFStrategyV6_0(BaseStrategy):
                 with open(self.meta_path, 'r', encoding='utf-8') as f:
                     self.param_metadata = json.load(f)
             except Exception as e:
-                print(f"[V6.0] 加载元数据失败: {e}")
+                print(f"[V6.5B] 加载元数据失败: {e}")
 
     def initialize(self):
         super().initialize()
-        print(f"[V6.0] {self.name} 初始化完成")
+        print(f"[V6.5B] {self.name} 初始化完成")
 
     def on_data(self, data: MarketData, context: Optional[StrategyContext]) -> List[Signal]:
         if not self._initialized:
@@ -164,21 +164,15 @@ class GridMTFStrategyV6_0(BaseStrategy):
             bar['close'] = data.close
             
             # 计算 15m 周期内的精确 volume：
-            # 找到在当前 15m 周期内（属于这段 period_ts），但【已经完结】（不仅指最新一根正在跑的）的所有 5m K线。
-            # 直接遍历 self._data_5m 从后往前找，把 timestamp 大于等于 period_ts 且与 period_ts 属于同一 15m 窗口的所有完整 5m 累加。
             vol_sum = 0
             for i in range(len(self._data_5m) - 1, -1, -1):
                 d = self._data_5m[i]
                 d_period_ts = d.timestamp.replace(minute=(d.timestamp.minute // 15) * 15, second=0, microsecond=0)
                 if d_period_ts < period_ts:
-                    break  # 已经跨越到上一个 15m 周期，停止
+                    break
                 if d_period_ts == period_ts:
-                    # 只要是属于这个 15m 周期内的 5m K线，直接把它们内部已经整理好的 `volume` 加起来。
-                    # 注意如果 `_data_5m` 已经是去重过的，那么最后一根就是包含当前 data.volume 的
                     vol_sum += d.volume
-            
             bar['volume'] = vol_sum
-
 
 
     def _calculate_indicators(self):
@@ -204,6 +198,10 @@ class GridMTFStrategyV6_0(BaseStrategy):
             self.params.get('macd_slow', 26),
             self.params.get('macd_signal', 9)
         )
+        self.state.macd_prev = self.state.macd
+        self.state.macdsignal_prev = self.state.macdsignal
+        self.state.macdhist_prev = self.state.macdhist
+
         self.state.macd = macd
         self.state.macdsignal = signal
         self.state.macdhist = hist
@@ -238,7 +236,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
         self.state.grid_lower = lower * (1 - buffer)
         
         # 生成网格线
-        layers = self.params.get('grid_layers', 5)
+        layers = self.params.get('grid_layers', 4)
         self.state.grid_lines = np.linspace(self.state.grid_lower, self.state.grid_upper, layers + 1).tolist()
         self.state.last_grid_reset = now
 
@@ -247,7 +245,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
         if self.state.is_halted:
             if self.state.resume_time and data.timestamp >= self.state.resume_time:
                 self.state.is_halted = False
-                print(f"[V6.0] 恢复交易")
+                print(f"[V6.5B] 恢复交易")
             else:
                 return True
         
@@ -256,7 +254,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
             self.state.is_halted = True
             self.state.halt_reason = "High Volatility (ATR Blackswan)"
             self.state.resume_time = data.timestamp + timedelta(minutes=self.params.get('atr_cooldown_min', 30))
-            print(f"[V6.0] 触发熔断: {self.state.halt_reason}")
+            print(f"[V6.5B] 触发熔断: {self.state.halt_reason}")
             return True
             
         return False
@@ -266,94 +264,82 @@ class GridMTFStrategyV6_0(BaseStrategy):
         pos = context.positions.get(self.symbol)
         pos_size = float(pos.size) if pos else 0.0
         
-        # --- 全局买卖锁定：解决买入秒卖出问题 ---
+        # MACD Status
+        is_macd_golden = self.state.macd > self.state.macdsignal and getattr(self.state, 'macd_prev', 0) <= getattr(self.state, 'macdsignal_prev', 0)
+        is_macd_dead = self.state.macd < self.state.macdsignal and getattr(self.state, 'macd_prev', 0) >= getattr(self.state, 'macdsignal_prev', 0)
+
+        # Layers calculation
+        layer_value = self.params.get('total_capital', 10000) / self.params.get('grid_layers', 4)
+        current_layers = int(round(pos_size * data.close / layer_value)) if pos_size > 0 else 0
+
+        # --- 全局冷却锁：防连续买单与瞬时"一买就卖"异常 ---
         cooldown_lock = False
-        cooldown_min = self.params.get('buy_cooldown_min', 15)
+        cooldown_min = self.params.get('buy_cooldown_min', 10)
         if getattr(self.state, 'last_buy_time', None) is not None:
             from datetime import timedelta
             if data.timestamp < self.state.last_buy_time + timedelta(minutes=cooldown_min):
                 cooldown_lock = True
-        
-        # 趋势强度 (15m MACD)
-        is_bullish = self.state.macdhist > 0
-        is_strong_bull = is_bullish and self.state.macd > 0 and self.state.macdhist > self.state.macdhist_prev if hasattr(self.state, 'macdhist_prev') else False
-        self.state.macdhist_prev = self.state.macdhist
 
-        # 1. 卖出逻辑 (加入全局锁定)
+        # 1. Sell Logic
         if pos_size > 0 and not cooldown_lock:
-            sell_threshold = self.params.get('rsi_sell_threshold', 70)
-            if is_strong_bull:
-                sell_threshold = self.params.get('rsi_bull_adjust', 60)
+            rsi_sell_gold = self.params.get('rsi_sell_gold', 68)
+            rsi_sell_silver = self.params.get('rsi_sell_silver', 60)
             
-            if self.state.current_rsi > sell_threshold:
-                if getattr(self.state, 'grid_lines', []) and len(self.state.grid_lines) >= 2:
-                    if data.close >= self.state.grid_lines[-2]:
-                        sell_ratio = 1.0 # 简化全部卖出
-                        reason = f"MTF Sell: RSI={self.state.current_rsi:.1f} Bullish={is_bullish} Vol={pos_size:.4f}"
-                        signals.append(Signal(
-                            timestamp=data.timestamp,
-                            symbol=self.symbol,
-                            side=Side.SELL,
-                            size=pos_size * sell_ratio,
-                            reason=reason
-                        ))
+            sell_layers = 0
+            sig_type = ""
+            
+            if self.state.current_rsi > rsi_sell_gold and is_macd_dead:
+                sell_layers = 2
+                sig_type = "GOLD (MACD死叉)"
+            elif self.state.current_rsi > rsi_sell_silver:
+                sell_layers = 1
+                sig_type = "SILVER (超买)"
+                
+            if sell_layers > 0:
+                sell_layers = min(sell_layers, current_layers) if current_layers > 0 else 1
+                sell_ratio = sell_layers / current_layers if current_layers > 0 else 1.0
+                reason = f"MTF Sell [{sig_type}]: RSI={self.state.current_rsi:.1f} 抛售层数={sell_layers} 剩余持仓~={max(0, current_layers-sell_layers)}层"
+                signals.append(Signal(
+                    timestamp=data.timestamp,
+                    symbol=self.symbol,
+                    side=Side.SELL,
+                    size=pos_size * sell_ratio,
+                    reason=reason
+                ))
 
-        # 2. 买入逻辑
-        rsi_buy_threshold = self.params.get('rsi_buy_threshold', 35)
-        rsi_condition = self.state.current_rsi < rsi_buy_threshold
-        
-        pivot_condition = False
-        if getattr(self.state, 'pivots_low', []):
-            lowest_pivot_low = min(p['price'] for p in self.state.pivots_low)
-            margin = self.params.get('pivot_buy_margin', 0.005)
-            if data.close <= lowest_pivot_low * (1 + margin) and self.state.current_rsi < 45:
-                pivot_condition = True
-        
-        macd_improving = hasattr(self.state, 'macdhist_prev') and self.state.macdhist > self.state.macdhist_prev
-        
+        # 2. Buy Logic
         can_buy = False
-        if rsi_condition and (is_bullish or macd_improving): can_buy = True
-        if pivot_condition and self.state.current_rsi < 40: can_buy = True
+        buy_layers = 0
+        sig_type = ""
+        
+        rsi_buy_threshold = self.params.get('rsi_buy_threshold', 35)
+        
+        if self.state.current_rsi < rsi_buy_threshold and current_layers < self.params.get('grid_layers', 4) and not cooldown_lock:
+            if is_macd_golden:
+                buy_layers = 2
+                sig_type = "GOLD (MACD金叉)"
+            else:
+                buy_layers = 1
+                sig_type = "SILVER (超卖)"
+            
+            buy_layers = min(buy_layers, self.params.get('grid_layers', 4) - current_layers)
+            if buy_layers > 0:
+                can_buy = True
 
-        if cooldown_lock: can_buy = False
-
-        if can_buy and pos_size > 0:
-            price_buffer = self.params.get('buy_price_buffer', 0.003)
-            price_dropped = True
-            if getattr(self.state, 'last_buy_price', 0) > 0:
-                price_dropped = data.close <= self.state.last_buy_price * (1.0 - price_buffer)
-            if not price_dropped: can_buy = False
-
-        if can_buy and getattr(self.state, 'grid_lines', []):
-            forbidden_zone = self.state.grid_lower + (self.state.grid_upper - self.state.grid_lower) * 0.66
-            if data.close > forbidden_zone: can_buy = False
-
-        if can_buy and getattr(self.state, 'grid_lines', []):
-            idx = -1
-            for i in range(len(self.state.grid_lines) - 1):
-                if self.state.grid_lines[i] <= data.close < self.state.grid_lines[i+1]:
-                    idx = i
-                    break
-            if idx != -1:
-                layers = self.params.get('grid_layers', 5)
-                weight = (layers - idx) / sum(range(1, layers + 1))
-                if pivot_condition: weight *= 1.2
-                
-                buy_usdt = self.params.get('total_capital', 10000) * weight
-                
-                if context.cash >= buy_usdt * 0.95:
-                    pt_str = "(Pivot Support)" if pivot_condition else ""
-                    reason = f"MTF Grid Buy: Layer={idx} RSI={self.state.current_rsi:.1f} {pt_str}"
-                    signals.append(Signal(
-                        timestamp=data.timestamp,
-                        symbol=self.symbol,
-                        side=Side.BUY,
-                        size=buy_usdt,
-                        meta={'size_in_quote': True},
-                        reason=reason
-                    ))
-                    self.state.last_buy_time = data.timestamp
-                    self.state.last_buy_price = data.close
+        if can_buy:
+            buy_usdt = layer_value * buy_layers
+            if context.cash >= buy_usdt * 0.95:  
+                reason = f"MTF Buy [{sig_type}]: RSI={self.state.current_rsi:.1f} 买入层数={buy_layers} 当前已有={current_layers}层"
+                signals.append(Signal(
+                    timestamp=data.timestamp,
+                    symbol=self.symbol,
+                    side=Side.BUY,
+                    size=buy_usdt,
+                    meta={'size_in_quote': True},
+                    reason=reason
+                ))
+                self.state.last_buy_time = data.timestamp
+                self.state.last_buy_price = data.close
 
         return signals
 
@@ -381,7 +367,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
         寻找最近的 n 个结构性波段高点和低点
         核心思路：V4.0 的"取最近 N 个转折点"，而非"取 N 个最极端价格"
         """
-        if len(self._data_5m) < 20: return
+        if len(self._data_5m) < 30: return
         
         n = 3  # 3高3低
         # 局部确认判定窗口 (增大到 10 根 = 50 分钟，过滤短期噪点)
@@ -392,9 +378,6 @@ class GridMTFStrategyV6_0(BaseStrategy):
         lows = df['low'].values
         curr_idx = len(df) - 1
         
-        if curr_idx < window_size + 1:
-            return
-
         all_highs = []
         all_lows = []
 
@@ -413,8 +396,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
                         is_pivot = True
                 
                 if is_pivot:
-                    ts = data_list[i].timestamp.isoformat()
-                    all_lows.append({'price': float(lows[i]), 'time': ts, 'index': i})
+                    all_lows.append({'price': float(lows[i]), 'time': data_list[i].timestamp.isoformat(), 'index': i})
 
             # --- 高点检测：比左边 window_size 根都高 ---
             if highs[i] >= max(highs[i-window_size:i]):
@@ -427,8 +409,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
                         is_pivot = True
                 
                 if is_pivot:
-                    ts = data_list[i].timestamp.isoformat()
-                    all_highs.append({'price': float(highs[i]), 'time': ts, 'index': i})
+                    all_highs.append({'price': float(highs[i]), 'time': data_list[i].timestamp.isoformat(), 'index': i})
 
         # 取最近 n 个结构转折点 (从右向左，间隔至少 window_size 根防重叠)
         def _get_recent_n(pivots):
@@ -463,8 +444,8 @@ class GridMTFStrategyV6_0(BaseStrategy):
         elif is_bullish:
             signal_color = "buy"
             # 计算信号强度: 基于 RSI 接近程度和 MACD 增长
-            rsi_dist = max(0, self.params.get('rsi_buy_threshold', 28) - self.state.current_rsi)
-            if self.state.current_rsi < self.params.get('rsi_buy_threshold', 28):
+            rsi_dist = max(0, self.params.get('rsi_buy_threshold', 35) - self.state.current_rsi)
+            if self.state.current_rsi < self.params.get('rsi_buy_threshold', 35):
                 signal_text = "多头择时买入"
                 signal_strength = "强" if rsi_dist > 5 else "高"
             else:
@@ -495,8 +476,8 @@ class GridMTFStrategyV6_0(BaseStrategy):
             pos_avg_price = float(pos.avg_price)
             pos_unrealized_pnl = float(pos.unrealized_pnl)
             if pos_size > 0:
-                # 简单估算层数: 当前持仓对比网格单层期望
-                pos_count = max(1, int(pos_size / (self.params.get('total_capital', 10000) / 70000 / 5))) 
+                # DOGE 价格较低，调整层数估算
+                pos_count = max(1, int(pos_size * pos_avg_price / (self.params.get('total_capital', 10000) / self.params.get('grid_layers', 4))))
 
         return {
             'name': self.name,
@@ -517,8 +498,8 @@ class GridMTFStrategyV6_0(BaseStrategy):
             'grid_upper': round(self.state.grid_upper, 2),
             'grid_range': f"{self.state.grid_lower:.1f} - {self.state.grid_upper:.1f}",
             'grid_lines': self.state.grid_lines,
-            'rsi_oversold': self.params.get('rsi_buy_threshold', 28),
-            'rsi_overbought': self.params.get('rsi_sell_threshold', 70),
+            'rsi_oversold': self.params.get('rsi_buy_threshold', 35),
+            'rsi_overbought': self.params.get('rsi_sell_threshold', 68),
             'position_count': pos_count,
             'marketRegime': "上升通道" if is_bullish else "震荡下行" if self.state.macdhist < -5 else "调整阶段",
             'vol_trend': vol_trend,
