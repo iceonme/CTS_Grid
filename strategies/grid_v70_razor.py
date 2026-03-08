@@ -57,6 +57,11 @@ class GridStrategyV70Razor(BaseStrategy):
             last_buy_time: Optional[datetime] = None
             last_buy_price: float = 0.0
             last_trade_price: float = 0.0 # 用于常态网格移动中枢
+            
+            # --- 内部仓位管理 (Paper交易核心) ---
+            internal_pos_size: float = 0.0      # 内部追踪的持仓数量
+            internal_avg_price: float = 0.0     # 内部追踪的平均成本
+            internal_cash: float = 0.0          # 内部追踪的可用现金 (初始化后设置)
 
         self.state = StrategyState()
 
@@ -78,7 +83,38 @@ class GridStrategyV70Razor(BaseStrategy):
 
     def initialize(self):
         super().initialize()
-        print(f"[V7.0-Razor] {self.name} 初始化完成")
+        # 初始化内部现金 (从配置中获取)
+        trading_cfg = self.params.get('trading', {})
+        self.state.internal_cash = trading_cfg.get('initial_capital', 10000.0)
+        print(f"[V7.0-Razor] {self.name} 初始化完成 | 初始资金: {self.state.internal_cash}")
+
+    def on_fill(self, fill: FillEvent):
+        """成交回调：更新内部仓位和成本，完全替代交易所同步"""
+        if fill.symbol != self.symbol:
+            return
+            
+        # 更新持仓和平均价格
+        old_size = self.state.internal_pos_size
+        old_avg = self.state.internal_avg_price
+        fill_size = float(fill.size)
+        fill_price = float(fill.price)
+        
+        if fill.side == Side.BUY:
+            new_size = old_size + fill_size
+            if new_size > 0:
+                self.state.internal_avg_price = (old_size * old_avg + fill_size * fill_price) / new_size
+            self.state.internal_pos_size = new_size
+            self.state.internal_cash -= (fill_size * fill_price)
+            print(f"[成交反馈(7.0)] 买入成功 | 数量: {fill_size:.4f} @ {fill_price:.2f} | 资金剩余: {self.state.internal_cash:.2f}")
+        else:
+            new_size = max(0.0, old_size - fill_size)
+            self.state.internal_pos_size = new_size
+            self.state.internal_cash += (fill_size * fill_price)
+            print(f"[成交反馈(7.0)] 卖出成功 | 数量: {fill_size:.4f} @ {fill_price:.2f}")
+            
+            # 卖出后，如果持仓清零，重置成本
+            if new_size <= 0:
+                self.state.internal_avg_price = 0.0
 
     def on_data(self, data: MarketData, context: Optional[StrategyContext]) -> List[Signal]:
         if not self._initialized:
@@ -96,26 +132,24 @@ class GridStrategyV70Razor(BaseStrategy):
 
         # 3. 黑天鹅风控检测
         if self._check_halt(data, context):
-            # 如果触发熔断且持仓，抛出清仓信号 (全平)
-            if self.state.is_halted and context:
-                pos = context.positions.get(self.symbol)
-                if pos and pos.size > 0:
-                    return [Signal(
-                        timestamp=data.timestamp,
-                        symbol=self.symbol,
-                        side=Side.SELL,
-                        size=float(pos.size),
-                        reason=f"Black Swan Guard: ATR Surge. Emergency Sell All."
-                    )]
+            # BUG#8 修复：此处应使用内部持仓，杜绝黑天鹅时刻依赖交易所同步
+            pos_size = self.state.internal_pos_size
+            if self.state.is_halted and pos_size > 0:
+                return [Signal(
+                    timestamp=data.timestamp,
+                    symbol=self.symbol,
+                    side=Side.SELL,
+                    size=pos_size,
+                    reason=f"Black Swan Guard: ATR Surge. Emergency Sell All."
+                )]
             return []
 
         # 4. ATR 动态网格管理
         self._manage_grid(data)
 
         # 5. RSI 分层响应生成信号
-        if context:
-            return self._generate_signals(data, context)
-        return []
+        # 彻底移除对 context.positions 的依赖，改用内部状态
+        return self._generate_signals(data)
 
     def _update_data(self, data: MarketData):
         """更新 1m 和 5m 数据"""
@@ -164,11 +198,12 @@ class GridStrategyV70Razor(BaseStrategy):
         # 统计过去 6 小时 (360 分钟=360根1m K线) ATR均值
         lookback = 360
         if len(self._data_1m) >= lookback:
-            # 简化：用收盘价的波动代理历史 ATR 均值估算，避免全量计算性能损耗
-            hist_closes = closes_1m.iloc[-lookback:]
-            hist_highs = highs_1m.iloc[-lookback:]
-            hist_lows = lows_1m.iloc[-lookback:]
-            self.state.atr_ma = self._atr(hist_highs, hist_lows, hist_closes, 14).mean()
+            # BUG#6 修复：_atr 返回的是 .iloc[-1] (标量)，不能直接 .mean()
+            # 这里先获取完整的 TR 序列再算 Rolling Mean 的平均
+            tr = pd.concat([highs_1m - lows_1m, 
+                            abs(highs_1m - closes_1m.shift()), 
+                            abs(lows_1m - closes_1m.shift())], axis=1).max(axis=1)
+            self.state.atr_ma = tr.rolling(window=14).mean().iloc[-lookback:].mean()
         else:
             self.state.atr_ma = atr_1m_val
 
@@ -203,7 +238,8 @@ class GridStrategyV70Razor(BaseStrategy):
             if self.state.resume_time and data.timestamp >= self.state.resume_time:
                 self.state.is_halted = False
                 self.state.halt_reason = ""
-                print(f"[V7.0-Razor] 恢复交易")
+                # BUG#9 修复：补全日志时间戳
+                print(f"[{data.timestamp}] [V7.0-Razor] 恢复交易")
             else:
                 return True
         
@@ -215,15 +251,16 @@ class GridStrategyV70Razor(BaseStrategy):
             self.state.halt_reason = "Black Swan (ATR Surge)"
             # 默认冷却 15 分钟
             self.state.resume_time = data.timestamp + timedelta(minutes=15)
-            print(f"[V7.0-Razor] 触发熔断: {self.state.halt_reason}")
+            # BUG#9 修复：补全日志时间戳
+            print(f"[{data.timestamp}] [V7.0-Razor] 触发熔断: {self.state.halt_reason}")
             return True
             
         return False
 
-    def _generate_signals(self, data: MarketData, context: StrategyContext) -> List[Signal]:
+    def _generate_signals(self, data: MarketData) -> List[Signal]:
         signals = []
-        pos = context.positions.get(self.symbol)
-        pos_size = float(pos.size) if pos else 0.0
+        pos_size = self.state.internal_pos_size
+        cash = self.state.internal_cash
         
         trading_params = self.params.get('trading', {})
         signal_params = self.params.get('signals', {})
@@ -321,7 +358,7 @@ class GridStrategyV70Razor(BaseStrategy):
 
         if can_buy:
             buy_usdt = layer_value * buy_layers_req
-            if context.cash >= buy_usdt * 0.95:  
+            if cash >= buy_usdt * 0.95:  
                 reason = f"Razor Buy [{sig_type}]: RSI={self.state.current_rsi:.1f} 投入层数={buy_layers_req}"
                 signals.append(Signal(
                     timestamp=data.timestamp,
@@ -345,7 +382,7 @@ class GridStrategyV70Razor(BaseStrategy):
             if data.close < self.state.grid_lower:
                 if current_layers < max_layers:
                     buy_usdt = layer_value
-                    if context.cash >= buy_usdt * 0.95:
+                    if cash >= buy_usdt * 0.95:
                         grid_buy_reason = f"Normal Grid Buy: 价格跌破下轨 ({data.close:.2f} < {self.state.grid_lower:.2f})"
                         signals.append(Signal(
                             timestamp=data.timestamp,
@@ -416,19 +453,14 @@ class GridStrategyV70Razor(BaseStrategy):
             signal_color = "sell"
 
         pos_count = 0
-        pos_size = 0.0
-        pos_avg_price = 0.0
-        pos_unrealized_pnl = 0.0
-        if context and self.symbol in context.positions:
-            pos = context.positions[self.symbol]
-            pos_size = float(pos.size)
-            pos_avg_price = float(pos.avg_price)
-            pos_unrealized_pnl = float(pos.unrealized_pnl)
-            
+        pos_size = self.state.internal_pos_size
+        pos_avg_price = self.state.internal_avg_price
+        
+        if pos_size > 0:
             trading_params = self.params.get('trading', {})
             total_cap = trading_params.get('initial_capital', 10000)
             layers = trading_params.get('grid_layers', 5)
-            if pos_size > 0:
+            if pos_avg_price > 0:
                 pos_count = max(1, int(round(pos_size * pos_avg_price / (total_cap / layers))))
 
         return {
@@ -444,7 +476,8 @@ class GridStrategyV70Razor(BaseStrategy):
             'signal_color': signal_color,
             'position_size': pos_size,
             'position_avg_price': pos_avg_price,
-            'position_unrealized_pnl': pos_unrealized_pnl,
+            'position_unrealized_pnl': 0.0,
+            'cash': self.state.internal_cash,
             'grid_lower': float(np.round(self.state.grid_lower, 2)),
             'grid_upper': float(np.round(self.state.grid_upper, 2)),
             'grid_range': f"{self.state.grid_lower:.1f} - {self.state.grid_upper:.1f}",

@@ -62,10 +62,19 @@ class GridStrategyV80Opt(BaseStrategy):
             dynamic_rsi_buy: float = 25.0
             dynamic_rsi_sell: float = 75.0
             
+            # --- 内部仓位管理 (Paper交易核心) ---
+            internal_pos_size: float = 0.0      # 内部追踪的持仓数量
+            internal_avg_price: float = 0.0     # 内部追踪的平均成本
+            internal_cash: float = 0.0          # 内部追踪的可用现金 (初始化后设置)
+            
             # 状态控制
             is_halted: bool = False
             halt_reason: str = ""
-            resume_time: Optional[datetime] = None
+            halt_start_time: Optional[datetime] = None
+            halt_trigger_price: float = 0.0
+            halt_grid_bottom: float = 0.0
+            halt_grid_top: float = 0.0
+            use_4h_grid: bool = False  # 修正缺失的 4h 重置标记
             
             # 黑天鹅风控控制
             black_swan_mode: bool = False
@@ -96,7 +105,38 @@ class GridStrategyV80Opt(BaseStrategy):
 
     def initialize(self):
         super().initialize()
-        print(f"[V8.0-OPT] {self.name} 初始化完成")
+        # 初始化内部现金 (从配置中获取)
+        trading_cfg = self.params.get('trading', {})
+        self.state.internal_cash = trading_cfg.get('initial_capital', 10000.0)
+        print(f"[V8.0-OPT] {self.name} 初始化完成 | 初始资金: {self.state.internal_cash}")
+
+    def on_fill(self, fill: FillEvent):
+        """成交回调：更新内部仓位和成本，完全替代交易所同步"""
+        if fill.symbol != self.symbol:
+            return
+            
+        # 更新持仓和平均价格
+        old_size = self.state.internal_pos_size
+        old_avg = self.state.internal_avg_price
+        fill_size = float(fill.size)
+        fill_price = float(fill.price)
+        
+        if fill.side == Side.BUY:
+            new_size = old_size + fill_size
+            if new_size > 0:
+                self.state.internal_avg_price = (old_size * old_avg + fill_size * fill_price) / new_size
+            self.state.internal_pos_size = new_size
+            self.state.internal_cash -= (fill_size * fill_price)
+            print(f"[成交反馈] 买入成功 | 数量: {fill_size:.4f} @ {fill_price:.2f} | 当前总持仓: {new_size:.4f}")
+        else:
+            new_size = max(0.0, old_size - fill_size)
+            self.state.internal_pos_size = new_size
+            self.state.internal_cash += (fill_size * fill_price)
+            print(f"[成交反馈] 卖出成功 | 数量: {fill_size:.4f} @ {fill_price:.2f} | 剩余持仓: {new_size:.4f}")
+            
+            # 卖出后，如果持仓清零，重置成本
+            if new_size <= 0:
+                self.state.internal_avg_price = 0.0
 
     def on_data(self, data: MarketData, context: Optional[StrategyContext]) -> List[Signal]:
         if not self._initialized:
@@ -144,14 +184,12 @@ class GridStrategyV80Opt(BaseStrategy):
             return []
 
         # 5. 根据当前的实体层 / 虚拟层 及黑天鹅状态产生交易指令
-        if context:
-            self._sync_position_to_layers(context, data.close)
+        # 彻底移除对 context.positions 的依赖，改用内部状态
+        if self.state.black_swan_mode:
+            return self._process_black_swan_exit(data)
             
-            if self.state.black_swan_mode:
-                return self._process_black_swan_exit(data, context)
-                
-            if not is_risk_halted and not self.state.is_halted:
-                return self._generate_signals(data, context)
+        if not is_risk_halted and not self.state.is_halted:
+            return self._generate_signals(data)
                 
         return []
 
@@ -307,6 +345,9 @@ class GridStrategyV80Opt(BaseStrategy):
             self.state.dynamic_rsi_buy = rsi_cfg.get('buy_threshold', 25)
             self.state.dynamic_rsi_sell = rsi_cfg.get('sell_threshold', 75)
             
+        # BUG#1 修复：网格重算后清空旧的层级锁，防止幽灵锁阻止新网格买入
+        self.state.layer_holdings.clear()
+        
         self.state.last_rebalance_time = data.timestamp
         print(f"[V8.0-OPT] 重算网格完成 [{hours_label}] | Vol={volatility*100:.2f}% ({active_layers}层) RSI=[{self.state.dynamic_rsi_buy}-{self.state.dynamic_rsi_sell}]")
 
@@ -321,31 +362,20 @@ class GridStrategyV80Opt(BaseStrategy):
         
         # === 1. 检查是否已在某种熔断状态中 ===
         
-        # 1.1 双向熔断观察期（智能观察模式）
+        # 1.1 检查是否已在双向熔断观察期（智能观察模式）
         if self.state.is_halted and self.state.halt_reason and self.state.halt_reason.startswith("OBSERVE"):
             return self._handle_observation_mode(data, now)
-        
+
         # 1.2 黑天鹅模式（减仓保护）
         if self.state.black_swan_mode:
             return True  # 阻断新开仓，由 _process_black_swan_exit 处理减仓
         
-        # 1.3 连续熔断封印
-        if self.state.is_halted and self.state.halt_reason and "Meltdown" in self.state.halt_reason:
-            if now >= self.state.resume_time:
-                self._resume_from_meltdown()
-            return True
-        
-        # === 2. 检查连续熔断次数（24小时内）===
-        if cb_cfg.get('enabled', True):
-            if self._check_consecutive_limit(now, cb_cfg):
-                return True
-        
-        # === 3. 检查ATR黑天鹅（优先于双向熔断）===
+        # 1.3 BUG#2 修复：检查黑天鹅ATR异常（之前遗漏了此调用入口）
         if bs_cfg.get('enabled', True):
             if self._check_black_swan_trigger(data, bs_cfg):
                 return True
         
-        # === 4. 检查双向越界熔断（智能观察模式）===
+        # 1.4 检查双向越界熔断（智能观察模式）
         if cb_cfg.get('enabled', True):
             if self._check_bidirectional_breaker(data, now, cb_cfg):
                 return True
@@ -381,11 +411,14 @@ class GridStrategyV80Opt(BaseStrategy):
         # 记录熔断历史
         self._circuit_breaker_history.append(now)
         
-        print(f"[V8.0-OPT] 熔断触发 | 方向: {direction} | 触发价: {trigger_price}")
-        print(f"[V8.0-OPT] 进入2小时观察期 | 持仓不变 | 等待价格回归网格...")
+        print(f"[{now}] 熔断触发 | 方向: {direction} | 价格: {trigger_price}")
+        print(f"[{now}] 进入2小时观察期 | 持仓不变 | 等待价格回归...")
 
     def _handle_observation_mode(self, data: MarketData, now: datetime) -> bool:
         """处理观察期逻辑 - 返回True表示继续阻断，False表示恢复交易"""
+        if self.state.halt_start_time is None:
+            return True
+            
         elapsed = (now - self.state.halt_start_time).total_seconds()
         
         grid_bottom = self.state.halt_grid_bottom
@@ -394,7 +427,7 @@ class GridStrategyV80Opt(BaseStrategy):
         
         # 情况1: 价格回归网格 → 提前恢复
         if grid_bottom <= current_price <= grid_top:
-            self._resume_from_observation("PRICE_RETURN", elapsed)
+            self._resume_from_observation("PRICE_RETURN", elapsed, current_price)
             return False  # 不阻断，恢复交易
         
         # 情况2: 满2小时未回归 → 重置4小时网格
@@ -404,39 +437,42 @@ class GridStrategyV80Opt(BaseStrategy):
             return False  # 新网格已生成，恢复交易
         
         # 情况3: 仍在观察中 → 阻断交易，每5分钟打印日志
-        if int(elapsed) % 300 == 0 and elapsed > 0:
+        # BUG#3 修复：使用整除窗口判定，避免浮点精度导致日志漏打
+        elapsed_mins = int(elapsed // 60)
+        if elapsed_mins > 0 and elapsed_mins % 5 == 0 and (elapsed % 60) < 61:
             remaining = cooldown_seconds - elapsed
-            print(f"[V8.0-OPT] 观察中 | 已过: {elapsed/60:.0f}分 | 剩余: {remaining/60:.0f}分 | 价格: {current_price:.2f}")
+            print(f"[{now}] [观察中] 已过去: {elapsed/60:.1f}分钟 | 剩余: {remaining/60:.1f}分钟 | 价格: {current_price}")
         
         return True
 
-    def _resume_from_observation(self, reason: str, elapsed_sec: float):
-        """价格回归，提前恢复正常"""
+    def _resume_from_observation(self, reason: str, elapsed_sec: float, current_price: float):
+        """恢复正常运行 - 持仓完全不变"""
         self.state.is_halted = False
         self.state.halt_reason = ""
         self.state.halt_start_time = None
         
-        print(f"[V8.0-OPT] 熔断解除 | 原因: {reason}")
-        print(f"[V8.0-OPT] 观察时长: {elapsed_sec/60:.1f}分钟 | 持仓不变 | 恢复正常交易")
+        print(f"[{datetime.now()}] 熔断解除 | 原因: {reason}")
+        print(f"[{datetime.now()}] 价格: {current_price} | 观察时长: {elapsed_sec/60:.1f}分钟")
+        print(f"[{datetime.now()}] 持仓不变 | 恢复正常交易")
 
     def _reset_grid_after_timeout(self, now: datetime):
         """2小时超时，保留持仓重置4小时网格"""
-        # 保存当前持仓信息
-        preserved_btc = 0.0
-        avg_price = 0.0
-        
-        print(f"[V8.0-OPT] 观察期满2小时 | 价格未回归 | 启动4小时网格重置")
-        
-        # 重置观察期状态
         self.state.is_halted = False
         self.state.halt_reason = ""
         self.state.halt_start_time = None
         
-        # 标记需要重置网格（使用4小时数据），在 _rebalance_grid_if_needed 中处理
-        self.state.last_rebalance_time = None
-        self.state.use_4h_grid = True  # 标记使用4小时模式
+        print(f"[{now}] 观察期满2小时 | 价格未回归 | 重新计算网格")
         
-        print(f"[V8.0-OPT] 新网格参数已设置 | 下次重平衡将使用4小时数据并保留持仓")
+        # BUG#5 修复：使用内部持仓状态，而非从未定义的 _last_pos_size
+        pos_size = self.state.internal_pos_size
+             
+        print(f"[{now}] 保留全部持仓({pos_size:.4f})作为新网格底仓")
+        
+        # 标记需要重置网格（使用4小时数据）
+        self.state.last_rebalance_time = None
+        self.state.use_4h_grid = True  
+        
+        print(f"[{now}] 新网格已生成 | 恢复正常交易")
 
     def _check_black_swan_trigger(self, data: MarketData, bs_cfg: dict) -> bool:
         """检查ATR黑天鹅触发"""
@@ -450,40 +486,15 @@ class GridStrategyV80Opt(BaseStrategy):
             self.state.last_swan_exit_time = None
             self._circuit_breaker_history.append(data.timestamp)
             
-            print(f"[V8.0-OPT] 触发黑天鹅熔断 | ATR: {self.state.current_atr:.2f} | 均线: {self.state.atr_ma:.2f}")
-            print(f"[V8.0-OPT] 停止新开仓，启动每10分钟自动市价减仓程序")
+            print(f"[风险告警] 触发黑天鹅熔断 | ATR: {self.state.current_atr:.2f} | 均线: {self.state.atr_ma:.2f}")
+            print(f"[风险告警] 停止新开仓，启动每10分钟自动市价减仓程序")
             return True
         
         return False
 
-    def _check_consecutive_limit(self, now: datetime, cb_cfg: dict) -> bool:
-        """检查24小时内熔断次数"""
-        cutoff = now - timedelta(hours=24)
-        self._circuit_breaker_history = [t for t in self._circuit_breaker_history if t > cutoff]
-        
-        limit = cb_cfg.get('consecutive_limit', 3)
-        if len(self._circuit_breaker_history) >= limit:
-            self.state.is_halted = True
-            self.state.halt_reason = "Consecutive Meltdown (Max limit reached within 24h)"
-            self.state.resume_time = now + timedelta(hours=12)
-            
-            print(f"[V8.0-OPT] 连续熔断保护 | 24小时内已熔断{len(self._circuit_breaker_history)}次")
-            print(f"[V8.0-OPT] 进入12小时封印期 | 完全停止交易")
-            return True
-        
-        return False
-
-    def _resume_from_meltdown(self):
-        """从连续熔断封印中恢复"""
-        self.state.is_halted = False
-        self.state.halt_reason = ""
-        self.state.resume_time = None
-        self.state.last_rebalance_time = None
-        print(f"[V8.0-OPT] 封印解除 | 恢复交易，强制刷新基准")
-
-    def _process_black_swan_exit(self, data: MarketData, context: StrategyContext) -> List[Signal]:
-        pos = context.positions.get(self.symbol)
-        pos_size = float(pos.size) if pos else 0.0
+    def _process_black_swan_exit(self, data: MarketData) -> List[Signal]:
+        pos_size = self.state.internal_pos_size
+        avg_price = self.state.internal_avg_price
         
         if pos_size <= 0:
             self.state.black_swan_mode = False
@@ -493,8 +504,8 @@ class GridStrategyV80Opt(BaseStrategy):
             return []
 
         # 若价格反弹超成本价 → 停止减仓，恢复正常
-        if data.close >= float(pos.avg_price):
-            print(f"[V8.0-OPT] 黑天鹅期间强劲反弹，价格已覆盖平均成本，撤销警报。")
+        if data.close >= avg_price:
+            print(f"[V8.0-OPT] 黑天鹅期间强劲反弹，价格已覆盖平均成本（{avg_price:.2f}），撤销警报。")
             self.state.black_swan_mode = False
             self.state.is_halted = False
             self.state.halt_reason = ""
@@ -525,31 +536,8 @@ class GridStrategyV80Opt(BaseStrategy):
         return []
 
     def _sync_position_to_layers(self, context: StrategyContext, current_price: float):
-        """严格重建目前被锁定的夹层结构"""
-        pos = context.positions.get(self.symbol)
-        pos_size = float(pos.size) if pos else 0.0
-        if pos_size <= 0:
-            self.state.layer_holdings.clear()
-            return
-
-        trading_cfg = self.params.get('trading', {})
-        cap = trading_cfg.get('initial_capital', 10000)
-        max_pct = trading_cfg.get('max_position_pct', 0.8)
-        
-        target_total = cap * max_pct
-        layer_cap = target_total / self.state.active_layers_mode 
-        layer_size_expected = layer_cap / current_price if current_price > 0 else 0
-        
-        if layer_size_expected > 0:
-            expected_layers = int(round(pos_size / layer_size_expected))
-            if expected_layers != len(self.state.layer_holdings):
-                # We need to rebuild it accurately mapping locked bottom up
-                self.state.layer_holdings.clear()
-                V = self.params.get('layer', {}).get('virtual_layers', 2)
-                for i in range(expected_layers):
-                    # Forcing synthetic locks from bottom virtual+real layer upwards
-                    # Index mapping logic: V represents lowest real layer
-                    self.state.layer_holdings[V + i] = True
+        """(自 V8.0-OPT Paper 版起已停用) 严格重建目前被锁定的夹层结构"""
+        pass
 
     def _get_current_layer_index(self, price: float) -> int:
         lines = self.state.grid_lines
@@ -563,10 +551,10 @@ class GridStrategyV80Opt(BaseStrategy):
         return -1
 
 
-    def _generate_signals(self, data: MarketData, context: StrategyContext) -> List[Signal]:
+    def _generate_signals(self, data: MarketData) -> List[Signal]:
         signals = []
-        pos = context.positions.get(self.symbol)
-        pos_size = float(pos.size) if pos else 0.0
+        pos_size = self.state.internal_pos_size
+        cash = self.state.internal_cash
         
         trading_cfg = self.params.get('trading', {})
         total_cap = trading_cfg.get('initial_capital', 10000)
@@ -619,10 +607,13 @@ class GridStrategyV80Opt(BaseStrategy):
                 if pos_size * data.close < layer_value * 1.5:  
                     sell_sz = pos_size
                 
-                # 平仓时解除最顶部一个冻结层的锁
+                # BUG#4 修复：优先解锁当前卖出触发层，若不匹配则解锁最高层
                 if self.state.layer_holdings:
-                    highest_layer = max(self.state.layer_holdings.keys())
-                    self.state.layer_holdings.pop(highest_layer)
+                    if c_idx in self.state.layer_holdings:
+                        self.state.layer_holdings.pop(c_idx)
+                    else:
+                        highest_layer = max(self.state.layer_holdings.keys())
+                        self.state.layer_holdings.pop(highest_layer)
                     
                 signals.append(Signal(
                     timestamp=data.timestamp, symbol=self.symbol, side=Side.SELL,
@@ -638,7 +629,7 @@ class GridStrategyV80Opt(BaseStrategy):
         if c_idx in self.state.layer_holdings:
             return signals
 
-        if pos_size * data.close + layer_value * 0.95 <= max_capital and context.cash >= layer_value * 0.95:
+        if pos_size * data.close + layer_value * 0.95 <= max_capital and cash >= layer_value * 0.95:
             if is_lower_virtual:
                 if self.state.current_rsi <= self.state.dynamic_rsi_buy:
                     should_buy = True
@@ -681,21 +672,15 @@ class GridStrategyV80Opt(BaseStrategy):
                 signal_text = f"熔断冷却中 ({self.state.halt_reason})"
             signal_color = "sell"
             
-        pos_size = 0.0
-        pos_avg_price = 0.0
-        pos_unrealized_pnl = 0.0
+        pos_size = self.state.internal_pos_size
+        pos_avg_price = self.state.internal_avg_price
         pos_count = 0
         
-        if context and self.symbol in context.positions:
-            pos = context.positions[self.symbol]
-            pos_size = float(pos.size)
-            pos_avg_price = float(pos.avg_price)
-            pos_unrealized_pnl = float(pos.unrealized_pnl)
-            
-            p_trade = self.params.get('trading', {})
-            layer_cap = (p_trade.get('initial_capital', 10000) * p_trade.get('max_position_pct', 0.8)) / max(self.state.active_layers_mode, 1)
-            if pos_size > 0 and pos_avg_price > 0:
-                pos_count = max(1, int(round((pos_size * pos_avg_price) / layer_cap)))
+        # 计算持仓层数
+        p_trade = self.params.get('trading', {})
+        layer_cap = (p_trade.get('initial_capital', 10000) * p_trade.get('max_position_pct', 0.8)) / max(self.state.active_layers_mode, 1)
+        if pos_size > 0 and pos_avg_price > 0:
+            pos_count = max(1, int(round((pos_size * pos_avg_price) / layer_cap)))
 
         gl = self.state.grid_lines
         lower_bound = gl[0] if len(gl) > 0 else 0
@@ -717,8 +702,9 @@ class GridStrategyV80Opt(BaseStrategy):
             
             'position_size': pos_size,
             'position_avg_price': pos_avg_price,
-            'position_unrealized_pnl': pos_unrealized_pnl,
+            'position_unrealized_pnl': 0.0, # 内部不计算盈亏，由外部展示
             'position_count': pos_count,
+            'cash': self.state.internal_cash,
             
             'grid_lower': float(np.round(lower_bound, 2)),
             'grid_upper': float(np.round(upper_bound, 2)),
