@@ -8,11 +8,122 @@ from dataclasses import dataclass, field
 import pandas as pd
 import numpy as np
 
+from collections import deque
 from core import (
     Signal, MarketData, StrategyContext, FillEvent,
     Side, OrderType, MarketRegime
 )
-from .base import BaseStrategy
+from strategies.base import BaseStrategy
+
+
+# ============================================================
+# 高性能增量指标引擎 (适配 V4.0 逻辑)
+# ============================================================
+
+class IncrementalIndicatorsV4:
+    def __init__(self, p: dict):
+        self.p = p
+        self.count = 0
+        self.prev_close = 0.0
+        self.prev_high = 0.0
+        self.prev_low = 0.0
+
+        # RSI (SMA based as in V4.0 original)
+        self.rsi_period = p.get('rsi_period', 14)
+        self.gain_deque = deque(maxlen=self.rsi_period)
+        self.loss_deque = deque(maxlen=self.rsi_period)
+        self.gain_sum = 0.0
+        self.loss_sum = 0.0
+
+        # ADX (SMA based)
+        self.adx_period = p.get('adx_period', 14)
+        self.tr_deque = deque(maxlen=self.adx_period)
+        self.pdm_deque = deque(maxlen=self.adx_period)
+        self.mdm_deque = deque(maxlen=self.adx_period)
+        self.dx_deque = deque(maxlen=self.adx_period)
+        self.tr_sum = 0.0
+        self.pdm_sum = 0.0
+        self.mdm_sum = 0.0
+        self.dx_sum = 0.0
+
+        # MA
+        self.ma_period = p.get('ma_period', 50)
+        self.ma_deque = deque(maxlen=self.ma_period)
+        self.ma_sum = 0.0
+
+        # Volatility (Std of Pct Returns)
+        # V4.0 原版是计算全量的 std，这里用 100 根线采样以保证性能
+        self.ret_deque = deque(maxlen=100)
+
+    def update(self, d: MarketData, commit: bool = True):
+        c, h, l = d.close, d.high, d.low
+        if self.count == 0:
+            if commit:
+                self.prev_close, self.prev_high, self.prev_low = c, h, l
+                self.count += 1
+            return 50.0, 0.0, c, 0.0
+
+        # 1. RSI 增量
+        diff = c - self.prev_close
+        gain = max(diff, 0); loss = max(-diff, 0)
+        
+        def get_sma_preview(dq, cur_sum, val, p):
+            count = len(dq)
+            if count == 0: return val
+            s = cur_sum + val - (dq[0] if count == p else 0)
+            return s / (count if count < p else p)
+
+        rsi_gain_avg = get_sma_preview(self.gain_deque, self.gain_sum, gain, self.rsi_period)
+        rsi_loss_avg = get_sma_preview(self.loss_deque, self.loss_sum, loss, self.rsi_period)
+        rs = rsi_gain_avg / rsi_loss_avg if rsi_loss_avg > 1e-9 else 100.0
+        rsi = 100.0 - (100.0 / (1.0 + rs)) if rsi_loss_avg > 1e-9 else 100.0
+
+        # 2. ADX 增量
+        tr = max(h - l, abs(h - self.prev_close), abs(l - self.prev_close))
+        up = h - self.prev_high; dn = self.prev_low - l
+        pdm = up if (up > dn and up > 0) else 0
+        mdm = dn if (dn > up and dn > 0) else 0
+
+        avg_tr = get_sma_preview(self.tr_deque, self.tr_sum, tr, self.adx_period)
+        avg_pdm = get_sma_preview(self.pdm_deque, self.pdm_sum, pdm, self.adx_period)
+        avg_mdm = get_sma_preview(self.mdm_deque, self.mdm_sum, mdm, self.adx_period)
+
+        di_p = 100 * (avg_pdm / avg_tr) if avg_tr > 1e-9 else 0
+        di_m = 100 * (avg_mdm / avg_tr) if avg_tr > 1e-9 else 0
+        dx = 100 * abs(di_p - di_m) / (di_p + di_m) if (di_p + di_m) > 1e-9 else 0
+        adx = get_sma_preview(self.dx_deque, self.dx_sum, dx, self.adx_period)
+
+        # 3. MA & Vol
+        ma = get_sma_preview(self.ma_deque, self.ma_sum, c, self.ma_period)
+        
+        ret = (c - self.prev_close) / self.prev_close if self.prev_close > 0 else 0
+        # 波动率估算
+        tmp_rets = list(self.ret_deque) + [ret]
+        vol = float(np.std(tmp_rets)) * 37.947 # sqrt(1440) approx
+
+        if commit:
+            self.count += 1
+            if len(self.gain_deque) == self.rsi_period: self.gain_sum -= self.gain_deque.popleft()
+            self.gain_deque.append(gain); self.gain_sum += gain
+            if len(self.loss_deque) == self.rsi_period: self.loss_sum -= self.loss_deque.popleft()
+            self.loss_deque.append(loss); self.loss_sum += loss
+
+            if len(self.tr_deque) == self.adx_period: self.tr_sum -= self.tr_deque.popleft()
+            self.tr_deque.append(tr); self.tr_sum += tr
+            if len(self.pdm_deque) == self.adx_period: self.pdm_sum -= self.pdm_deque.popleft()
+            self.pdm_deque.append(pdm); self.pdm_sum += pdm
+            if len(self.mdm_deque) == self.adx_period: self.mdm_sum -= self.mdm_deque.popleft()
+            self.mdm_deque.append(mdm); self.mdm_sum += mdm
+            if len(self.dx_deque) == self.adx_period: self.dx_sum -= self.dx_deque.popleft()
+            self.dx_deque.append(dx); self.dx_sum += dx
+
+            if len(self.ma_deque) == self.ma_period: self.ma_sum -= self.ma_deque.popleft()
+            self.ma_deque.append(c); self.ma_sum += c
+            
+            self.ret_deque.append(ret)
+            self.prev_close, self.prev_high, self.prev_low = c, h, l
+
+        return rsi, adx, ma, vol
 
 
 @dataclass
@@ -105,8 +216,12 @@ class GridRSIStrategy(BaseStrategy):
 
         self.state = GridState()
 
+        self.indicators = IncrementalIndicatorsV4(self.params)
         self._data_buffer: List[MarketData] = []
-        self._max_buffer_size = max(ma_period, rsi_period, adx_period) * 3 + 100
+        self._max_buffer_size = 500 # 固定缓冲区大小
+        self._last_bar_ts = None
+        self._last_bar_data = None
+        
         self._peak_prices: Dict[str, float] = {}
         self._current_prices: Dict[str, float] = {}
         self._equity_history: List[float] = []
@@ -115,9 +230,10 @@ class GridRSIStrategy(BaseStrategy):
         """策略初始化：保留行情缓冲区，仅重置账户相关状态"""
         super().initialize()
         
-        # 保留 self._data_buffer ！！！
-        # 仅重置与当前交易周期相关的状态
         self.state = GridState()
+        self.indicators = IncrementalIndicatorsV4(self.params)
+        self._last_bar_ts = None
+        self._last_bar_data = None
         
         # 保留价格引用以维持 UI 响应
         # self._peak_prices.clear() # 考虑到止损逻辑，重置时应当清空峰值价格
@@ -136,63 +252,14 @@ class GridRSIStrategy(BaseStrategy):
             self._data_buffer.append(data)
             if len(self._data_buffer) > self._max_buffer_size:
                 self._data_buffer.pop(0)
+            
+            # [Arena 优化] 高速模式下增加简单的非阻塞进度信息
+            if len(self._data_buffer) % 5000 == 0:
+                print(f"  > [4.0] 已处理 {len(self._data_buffer)} 条数据...", flush=True)
 
-    def _get_dataframe(self) -> pd.DataFrame:
-        if len(self._data_buffer) < 2:
-            return pd.DataFrame()
-
-        data = {
-            'open': [d.open for d in self._data_buffer],
-            'high': [d.high for d in self._data_buffer],
-            'low': [d.low for d in self._data_buffer],
-            'close': [d.close for d in self._data_buffer],
-            'volume': [d.volume for d in self._data_buffer],
-        }
-        index = [d.timestamp for d in self._data_buffer]
-        return pd.DataFrame(data, index=index)
-
-    def _calculate_rsi(self, prices: pd.Series) -> float:
-        period = self.params['rsi_period']
-        if len(prices) < period + 1:
-            return 50.0
-
-        delta = prices.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-        rs = gain / loss.replace(0, np.nan)
-        rsi = 100 - (100 / (1 + rs))
-        return rsi.iloc[-1] if not pd.isna(rsi.iloc[-1]) else 50.0
-
-    def _calculate_adx(self, df: pd.DataFrame) -> float:
-        period = self.params['adx_period']
-        if len(df) < period * 2:
-            return 0.0
-
-        high, low, close = df['high'], df['low'], df['close']
-        tr1 = high - low
-        tr2 = abs(high - close.shift(1))
-        tr3 = abs(low - close.shift(1))
-        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-
-        plus_dm = high.diff()
-        minus_dm = -low.diff()
-        plus_dm[plus_dm < 0] = 0
-        minus_dm[minus_dm < 0] = 0
-
-        atr = tr.rolling(window=period).mean()
-        plus_di = 100 * (plus_dm.rolling(window=period).mean() / atr)
-        minus_di = 100 * (minus_dm.rolling(window=period).mean() / atr)
-        dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
-        adx = dx.rolling(window=period).mean()
-        return adx.iloc[-1] if not pd.isna(adx.iloc[-1]) else 0.0
-
-    def _detect_market_regime(self, df: pd.DataFrame) -> MarketRegime:
-        if not self.params['use_trend_filter'] or len(df) < self.params['ma_period']:
+    def _detect_market_regime(self, adx: float, ma: float, current_price: float) -> MarketRegime:
+        if not self.params['use_trend_filter']:
             return MarketRegime.RANGING
-
-        adx = self.state.current_adx
-        ma = df['close'].rolling(window=self.params['ma_period']).mean().iloc[-1]
-        current_price = df['close'].iloc[-1]
 
         if adx > self.params['adx_threshold']:
             if current_price > ma * 1.02:
@@ -202,16 +269,14 @@ class GridRSIStrategy(BaseStrategy):
 
         return MarketRegime.RANGING
 
-    def _get_adaptive_rsi_thresholds(self, df: pd.DataFrame) -> Tuple[float, float]:
+    def _get_adaptive_rsi_thresholds(self, vol: float) -> Tuple[float, float]:
         if not self.params['adaptive_rsi']:
             return self.params['rsi_oversold'], self.params['rsi_overbought']
 
-        returns = df['close'].pct_change().dropna()
-        volatility = returns.std() * np.sqrt(1440)
+        vol_factor = min(max(vol / 0.5, 0.5), 2.0)
 
         base_oversold = self.params['rsi_oversold']
         base_overbought = self.params['rsi_overbought']
-        vol_factor = min(max(volatility / 0.5, 0.5), 2.0)
 
         adjusted_oversold = max(20, min(40, base_oversold / vol_factor))
         adjusted_overbought = min(80, max(60, 100 - (100 - base_overbought) / vol_factor))
@@ -228,114 +293,62 @@ class GridRSIStrategy(BaseStrategy):
             return (mid - rsi) / (mid - oversold) * 0.5
         return (mid - rsi) / (overbought - mid) * 0.5
 
-    def _find_pivot_points(self, df: pd.DataFrame, window: int = 5, n: int = 3,
+    def _find_pivot_points(self, window: int = 5, n: int = 3,
                            lookback: int = 100) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
-        寻找最近 of n 个波段高点和低点 (增强时效性逻辑)
-        最新的 window 范围内采用单侧确认，之外采用双侧确认
+        寻找最近 of n 个波段高点和低点 (优化版: 直接操作 MarketData 列表)
         """
-        if len(df) < window + 1:
+        if len(self._data_buffer) < window + 2:
             return [], []
 
-        highs = df['high'].values
-        lows = df['low'].values
-        times = df.index
-        curr_idx = len(df) - 1
+        data = self._data_buffer
+        curr_idx = len(data) - 1
         
         pivot_highs = []
         pivot_lows = []
 
-        # 从最新往回扫，寻找潜在波段
-        for i in range(curr_idx, max(window, curr_idx - lookback), -1):
-            # --- 低点检测 ---
+        # 从最新往回扫
+        for i in range(curr_idx - 1, max(window, curr_idx - lookback), -1):
+            # 低点检测
             if len(pivot_lows) < n:
-                # 1. 基础左侧确认 (必须比左边 window 根低)
-                l_min = min(lows[i-window:i])
-                if lows[i] <= l_min:
-                    is_pivot = False
-                    p_type = 'unknown'
-                    
-                    # 2. 判断属于实时区还是确认区
-                    if i > curr_idx - window:
-                        # 实时区: 只要它是 i 到当前点之间的最低值即可生效 (即跌到底后还没确认右边5根)
-                        if i == curr_idx or lows[i] <= min(lows[i+1:curr_idx+1]):
-                            is_pivot = True
-                            p_type = 'realtime'
-                    else:
-                        # 确认区: 必须有完整的右侧 window 确认
-                        r_min = min(lows[i+1:i+window+1])
-                        if lows[i] < r_min:
-                            is_pivot = True
-                            p_type = 'confirmed'
-                    
-                    if is_pivot:
-                        # 避免重复记录相近点
-                        if not pivot_lows or abs(lows[i] - pivot_lows[-1]['price']) > (lows[i] * 0.001):
-                            pivot_lows.append({'price': float(lows[i]), 'time': str(times[i]), 'type': p_type})
+                if all(data[i].low <= data[i-j].low for j in range(1, window+1)) and \
+                   all(data[i].low < data[i+j].low for j in range(1, min(window+1, curr_idx - i + 1))):
+                    pivot_lows.append({'price': float(data[i].low), 'time': str(data[i].timestamp)})
 
-            # --- 高点检测 ---
+            # 高点检测
             if len(pivot_highs) < n:
-                l_max = max(highs[i-window:i])
-                if highs[i] >= l_max:
-                    is_pivot = False
-                    p_type = 'unknown'
-                    if i > curr_idx - window:
-                        if i == curr_idx or highs[i] >= max(highs[i+1:curr_idx+1]):
-                            is_pivot = True
-                            p_type = 'realtime'
-                    else:
-                        r_max = max(highs[i+1:i+window+1])
-                        if highs[i] > r_max:
-                            is_pivot = True
-                            p_type = 'confirmed'
-                    
-                    if is_pivot:
-                        if not pivot_highs or abs(highs[i] - pivot_highs[-1]['price']) > (highs[i] * 0.001):
-                            pivot_highs.append({'price': float(highs[i]), 'time': str(times[i]), 'type': p_type})
+                if all(data[i].high >= data[i-j].high for j in range(1, window+1)) and \
+                   all(data[i].high > data[i+j].high for j in range(1, min(window+1, curr_idx - i + 1))):
+                    pivot_highs.append({'price': float(data[i].high), 'time': str(data[i].timestamp)})
 
             if len(pivot_highs) >= n and len(pivot_lows) >= n:
                 break
                 
         return pivot_highs, pivot_lows
 
-    def _calculate_dynamic_grid(self, df: pd.DataFrame) -> Tuple[float, float, Dict[str, Any]]:
+    def _calculate_dynamic_grid(self) -> Tuple[float, float, Dict[str, Any]]:
         """
-        计算动态网格区间 - 思路B: 3高3低逻辑
+        计算动态网格区间 (优化版: 移除 DF 依赖)
         """
         # 1. 寻找波段点 (Pivot Points)
-        pivot_highs, pivot_lows = self._find_pivot_points(df, window=5, n=3)
+        pivot_highs, pivot_lows = self._find_pivot_points(window=5, n=3)
         
         if not pivot_highs or not pivot_lows:
-            # 回退到旧的 lookback 逻辑
-            lookback = min(self.params['grid_refresh_period'], len(df))
-            recent = df.iloc[-lookback:]
-            upper = recent['high'].max()
-            lower = recent['low'].min()
+            # 回退到基本极值逻辑
+            lookback_data = self._data_buffer[-100:]
+            upper = max(d.high for d in lookback_data)
+            lower = min(d.low for d in lookback_data)
         else:
-            # 使用3高3低的均值或极值
-            # 为了更稳健，这里取均值以平滑异常波动，或取极值以确保全覆盖。
-            # 这里采用：最高的高点和最低的低点来确定边界，更符合“防跑出”策略。
             upper = max(p['price'] for p in pivot_highs)
             lower = min(p['price'] for p in pivot_lows)
 
         range_size = upper - lower
         if range_size <= 0:
-            range_size = upper * 0.01  # 防止零值
+            range_size = upper * 0.01
             
         buffer = range_size * self.params['grid_buffer_pct']
-
         upper += buffer
         lower -= buffer
-
-        # 2. RSI 偏移逻辑保持不变
-        rsi_signal = 0.0
-        if self.params['rsi_weight'] > 0:
-            oversold, overbought = self._get_adaptive_rsi_thresholds(df)
-            rsi_signal = self._get_rsi_signal(self.state.current_rsi, oversold, overbought)
-            # 偏移量通常在 2%-10% 范围，根据 rsi_weight 调整
-            shift = range_size * rsi_signal * self.params['rsi_weight'] * 0.2
-            upper += shift
-            lower += shift
 
         return upper, lower, {'pivots_high': pivot_highs, 'pivots_low': pivot_lows}
 
@@ -444,21 +457,29 @@ class GridRSIStrategy(BaseStrategy):
         return signals
 
     def on_data(self, data: MarketData, context: StrategyContext) -> List[Signal]:
-        self._update_buffer(data)
+        # 0. 缓冲区更新与指标引擎进位
+        is_new_bar = (not self._last_bar_ts) or (data.timestamp > self._last_bar_ts)
+        if is_new_bar:
+            if self._last_bar_data:
+                self.indicators.update(self._last_bar_data, commit=True)
+            self._last_bar_ts = data.timestamp
+            self._update_buffer(data)
+        
+        self._last_bar_data = data
+        
+        # 1. 每一拍都进行指标预览
+        rsi, adx, ma, vol = self.indicators.update(data, commit=False)
+        self.state.current_rsi = rsi
+        self.state.current_adx = adx
+        self.state.current_regime = self._detect_market_regime(adx, ma, data.close)
 
-        df = self._get_dataframe()
-        if len(df) < self.params['rsi_period']:
+        if self.indicators.count < self.params['rsi_period']:
             return []
 
         signals: List[Signal] = []
-        current_idx = len(self._data_buffer)
         current_price = data.close
         current_high = data.high
         current_low = data.low
-
-        self.state.current_rsi = self._calculate_rsi(df['close'])
-        self.state.current_adx = self._calculate_adx(df)
-        self.state.current_regime = self._detect_market_regime(df)
 
         self._equity_history.append(context.total_value)
         if len(self._equity_history) > 5000:
@@ -467,7 +488,7 @@ class GridRSIStrategy(BaseStrategy):
         should_reset, reset_reason = self._should_reset_cycle(context)
         if should_reset:
             for symbol, pos in context.positions.items():
-                if symbol == self.symbol:
+                if symbol == self.symbol and pos.size > 0:
                     signals.append(Signal(
                         timestamp=data.timestamp,
                         symbol=symbol,
@@ -480,9 +501,8 @@ class GridRSIStrategy(BaseStrategy):
                     ))
             self._reset_cycle(context)
 
-        # 每分钟都进行检测 (思路B)，只要结构变化网格就会微调
-        # 这里不再死锁 100 根线，而是根据结构点更新
-        upper, lower, meta = self._calculate_dynamic_grid(df)
+        # 2. 计算动态网格边界
+        upper, lower, meta = self._calculate_dynamic_grid()
         self.state.grid_upper = upper
         self.state.grid_lower = lower
         self.state.grid_prices = np.linspace(
@@ -490,89 +510,76 @@ class GridRSIStrategy(BaseStrategy):
             self.state.grid_upper,
             self.params['grid_levels']
         ).tolist()
-        self.state.last_grid_update = current_idx
-        self.state.meta = meta  # 保存波段点信息用于汇报
+        self.state.last_grid_update = self.indicators.count
+        self.state.meta = meta 
 
+        # 3. 止损检测
         signals.extend(self._check_stop_loss(data, context))
 
-        oversold, overbought = self._get_adaptive_rsi_thresholds(df)
-        rsi_signal = self._get_rsi_signal(self.state.current_rsi, oversold, overbought)
+        # 4. 仓位逻辑
+        oversold, overbought = self._get_adaptive_rsi_thresholds(vol)
+        rsi_signal = self._get_rsi_signal(rsi, oversold, overbought)
 
-        # 计算动态网格间距保护比例
+        # 网格间距保护
         min_interval = self.params.get('min_trade_interval_pct', 0.0025)
         grid_interval_pct = min_interval
-        if self.state.grid_upper and self.state.grid_lower and self.params['grid_levels'] > 1 and current_price > 0:
-            grid_interval = abs(self.state.grid_upper - self.state.grid_lower) / (self.params['grid_levels'] - 1)
-            # 取网格间距的 80% 作为保护距离，但不得低于设定的最小间隔 (如 0.25%)
+        if upper and lower and self.params['grid_levels'] > 1 and current_price > 0:
+            grid_interval = abs(upper - lower) / (self.params['grid_levels'] - 1)
             grid_interval_pct = max(min_interval, (grid_interval / current_price) * 0.8)
-            grid_interval_pct = min(0.02, grid_interval_pct) # 最大上限放宽到 2%
+            grid_interval_pct = min(0.02, grid_interval_pct)
 
         if self.state.grid_prices and self.state.last_candle:
             last_high = self.state.last_candle['high']
             last_low = self.state.last_candle['low']
 
             for grid_price in self.state.grid_prices:
+                # 买入逻辑
                 if last_low > grid_price and current_low <= grid_price:
                     current_layers = self._estimate_position_layers(context, current_price)
                     if current_layers >= self.params['max_positions']:
                         continue
-                    if self.state.current_rsi >= self.params['rsi_extreme_buy']:
+                    if rsi >= self.params['rsi_extreme_buy']:
                         continue
 
-                    # 间隔保护: 新加仓价格需低于持仓均价动态比例
                     current_pos = context.positions.get(self.symbol)
                     if current_pos and current_pos.size > 0:
                         if current_price > current_pos.avg_price * (1 - grid_interval_pct):
                             continue
 
                     size = self._calculate_position_size(context, rsi_signal, is_buy=True)
-                    if size < self.params['min_order_usdt']:
-                        size = self.params['min_order_usdt']
-                    if size > context.cash * 0.95:
-                        continue
-
-                    signals.append(Signal(
-                        timestamp=data.timestamp,
-                        symbol=self.symbol,
-                        side=Side.BUY,
-                        size=size,
-                        price=None,
-                        order_type=OrderType.MARKET,
-                        confidence=abs(rsi_signal),
-                        reason=f"网格买入 @ {grid_price:.2f} (RSI: {self.state.current_rsi:.1f})",
-                        meta={'size_in_quote': True},
-                    ))
+                    if size < self.params['min_order_usdt']: size = self.params['min_order_usdt']
+                    
+                    if size <= context.cash * 0.95:
+                        signals.append(Signal(
+                            timestamp=data.timestamp, symbol=self.symbol, side=Side.BUY,
+                            size=size, price=None, order_type=OrderType.MARKET,
+                            confidence=abs(rsi_signal),
+                            reason=f"网格买入 @ {grid_price:.2f} (RSI: {rsi:.1f})",
+                            meta={'size_in_quote': True},
+                        ))
                     break
 
+                # 卖出逻辑
                 if last_high < grid_price and current_high >= grid_price:
                     current_pos = context.positions.get(self.symbol)
-                    if current_pos and current_pos.avg_price < current_price * (1 - grid_interval_pct):
-                        if self.state.current_rsi <= self.params['rsi_extreme_sell']:
-                            continue
-
-                        current_layers = self._estimate_position_layers(context, current_price)
-                        sell_size = min(current_pos.size, current_pos.size / max(1, current_layers))
-
-                        signals.append(Signal(
-                            timestamp=data.timestamp,
-                            symbol=self.symbol,
-                            side=Side.SELL,
-                            size=sell_size,
-                            price=None,
-                            order_type=OrderType.MARKET,
-                            confidence=abs(rsi_signal),
-                            reason=f"网格卖出 @ {grid_price:.2f} (RSI: {self.state.current_rsi:.1f})",
-                            meta={'size_in_quote': False},
-                        ))
-                        break
+                    if current_pos and current_pos.size > 0:
+                        if current_price > current_pos.avg_price * (1 + grid_interval_pct):
+                            if rsi <= self.params['rsi_extreme_sell']:
+                                continue
+                            current_layers = self._estimate_position_layers(context, current_price)
+                            sell_size = min(current_pos.size, current_pos.size / max(1, current_layers))
+                            signals.append(Signal(
+                                timestamp=data.timestamp, symbol=self.symbol, side=Side.SELL,
+                                size=sell_size, price=None, order_type=OrderType.MARKET,
+                                confidence=abs(rsi_signal),
+                                reason=f"网格卖出 @ {grid_price:.2f} (RSI: {rsi:.1f})",
+                                meta={'size_in_quote': False},
+                            ))
+                            break
 
         self.state.last_candle = {
-            'open': data.open,
-            'high': data.high,
-            'low': data.low,
-            'close': data.close,
+            'open': data.open, 'high': data.high, 'low': data.low, 'close': data.close,
         }
-
         return signals
 
     def on_fill(self, fill: FillEvent):
@@ -581,13 +588,11 @@ class GridRSIStrategy(BaseStrategy):
 
     def get_status(self, context: Optional[StrategyContext] = None) -> Dict[str, Any]:
         try:
-            df = self._get_dataframe()
-            if len(df) > 0:
-                oversold, overbought = self._get_adaptive_rsi_thresholds(df)
-                rsi_signal = self._get_rsi_signal(self.state.current_rsi, oversold, overbought)
-            else:
-                oversold, overbought = self.params['rsi_oversold'], self.params['rsi_overbought']
-                rsi_signal = 0.0
+            # 获取当前预览指标
+            vol = 0.0 # 简化
+            oversold, overbought = self._get_adaptive_rsi_thresholds(0.1) # 默认
+            rsi = self.state.current_rsi
+            rsi_signal = self._get_rsi_signal(rsi, oversold, overbought)
         except Exception:
             oversold, overbought = self.params['rsi_oversold'], self.params['rsi_overbought']
             rsi_signal = 0.0

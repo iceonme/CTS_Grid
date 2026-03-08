@@ -1,0 +1,13 @@
+{
+    "symbol": "BTC-USDT-SWAP",
+    "timeframe": "1m",
+    "initial_balance": 10000,
+    "params": {
+        "resample_min": 60,
+        "capital": 10000,
+        "grid_layers": 5,
+        "grid_drop_pct": 0.02,
+        "hard_sl_pct": -0.10,
+        "tp_min_profit_pct": 0.03
+    }
+}

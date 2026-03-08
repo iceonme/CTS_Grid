@@ -1,0 +1,20 @@
+{
+    "task_id": 37,
+    "score": -4.061441085328587,
+    "total_return": -0.4061441085328587,
+    "max_drawdown": 0.4097288286625039,
+    "sharpe_ratio": -44.934326657327695,
+    "total_trades": 816,
+    "win_rate": 0.35435435435435436,
+    "params": {
+        "rsi_buy_threshold": 28,
+        "rsi_sell_threshold": 77,
+        "macd_fast": 8,
+        "macd_slow": 23,
+        "macd_signal": 8,
+        "atr_blackswan_mult": 4.5003,
+        "grid_layers": 6,
+        "grid_buffer": 0.0168,
+        "grid_readjust": 0.0483
+    }
+}

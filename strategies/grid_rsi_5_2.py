@@ -262,13 +262,13 @@ class RiskControllerV52:
 # ============================================================
 
 class GridRSIStrategyV5_2(BaseStrategy):
-    def __init__(self, symbol: str = "BTC-USDT", config_path: str = None):
-        super().__init__(name="GridRSI_V5.2_TrendForce")
+    def __init__(self, symbol: str = "BTC-USDT", config_path: str = None, **kwargs):
+        super().__init__(name=kwargs.get("name", "GridRSI_V5.2_TrendForce"), **kwargs)
         self.symbol = symbol
         
-        # 统一路径: 优先使用 config 目录下的 V5.2 配置文件
-        # 注意：此处使用相对路径或从环境变量获取会更好，但为了稳妥先用绝对路径
-        self.config_dir = Path(r"c:\CS\grid_multi\config")
+        # 动态定位核心配置目录 (兼容 Arena 和 Live 模式)
+        current_file_dir = Path(__file__).parent.resolve()
+        self.config_dir = current_file_dir.parent / "config"
         self.default_config_path = self.config_dir / "grid_v52_default.json"
         
         # 兼容性处理：如果 runtime 不存在，则使用 default

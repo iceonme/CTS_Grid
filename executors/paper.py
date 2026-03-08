@@ -32,17 +32,20 @@ class PaperExecutor(BaseExecutor):
                  fee_rate: float = 0.001,
                  slippage_model: str = 'adaptive',  # none, fixed, adaptive
                  slippage_base: float = 0.0005,
-                 latency_ms: float = 0):
+                 latency_ms: float = 0,
+                 fast_mode: bool = False):
         """
         Args:
             initial_capital: 初始资金
             fee_rate: 手续费率
             slippage_model: 滑点模型
             slippage_base: 基础滑点
-            latency_ms: 模拟延迟（毫秒）
+            latency_ms: 模拟延迟（回测模式建议设为0）
+            fast_mode: 极速模式（跳过 ID 生成和模拟延迟）
         """
         super().__init__()
         self.initial_capital = initial_capital
+        self.fast_mode = fast_mode
         self.cash = initial_capital
         self.fee_rate = fee_rate
         self.slippage_model = slippage_model
@@ -75,6 +78,8 @@ class PaperExecutor(BaseExecutor):
     
     def _simulate_latency(self):
         """模拟网络延迟"""
+        if self.fast_mode:
+            return
         if self.latency_ms > 0:
             actual_latency = self.latency_ms * (0.8 + np.random.random() * 0.4)
             time.sleep(actual_latency / 1000)
@@ -86,7 +91,10 @@ class PaperExecutor(BaseExecutor):
         self._simulate_latency()
         
         # 生成订单ID
-        order_id = str(uuid.uuid4())[:16]
+        if self.fast_mode:
+            order_id = "f-order" # 快速模式下不生成 UUID，减少 CPU 消耗
+        else:
+            order_id = str(uuid.uuid4())[:16]
         order.order_id = order_id
         
         # 使用 UTC 时间

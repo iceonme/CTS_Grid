@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<instruction_set>
+  <id>ins_2026_03_05_1545_skill_framework</id>
+  <title>关于 Trading Skill 的处理范式</title>
+  <description>指导你在接手和处理 CTS 框架下策略开发/调优时的结构性思想转变</description>
+  
+  <trigger_patterns>
+    <pattern>创建一个新策略</pattern>
+    <pattern>修改xx策略的参数</pattern>
+    <pattern>把我们今天写的策略加进去</pattern>
+    <pattern>怎么给Agent加个新模型</pattern>
+  </trigger_patterns>
+
+  <directives>
+    <directive id="1">
+      <context>当你被要求创建或修改策略时：</context>
+      <rule>
+        你必须明确：策略不再是一个散落的 `.py` 文件，而是一个独立的【双模式 Skill 包】 (`strategies/skills/&lt;skill-name>/`)。
+        - 任何硬编码（Hard-coding）默认参数行为都是 **被禁止的**，所有调整范围或阈值的变动必须体现在 `config.json`。
+        - 你的思路不应该只是“改代码”，而是“**配置一个用于交易的微服务组件**”。
+      </rule>
+    </directive>
+    <directive id="2">
+      <context>当你评估或阅读一个旧策略需要迁移转化时：</context>
+      <rule>
+        你需要同步完成全套资源化：
+        1. 代码逻辑下沉到 `scripts/strategy.py`。
+        2. 需要给未来接替你的 Agent 编写包含明确操作动词的 `SKILL.md` (Agent-Instruction 风格)。
+        3. 确保同时准备一个能独立闭环提供测试断言的 `scripts/verify.py`，你必须在写完核心代码后第一时间用它自我跑通逻辑，再向我汇报。
+        4. 寻找该策略的历史数据，提取关键结论制成 `assets/backtest_summary.json`。
+      </rule>
+    </directive>
+  </directives>
+</instruction_set>

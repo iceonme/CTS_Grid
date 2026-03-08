@@ -2,6 +2,10 @@ import os
 import json
 import numpy as np
 import pandas as pd
+<<<<<<< Updated upstream
+=======
+from pathlib import Path
+>>>>>>> Stashed changes
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any, Tuple
@@ -12,6 +16,7 @@ from core import (
     FillEvent, Position, StrategyContext
 )
 from strategies.base import BaseStrategy
+<<<<<<< Updated upstream
 
 class GridStrategyV65A(BaseStrategy):
     """
@@ -121,10 +126,103 @@ class GridStrategyV65A(BaseStrategy):
         self._manage_grid(data)
 
         # 5. 信号生成
+=======
+from strategies.grid_mtf_6_0 import IncrementalIndicatorsV6, StrategyState
+
+# ============================================================
+# V6.5 大鸡腿版：趋势捕获版 (The Profit Hunter)
+# ============================================================
+
+class GridMTFStrategyV6_5(BaseStrategy):
+    """
+    V6.5-Winner "大鸡腿"版
+    针对 2025 年行情（9.3万 -> 12.6万 -> 8.7万）的专项进化：
+    1. 牛市锁定 (Trend-Lock): MACD 强势期禁止 RSI 反向止盈，确保吃到 12.6 万的主升浪。
+    2. 均线拦截 (MA Barrier): 价格跌破 15m MA200 后停止左侧接单，避免 Q4 的“阴跌接飞刀”。
+    3. 动量分配: 根据 MACD 强度动态分配仓位。
+    """
+    def __init__(self, name: str = "Grid_V65_Winner", **params):
+        super().__init__(name, **params)
+        
+        current_file_dir = Path(__file__).parent.resolve()
+        config_dir = current_file_dir.parent / "config"
+        
+        self.default_params_path = str(config_dir / 'grid_v60_default.json')
+        self.params_path = str(config_dir / 'grid_v65_runtime.json')
+        
+        self.symbol = params.get('symbol', 'BTCUSDT')
+        self._load_params()
+
+        # 数据缓存
+        self._data_5m = deque(maxlen=600) 
+        self._data_15m_closes = deque(maxlen=250)
+        self._last_5m_ts = None
+        self._last_bar_5m = None
+        
+        self.state = StrategyState()
+        self.indicators = IncrementalIndicatorsV6(self.params)
+        
+        self._last_15m_ts: Optional[datetime] = None
+        self._last_15m_bar_close = 0.0
+        self.ma200_15m = 0.0
+
+    def _load_params(self):
+        if os.path.exists(self.default_params_path):
+            with open(self.default_params_path, 'r', encoding='utf-8') as f:
+                self.params.update(json.load(f))
+        if os.path.exists(self.params_path):
+            with open(self.params_path, 'r', encoding='utf-8') as f:
+                self.params.update(json.load(f))
+
+    def on_data(self, data: MarketData, context: Optional[StrategyContext]) -> List[Signal]:
+        is_new_bar = (not self._last_5m_ts) or (data.timestamp > self._last_5m_ts)
+        if is_new_bar:
+            if self._last_bar_5m:
+                self.indicators.update_5m(self._last_bar_5m, commit=True)
+            self._last_5m_ts = data.timestamp
+            
+            # 聚合 15m
+            ts = data.timestamp
+            period_ts = ts.replace(minute=(ts.minute // 15) * 15, second=0, microsecond=0)
+            if self._last_15m_ts is None or period_ts > self._last_15m_ts:
+                if self._last_15m_ts is not None:
+                    self.indicators.update_15m_macd(self._last_15m_bar_close, commit=True)
+                    self._data_15m_closes.append(self._last_15m_bar_close)
+                self._last_15m_ts = period_ts
+                self._last_15m_bar_close = data.close
+            else:
+                self._last_15m_bar_close = data.close
+                
+        self._last_bar_5m = data
+        self._data_5m.append(data)
+
+        if len(self._data_15m_closes) < 20: return []
+
+        rsi, atr, atr_ma = self.indicators.update_5m(data, commit=False)
+        macd, sig, hist = self.indicators.update_15m_macd(data.close, commit=False)
+        
+        # 计算 15m MA200
+        if len(self._data_15m_closes) >= 200:
+            self.ma200_15m = np.mean(list(self._data_15m_closes)[-200:])
+        else:
+            self.ma200_15m = np.mean(list(self._data_15m_closes))
+
+        self.state.current_rsi = rsi
+        self.state.atr = atr
+        self.state.atr_ma = atr_ma
+        self.state.macd = macd
+        self.state.macdsignal = sig
+        self.state.macdhist = hist
+        
+        if self._check_halt(data): return []
+        self._manage_grid(data)
+
+>>>>>>> Stashed changes
         if context:
             return self._generate_signals(data, context)
         return []
 
+<<<<<<< Updated upstream
     def _update_data(self, data: MarketData):
         """更新 5m 数据并执行 15m 重采样
         
@@ -588,3 +686,101 @@ class GridStrategyV65A(BaseStrategy):
             'params': self.params,
             'param_metadata': self.param_metadata
         }
+=======
+    def _manage_grid(self, data: MarketData):
+        now = data.timestamp
+        lookback = self.params.get('grid_lookback_hours', 24) # 大版加大回看范围
+        
+        need_reset = False
+        if self.state.grid_upper == 0:
+            need_reset = True
+        elif self.state.last_grid_reset and (now - self.state.last_grid_reset) > timedelta(hours=lookback):
+            need_reset = True
+        elif abs(data.close - (self.state.grid_upper + self.state.grid_lower)/2) / ((self.state.grid_upper + self.state.grid_lower)/2) > 0.08:
+            need_reset = True
+
+        if need_reset:
+            bars = list(self._data_5m)
+            if not bars: return
+            high = max(b.high for b in bars)
+            low = min(b.low for b in bars)
+            buffer = 0.03 # 加大网格缓冲
+            self.state.grid_upper = high * (1 + buffer)
+            self.state.grid_lower = low * (1 - buffer)
+            layers = 6
+            self.state.grid_lines = np.linspace(self.state.grid_lower, self.state.grid_upper, layers + 1).tolist()
+            self.state.last_grid_reset = now
+
+    def _check_halt(self, data: MarketData) -> bool:
+        if self.state.is_halted:
+            if self.state.resume_time and data.timestamp >= self.state.resume_time:
+                self.state.is_halted = False
+            else: return True
+        if self.state.atr > self.state.atr_ma * 3.5:
+            self.state.is_halted = True
+            self.state.resume_time = data.timestamp + timedelta(minutes=60)
+            return True
+        return False
+
+    def _generate_signals(self, data: MarketData, context: StrategyContext) -> List[Signal]:
+        signals = []
+        pos = context.positions.get(self.symbol)
+        pos_size = pos.size if pos else 0
+        
+        is_bullish = self.state.macdhist > 0
+        trend_strong = is_bullish and self.state.macdhist > self.state.macdsignal * 0.5
+        
+        self.state.macdhist_prev = getattr(self.state, 'macdhist_prev', self.state.macdhist)
+        hist_growth = self.state.macdhist - self.state.macdhist_prev
+        self.state.macdhist_prev = self.state.macdhist
+
+        # 1. 卖出逻辑 (趋势锁定)
+        if pos_size > 0:
+            # 只有当 MACD 柱状图开始下降，或价格严重偏离 MA200 时，才允许止盈
+            if self.state.current_rsi > 80:
+                # 即使 RSI 很高，如果趋势还在加速 (hist_growth > 0)，我们就拿住
+                if hist_growth < 0 or not is_bullish:
+                   signals.append(Signal(data.timestamp, self.symbol, Side.SELL, pos_size, reason="Winner TP (Exhaustion)"))
+
+        # 2. 买入逻辑 (均线拦截)
+        if not signals:
+            # 防守逻辑：处于空头趋势下 (Price < MA200) 严禁网格左侧买入
+            if data.close < self.ma200_15m:
+                return []
+            
+            # 进攻逻辑：处于多头趋势且 RSI < 35 进入网格区
+            if is_bullish and self.state.current_rsi < 35:
+                idx = -1
+                for i in range(len(self.state.grid_lines) - 1):
+                    if self.state.grid_lines[i] <= data.close < self.state.grid_lines[i+1]:
+                        idx = i; break
+                
+                if idx != -1 and idx < 3:
+                     # 波动率自适应因子
+                    vol_factor = np.clip(self.state.atr_ma / (self.state.atr + 1e-9), 0.7, 1.5)
+                    # 强趋势加成
+                    trend_mult = 1.3 if trend_strong else 1.0
+                    
+                    layers = 6
+                    weight = (layers - idx) / sum(range(1, layers + 1))
+                    buy_usdt = self.params.get('total_capital', 10000) * weight * vol_factor * trend_mult
+                    
+                    if context.cash >= buy_usdt:
+                        signals.append(Signal(
+                            timestamp=data.timestamp,
+                            symbol=self.symbol,
+                            side=Side.BUY,
+                            size=buy_usdt,
+                            meta={'size_in_quote': True},
+                            reason=f"Winner Buy: Trend={trend_strong}"
+                        ))
+
+        return signals
+
+    def get_status(self, context=None):
+        from strategies.grid_mtf_6_0 import GridMTFStrategyV6_0
+        res = GridMTFStrategyV6_0.get_status(self, context)
+        res['ma200_15m'] = round(self.ma200_15m, 2)
+        res['price_above_ma'] = (context.current_price > self.ma200_15m) if (context and self.ma200_15m > 0) else False
+        return res
+>>>>>>> Stashed changes

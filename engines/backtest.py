@@ -53,6 +53,8 @@ class BacktestEngine:
         self._trades: List[TradeRecord] = []
         self._equity_curve: List[PortfolioSnapshot] = []
         self._signals: List[Signal] = []
+        self._hourly_series: List[Dict] = []  # 新增：小时级降采样记录
+        self._last_hour: int = -1
         
         # 注册回调
         self.executor.register_fill_callback(self._on_fill)
@@ -136,21 +138,25 @@ class BacktestEngine:
         self._equity_curve.append(snapshot)
     
     def run(self, data_feed: BaseDataFeed, 
-            progress_callback: Optional[Callable[[int, int], None]] = None) -> Dict[str, Any]:
+            progress_callback: Optional[Callable[[int, int], None]] = None,
+            fast_mode: bool = False) -> Dict[str, Any]:
         """
         运行回测
         
         Args:
             data_feed: 数据流
             progress_callback: 进度回调 (current, total)
-            
-        Returns:
-            回测结果字典
+            fast_mode: 极速模式（关闭所有 UI 信息和不必要的记录）
         """
-        print(f"\n{'='*60}")
-        print(f"回测开始 | 策略: {self.strategy.name}")
-        print(f"初始资金: ${self.initial_capital:,.2f}")
-        print(f"{'='*60}\n")
+        if not fast_mode:
+            print(f"\n{'='*60}")
+            print(f"回测开始 | 策略: {self.strategy.name}")
+            print(f"初始资金: ${self.initial_capital:,.2f}")
+            print(f"{'='*60}\n")
+        
+        # 针对 fast_mode 优化执行器
+        if fast_mode and hasattr(self.executor, 'fast_mode'):
+            self.executor.fast_mode = True
         
         # 初始化
         self.strategy.initialize()
@@ -175,19 +181,31 @@ class BacktestEngine:
             if signals:
                 self._execute_signals(signals)
             
-            # 记录权益
-            self._record_equity()
+            # 记录历史轨迹 - 极速模式下每 100 步记录一次或不记录中间状态
+            if not fast_mode or data_count % 100 == 0:
+                self._record_equity()
             
+            # 高性能降采样记录：检测小时跨越 (用于可视化)
+            current_hour = data.timestamp.hour
+            if current_hour != self._last_hour:
+                self._hourly_series.append({
+                    'timestamp': data.timestamp.isoformat(),
+                    'equity': self.executor.get_total_value(),
+                    'benchmark': data.close
+                })
+                self._last_hour = current_hour
+
             data_count += 1
             
-            if progress_callback and data_count % 100 == 0:
-                progress_callback(data_count, 0)  # total 未知
+            if not fast_mode and progress_callback and data_count % 100 == 0:
+                progress_callback(data_count, 0)
         
         self.strategy.on_stop()
         
-        print(f"\n{'='*60}")
-        print(f"回测完成 | 共处理 {data_count} 条数据")
-        print(f"{'='*60}\n")
+        if not fast_mode:
+            print(f"\n{'='*60}")
+            print(f"回测完成 | 共处理 {data_count} 条数据")
+            print(f"{'='*60}\n")
         
         return self._generate_report()
     
@@ -244,9 +262,9 @@ class BacktestEngine:
             'profit_factor': profit_factor,
             'avg_win': avg_win,
             'avg_loss': avg_loss,
-            'equity_curve': self._equity_curve,
-            'trades': self._trades,
-            'signals': self._signals,
+            'hourly_series': self._hourly_series,  # 导出轻量级小时序列
+            'trades': self._trades if not self.executor.fast_mode else [], # 极速模式下精简
+            'signals': self._signals if not self.executor.fast_mode else [],
             'params': self.strategy.params
         }
         

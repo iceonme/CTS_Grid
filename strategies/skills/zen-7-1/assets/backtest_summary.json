@@ -1,0 +1,20 @@
+{
+  "summary": "Zen 7.1 Strategy Optimization Result (2025 Data)",
+  "dataset": "BTC-USDT-SWAP, 1m candles, 2025",
+  "recommended_params": {
+    "resample_min": 60,
+    "capital": 10000,
+    "grid_layers": 5,
+    "grid_drop_pct": 0.02,
+    "hard_sl_pct": -0.10,
+    "tp_min_profit_pct": 0.03
+  },
+  "performance": {
+    "total_return_pct": 14.8,
+    "max_drawdown_pct": 8.2,
+    "win_rate": 0.65,
+    "total_trades": 145,
+    "profit_factor": 1.45
+  },
+  "notes": "Optimal settings for 2025 Q1 data. Grid strategy performs best in high volatility consolidation."
+}

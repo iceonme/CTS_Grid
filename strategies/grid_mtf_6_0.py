@@ -2,6 +2,7 @@ import os
 import json
 import numpy as np
 import pandas as pd
+from pathlib import Path
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Any, Tuple
@@ -13,24 +14,141 @@ from core import (
 )
 from strategies.base import BaseStrategy
 
+# ============================================================
+# 高性能增量指标引擎 (适配 V6.0 逻辑)
+# ============================================================
+
+class IncrementalIndicatorsV6:
+    def __init__(self, p: dict):
+        self.p = p
+        self.count_5m = 0
+        self.count_15m = 0
+        
+        # RSI 5m (SMA Based)
+        self.rsi_period = p.get('rsi_period', 14)
+        self.gain_dq = deque(maxlen=self.rsi_period)
+        self.loss_dq = deque(maxlen=self.rsi_period)
+        self.gain_sum = 0.0
+        self.loss_sum = 0.0
+        self.prev_close_5m = 0.0
+        
+        # ATR 5m (SMA Based)
+        self.atr_period = p.get('atr_period', 14)
+        self.tr_dq = deque(maxlen=self.atr_period)
+        self.tr_sum = 0.0
+        self.prev_close_tr = 0.0
+        
+        # ATR MA (72 periods of ATR)
+        self.atr_ma_dq = deque(maxlen=72)
+        self.atr_ma_sum = 0.0
+        
+        # MACD 15m (EMA Based)
+        self.m_fast = p.get('macd_fast', 12)
+        self.m_slow = p.get('macd_slow', 26)
+        self.m_sig = p.get('macd_signal', 9)
+        self.ema_f = 0.0
+        self.ema_s = 0.0
+        self.ema_sig = 0.0
+        self.alpha_f = 2.0 / (self.m_fast + 1)
+        self.alpha_s = 2.0 / (self.m_slow + 1)
+        self.alpha_sig = 2.0 / (self.m_sig + 1)
+
+    def update_5m(self, d: MarketData, commit: bool = True):
+        c, h, l = d.close, d.high, d.low
+        if self.count_5m == 0:
+            if commit:
+                self.prev_close_5m = self.prev_close_tr = c
+                self.count_5m += 1
+            return 50.0, 0.0, 0.0
+
+        diff = c - self.prev_close_5m
+        gain = max(diff, 0); loss = max(-diff, 0)
+        tr = max(h - l, abs(h - self.prev_close_tr), abs(l - self.prev_close_tr))
+
+        def get_sma(dq, cur_sum, val, p):
+            count = len(dq)
+            if count == 0: return val
+            s = cur_sum + val - (dq[0] if count == p else 0)
+            return s / (count if count < p else p)
+
+        rsi_g = get_sma(self.gain_dq, self.gain_sum, gain, self.rsi_period)
+        rsi_l = get_sma(self.loss_dq, self.loss_sum, loss, self.rsi_period)
+        rs = rsi_g / rsi_l if rsi_l > 1e-9 else 100.0
+        rsi = 100.0 - (100.0 / (1.0 + rs)) if rsi_l > 1e-9 else 100.0
+        
+        atr = get_sma(self.tr_dq, self.tr_sum, tr, self.atr_period)
+        atr_ma = get_sma(self.atr_ma_dq, self.atr_ma_sum, atr, 72)
+
+        if commit:
+            if len(self.gain_dq) == self.rsi_period: self.gain_sum -= self.gain_dq.popleft()
+            self.gain_dq.append(gain); self.gain_sum += gain
+            if len(self.loss_dq) == self.rsi_period: self.loss_sum -= self.loss_dq.popleft()
+            self.loss_dq.append(loss); self.loss_sum += loss
+            if len(self.tr_dq) == self.atr_period: self.tr_sum -= self.tr_dq.popleft()
+            self.tr_dq.append(tr); self.tr_sum += tr
+            if len(self.atr_ma_dq) == 72: self.atr_ma_sum -= self.atr_ma_dq.popleft()
+            self.atr_ma_dq.append(atr); self.atr_ma_sum += atr
+            self.prev_close_5m = self.prev_close_tr = c
+            self.count_5m += 1
+            
+        return rsi, atr, atr_ma
+
+    def update_15m_macd(self, close: float, commit: bool = True):
+        if self.count_15m == 0:
+            if commit:
+                self.ema_f = self.ema_s = close
+                self.count_15m += 1
+            return 0.0, 0.0, 0.0
+
+        f = close * self.alpha_f + self.ema_f * (1 - self.alpha_f)
+        s = close * self.alpha_s + self.ema_s * (1 - self.alpha_s)
+        macd = f - s
+        sig = macd * self.alpha_sig + self.ema_sig * (1 - self.alpha_sig)
+        hist = macd - sig
+
+        if commit:
+            self.ema_f, self.ema_s, self.ema_sig = f, s, sig
+            self.count_15m += 1
+            
+        return macd, sig, hist
+
+@dataclass
+class StrategyState:
+    current_rsi: float = 50.0
+    macd: float = 0.0
+    macdsignal: float = 0.0
+    macdhist: float = 0.0
+    macdhist_prev: float = 0.0
+    atr: float = 0.0
+    atr_ma: float = 0.0
+    
+    grid_lower: float = 0.0
+    grid_upper: float = 0.0
+    grid_lines: List[float] = field(default_factory=list)
+    
+    is_halted: bool = False
+    halt_reason: str = ""
+    resume_time: Optional[datetime] = None
+    
+    last_grid_reset: Optional[datetime] = None
+
+
 class GridMTFStrategyV6_0(BaseStrategy):
     """
     V6.0-MTF 多周期自适应网格策略
-    
-    核心特性：
-    1. MTF (Multi-Timeframe): 5m 进场，15m 趋势过滤
-    2. 动态网格：基于过去 6 小时 ATR 和高低点动态重置边界
-    3. 非线性加仓：金字塔加仓模型
-    4. 趋势自适应止盈：根据 15m MACD 强度调整卖出阈值
-    5. 黑天鹅熔断：ATR 异常检测
     """
-
     def __init__(self, name: str = "Grid_V60_MTF", **params):
         super().__init__(name, **params)
-        self.params_path = params.get('config_path', 'config/grid_v60_runtime.json')
-        # 自动推导 meta 路径 (例如 runtime.json -> meta.json)
+        
+        # 动态定位核心配置目录
+        current_file_dir = Path(__file__).parent.resolve()
+        config_dir = current_file_dir.parent / "config"
+        
+        self.default_params_path = str(config_dir / 'grid_v60_default.json')
+        self.params_path = str(config_dir / 'grid_v60_runtime.json')
+        # 自动推导 meta 路径
         self.meta_path = self.params_path.replace('runtime.json', 'meta.json')
-        self.symbol = params.get('symbol', 'BTC-USDT-SWAP')
+        self.symbol = params.get('symbol', 'BTCUSDT')
         self.param_metadata = {}
         self._load_params()
 
@@ -39,6 +157,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
         self._data_15m = deque(maxlen=200)  # 15m 重采样缓存
         self._last_15m_ts: Optional[datetime] = None
 
+<<<<<<< Updated upstream
         # 策略内部状态
         @dataclass
         class StrategyState:
@@ -64,17 +183,31 @@ class GridMTFStrategyV6_0(BaseStrategy):
             last_buy_time: Optional[datetime] = None
             last_buy_price: float = 0.0
 
+=======
+>>>>>>> Stashed changes
         self.state = StrategyState()
+        self.indicators = IncrementalIndicatorsV6(self.params)
+        self._last_5m_ts = None
+        self._last_bar_5m = None
+        self._last_15m_bar_close = 0.0
 
     def _load_params(self):
         """加载运行参数与元数据说明"""
-        # 1. 加载运行参数
+        # 1. 加载默认参数
+        if os.path.exists(self.default_params_path):
+            try:
+                with open(self.default_params_path, 'r', encoding='utf-8') as f:
+                    self.params.update(json.load(f))
+            except Exception as e:
+                print(f"[V6.0] 加载默认参数失败: {e}")
+
+        # 2. 加载运行时覆盖参数
         if os.path.exists(self.params_path):
             try:
                 with open(self.params_path, 'r', encoding='utf-8') as f:
                     self.params.update(json.load(f))
             except Exception as e:
-                print(f"[V6.0] 加载参数失败: {e}")
+                print(f"[V6.0] 加载运行参数失败: {e}")
         
         # 2. 加载元数据 (用于 Dashboard 说明面板)
         if os.path.exists(self.meta_path):
@@ -86,22 +219,40 @@ class GridMTFStrategyV6_0(BaseStrategy):
 
     def initialize(self):
         super().initialize()
+        self.state = StrategyState()
+        self.indicators = IncrementalIndicatorsV6(self.params)
+        self._last_5m_ts = None
+        self._last_bar_5m = None
+        self._data_5m.clear()
+        self._data_15m.clear()
+        self._last_15m_ts = None
         print(f"[V6.0] {self.name} 初始化完成")
 
     def on_data(self, data: MarketData, context: Optional[StrategyContext]) -> List[Signal]:
-        if not self._initialized:
-            self.initialize()
+        # 0. 5m 周期推进与指标进位
+        is_new_bar = (not self._last_5m_ts) or (data.timestamp > self._last_5m_ts)
+        if is_new_bar:
+            if self._last_bar_5m:
+                self.indicators.update_5m(self._last_bar_5m, commit=True)
+            self._last_5m_ts = data.timestamp
+            self._update_data(data)
+        self._last_bar_5m = data
 
-        # 1. 更新数据与重采样 (5m -> 15m)
-        self._update_data(data)
+        if len(self._data_5m) < 30: return []
+
+        # 1. 指标实时预览 (5m RSI, ATR)
+        rsi, atr, atr_ma = self.indicators.update_5m(data, commit=False)
+        self.state.current_rsi = rsi
+        self.state.atr = atr
+        self.state.atr_ma = atr_ma
+
+        # 2. 15m MACD 预览与进位
+        # 检查是否刚跨越 15m 边界（已经在 _update_data 中处理了聚合，这里执行 MACD 指标计算）
+        macd, sig, hist = self.indicators.update_15m_macd(data.close, commit=False)
+        self.state.macd = macd
+        self.state.macdsignal = sig
+        self.state.macdhist = hist
         
-        # 指标计算需要足够数据
-        if len(self._data_5m) < 30 or len(self._data_15m) < 30:
-            return []
-
-        # 2. 计算指标
-        self._calculate_indicators()
-
         # 3. 熔断检测 (黑天鹅)
         if self._check_halt(data):
             return []
@@ -148,8 +299,12 @@ class GridMTFStrategyV6_0(BaseStrategy):
         period_ts = ts.replace(minute=(ts.minute // 15) * 15, second=0, microsecond=0)
         
         if self._last_15m_ts is None or period_ts > self._last_15m_ts:
-            # 新的 15m 周期开始
+            # 旧的 15m 周期结束，正式进位 MACD 引擎
+            if self._last_15m_ts is not None:
+                self.indicators.update_15m_macd(self._last_15m_bar_close, commit=True)
+
             self._last_15m_ts = period_ts
+            self._last_15m_bar_close = data.close
             self._data_15m.append({
                 'timestamp': period_ts,
                 'open': data.open, 'high': data.high, 
@@ -162,6 +317,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
             bar['high'] = max(bar['high'], data.high)
             bar['low'] = min(bar['low'], data.low)
             bar['close'] = data.close
+<<<<<<< Updated upstream
             
             # 计算 15m 周期内的精确 volume：
             # 找到在当前 15m 周期内（属于这段 period_ts），但【已经完结】（不仅指最新一根正在跑的）的所有 5m K线。
@@ -180,33 +336,14 @@ class GridMTFStrategyV6_0(BaseStrategy):
             bar['volume'] = vol_sum
 
 
+=======
+            bar['volume'] += data.volume
+            self._last_15m_bar_close = data.close
+>>>>>>> Stashed changes
 
+    # 指标计算已移至 IncrementalIndicatorsV6 增量引擎
     def _calculate_indicators(self):
-        """计算 RSI(5m), MACD(15m), ATR(5m)"""
-        # 5m RSI
-        closes_5m = pd.Series([d.close for d in self._data_5m])
-        self.state.current_rsi = self._rsi(closes_5m, self.params.get('rsi_period', 14))
-        
-        # 5m ATR
-        highs = pd.Series([d.high for d in self._data_5m])
-        lows = pd.Series([d.low for d in self._data_5m])
-        closes = pd.Series([d.close for d in self._data_5m])
-        atr_val = self._atr(highs, lows, closes, self.params.get('atr_period', 14))
-        self.state.atr = atr_val
-        # 统计过去 6 小时的 ATR 均值 (72 根 5m)
-        self.state.atr_ma = pd.Series([d.atr for d in list(self._data_5m)[-72:] if hasattr(d, 'atr')]).mean() if len(self._data_5m) >= 72 else atr_val
-
-        # 15m MACD
-        df_15m = pd.DataFrame(list(self._data_15m))
-        macd, signal, hist = self._macd(
-            df_15m['close'], 
-            self.params.get('macd_fast', 12),
-            self.params.get('macd_slow', 26),
-            self.params.get('macd_signal', 9)
-        )
-        self.state.macd = macd
-        self.state.macdsignal = signal
-        self.state.macdhist = hist
+        pass
 
         # 波段点识别 (3高3低逻辑，集成 V4.0)
         df_5m = pd.DataFrame(list(self._data_5m))
@@ -222,6 +359,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
             lookback = self.params.get('grid_lookback_hours', 6)
             bars = list(self._data_5m)[-int(lookback * 12):]
             if not bars: return
+<<<<<<< Updated upstream
             upper = max(b.high for b in bars)
             lower = min(b.low for b in bars)
         else:
@@ -241,13 +379,28 @@ class GridMTFStrategyV6_0(BaseStrategy):
         layers = self.params.get('grid_layers', 5)
         self.state.grid_lines = np.linspace(self.state.grid_lower, self.state.grid_upper, layers + 1).tolist()
         self.state.last_grid_reset = now
+=======
+            
+            high = max(b.high for b in bars)
+            low = min(b.low for b in bars)
+            buffer = self.params.get('grid_buffer', 0.02)
+            
+            self.state.grid_upper = high * (1 + buffer)
+            self.state.grid_lower = low * (1 - buffer)
+            
+            # 生成网格线
+            layers = self.params.get('grid_layers', 5)
+            self.state.grid_lines = np.linspace(self.state.grid_lower, self.state.grid_upper, layers + 1).tolist()
+            self.state.last_grid_reset = now
+            self.log(f"[V6.0] 网格重置: {self.state.grid_lower:.2f} - {self.state.grid_upper:.2f} | 层数: {layers}")
+>>>>>>> Stashed changes
 
     def _check_halt(self, data: MarketData) -> bool:
         """黑天鹅检测"""
         if self.state.is_halted:
             if self.state.resume_time and data.timestamp >= self.state.resume_time:
                 self.state.is_halted = False
-                print(f"[V6.0] 恢复交易")
+                self.log(f"[V6.0] 恢复交易")
             else:
                 return True
         
@@ -256,7 +409,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
             self.state.is_halted = True
             self.state.halt_reason = "High Volatility (ATR Blackswan)"
             self.state.resume_time = data.timestamp + timedelta(minutes=self.params.get('atr_cooldown_min', 30))
-            print(f"[V6.0] 触发熔断: {self.state.halt_reason}")
+            self.log(f"[V6.0] 触发熔断: {self.state.halt_reason}")
             return True
             
         return False

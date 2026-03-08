@@ -13,33 +13,19 @@ from core import Signal, FillEvent, MarketData, Position, StrategyContext
 
 class BaseStrategy(ABC):
     """
-    策略基类
-    
-    设计原则：
-    1. 策略无状态（不维护资金、持仓）
-    2. 只输出信号，不关心如何执行
-    3. 通过 on_fill 回调了解成交情况
-    
-    使用方式：
-        strategy = MyStrategy(param1=1, param2=2)
-        for data in market_feed:
-            context = engine.get_context()  # 引擎提供当前状态
-            signals = strategy.on_data(data, context)
-            for signal in signals:
-                engine.execute(signal)
+    策略基类 (Architecture 2.0)
     """
     
     def __init__(self, name: str = "unnamed", **params):
-        """
-        初始化策略参数
-        
-        Args:
-            name: 策略名称
-            **params: 策略参数（如 rsi_period=14）
-        """
+        """初始化"""
         self.name = name
         self.params = params
         self._initialized = False
+        self.logger = None 
+        
+    def set_logger(self, logger):
+        """注入日志器"""
+        self.logger = logger
         
     def initialize(self):
         """
@@ -106,6 +92,20 @@ class BaseStrategy(ABC):
             ]
         }
     
-    def get_param(self, key: str, default: Any = None) -> Any:
-        """获取策略参数"""
-        return self.params.get(key, default)
+    def log(self, message: str, level: str = "info"):
+        """标准日志接口"""
+        if self.logger:
+            if level == "info": self.logger.info(message)
+            elif level == "error": self.logger.error(message)
+            elif level == "warning": self.logger.warning(message)
+        else:
+            # 静默模式
+            pass
+
+    def to_dict(self) -> Dict[str, Any]:
+        """导出配置"""
+        return {
+            "name": self.name,
+            "class": self.__class__.__name__,
+            "params": self.params
+        }

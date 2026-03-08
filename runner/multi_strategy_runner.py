@@ -31,6 +31,9 @@ class StrategySlot:
     state_file: str = ""
     trades_file: str = ""
 
+    # Skill 元信息（从 SKILL.md frontmatter 解析，可选）
+    skill_meta: dict = field(default_factory=dict)
+
     # 运行控制
     _pause_event: threading.Event = field(default_factory=threading.Event)
     _is_running: bool = False

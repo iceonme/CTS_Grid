@@ -43,13 +43,13 @@ class CSVDataFeed(BaseDataFeed):
         if self._data is not None:
             return
             
+        # 针对 2025 导出的格式进行优化
         df = pd.read_csv(self.filepath)
         
-        # 解析时间戳
+        # 解析时间戳 - 如果已经是整数 ms，直接转换效率更高
         if self.timestamp_col in df.columns:
-            if self.timestamp_format:
-                df[self.timestamp_col] = pd.to_datetime(df[self.timestamp_col], 
-                                                         format=self.timestamp_format)
+            if df[self.timestamp_col].dtype in ['int64', 'float64']:
+                df[self.timestamp_col] = pd.to_datetime(df[self.timestamp_col], unit='ms')
             else:
                 df[self.timestamp_col] = pd.to_datetime(df[self.timestamp_col])
             df.set_index(self.timestamp_col, inplace=True)
@@ -63,14 +63,9 @@ class CSVDataFeed(BaseDataFeed):
                start: Optional[datetime] = None,
                end: Optional[datetime] = None) -> Iterator[MarketData]:
         """
-        数据流
-        
-        Args:
-            start: 开始时间
-            end: 结束时间
+        高速数据流
         """
         self._load_data()
-        
         df = self._data
         
         if start:
@@ -80,15 +75,24 @@ class CSVDataFeed(BaseDataFeed):
         
         self._running = True
         
-        for timestamp, row in df.iterrows():
+        # 预先转换为 dict 列表可以显著提升大型循环速度
+        records = df.to_dict('records')
+        timestamps = df.index.tolist()
+        
+        for i in range(len(records)):
             if not self._running:
                 break
-                
-            data = MarketData.from_series(
-                timestamp=timestamp,
+            
+            data = MarketData(
+                timestamp=timestamps[i],
                 symbol=self.symbol,
-                row=row
+                open=float(records[i]['open']),
+                high=float(records[i]['high']),
+                low=float(records[i]['low']),
+                close=float(records[i]['close']),
+                volume=float(records[i]['volume'])
             )
             
-            self._notify_data(data)
+            # 回测模式下减少回调通知以提高速度
+            # self._notify_data(data) 
             yield data

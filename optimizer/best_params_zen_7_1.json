@@ -1,0 +1,7 @@
+{
+    "resample_min": 90,
+    "grid_layers": 10,
+    "grid_drop_pct": 0.02,
+    "hard_sl_pct": -0.15,
+    "tp_min_profit_pct": 0.025
+}
