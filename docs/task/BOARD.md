@@ -1,13 +1,10 @@
 # 项目看板 (BOARD)
 
 ## TODO
-- [ ] 策略架构 `Architecture 3.0`：Runner 的微服务化 / MCP 封装（让 Agent 通过 API 暂停/启动/切换由于 Skill 动态化的策略）
-- [ ] 策略架构 `Architecture 3.0+`：构建完整的 ATS 生态 (The Agentic Trading System)。基于 TSP (Trading-Skill-Protocol) 开发独立的 Trading Cartridge (策略与交易所卡带)，并研发高度定制的主机 Runner —— CTS (Crypto Trading Station) 进行硬件级加载与 Agent 监管融合。详见最新生态愿景 `INS003_ats_ecosystem_vision.md`
-- [ ] 完全对接 OKX 模拟盘：实现真实订单同步 (force_server)
-- [ ] 增加余额异常修复/手动同步触发按钮
-- [ ] 清理冗余的回测脚本代码
+- [ ] Confirming system architecture 3.0 migration <!-- id: 4 -->
 
 ## DONE
+- [x] 2026-03-09_21-05: 将最新的 V8.5 策略及相关回测分析文档上传至 GitHub `Zen` 分支。包含 `grid_v85.py` 以及 2025 年 3 月行情的多维度分析报告。 [[归档]](history/2026-03-09_19-45_v85_week2_backtest_analysis.md)
 - [x] 2026-03-09_19-45: 针对 V85 执行 2025-03-16/22 跨周回测。实测收益 -3.04%，回撤 3.41%。分析确认亏损系因该时段“先暴涨后阴跌”的尖峰反转行情导致网格高位接货，属于网格策略固有局限。 [[分析报告]](history/2026-03-09_19-45_v85_week2_backtest_analysis.md)
 - [x] 2026-03-09_19-30: 实现 V85 深度防重买优化。引入 Crossing Logic (事件穿过触发) 和 Position Inheritance (持仓继承)。回测显示交易数减少 29%，最大回撤降低 30%，大幅提升了策略在震荡市中的逻辑健壮性。 [[归档]](history/2026-03-09_19-30_v85_deep_optimization_walkthrough.md)
 - [x] 2026-03-09_19-20: 全面修复 `v85` 策略核心逻辑。解决了网格层级映射偏移、资金管理未对齐文档、RSI 计算不标准以及熔断后状态残留等重大 BUG。通过 2025 年 3 月高波动周数据回测验证，逻辑闭环，PnL 表现显著优化。 [[归档]](history/2026-03-09_19-20_v85_logic_fix_walkthrough.md)
