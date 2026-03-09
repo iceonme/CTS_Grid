@@ -3,15 +3,15 @@
 ## TODO
 - [ ] 策略架构 `Architecture 3.0`：Runner 的微服务化 / MCP 封装（让 Agent 通过 API 暂停/启动/切换由于 Skill 动态化的策略）
 - [ ] 策略架构 `Architecture 3.0+`：构建完整的 ATS 生态 (The Agentic Trading System)。基于 TSP (Trading-Skill-Protocol) 开发独立的 Trading Cartridge (策略与交易所卡带)，并研发高度定制的主机 Runner —— CTS (Crypto Trading Station) 进行硬件级加载与 Agent 监管融合。详见最新生态愿景 `INS003_ats_ecosystem_vision.md`
-- [ ] can 项目：比较 grid-rsi-bot vs grid-bot 的回测表现，调优 RSI 系数参数
 - [ ] 完全对接 OKX 模拟盘：实现真实订单同步 (force_server)
 - [ ] 增加余额异常修复/手动同步触发按钮
 - [ ] 清理冗余的回测脚本代码
 
 ## DONE
-<<<<<<< Updated upstream
-- [x] 2026-03-05_08-10: 【致命Bug】修复 V6.0/V6.5 _update_data 将2秒快照当5分钟K线追加的问题，修复Pivot选点算法（取最近N个转折点） [2026-03-05_08-10_fix_update_data_dedup_and_pivot.md](history/2026-03-05_08-10_fix_update_data_dedup_and_pivot.md)
-=======
+- [x] 2026-03-09_19-45: 针对 V85 执行 2025-03-16/22 跨周回测。实测收益 -3.04%，回撤 3.41%。分析确认亏损系因该时段“先暴涨后阴跌”的尖峰反转行情导致网格高位接货，属于网格策略固有局限。 [[分析报告]](history/2026-03-09_19-45_v85_week2_backtest_analysis.md)
+- [x] 2026-03-09_19-30: 实现 V85 深度防重买优化。引入 Crossing Logic (事件穿过触发) 和 Position Inheritance (持仓继承)。回测显示交易数减少 29%，最大回撤降低 30%，大幅提升了策略在震荡市中的逻辑健壮性。 [[归档]](history/2026-03-09_19-30_v85_deep_optimization_walkthrough.md)
+- [x] 2026-03-09_19-20: 全面修复 `v85` 策略核心逻辑。解决了网格层级映射偏移、资金管理未对齐文档、RSI 计算不标准以及熔断后状态残留等重大 BUG。通过 2025 年 3 月高波动周数据回测验证，逻辑闭环，PnL 表现显著优化。 [[归档]](history/2026-03-09_19-20_v85_logic_fix_walkthrough.md)
+- [x] 2026-03-08_16-45: 成功迁移 `v80` 策略至 `CTS1` 并完成 2025 年 BTC 全年真数据回测。修复了策略库中多个由 Git 合并冲突导致的语法错误 (MTF 6.0/6.5)。实测验证了策略在高价位 (100k+) 区间的运行稳定性。 [[归档]](history/2026-03-08_16-45_v80_2025_backtest_adaptation.md)
 - [x] 2026-03-05_15-40: 核心架构升级：实现架构 2.0+ 标准，规划并落地 Trading Skill 动态双模式 (Agent/Runner) 加载机制，完成首个标准化策略包 (Zen 7.1) 迁移。 [[归档]](history/2026-03-05_15-40_skill_architecture_v1.md)
 - [x] 2026-03-04_20-48: **重大突破**。将 Zen 7.1 接入系统级 `manager.py` 并行调优引擎，成功执行 50 轮多维度评分进化。在完全不针对特定行情硬编码的前提下，算法自动圈定了“90分钟维度+10层2%微间距网格”的超级稳健组合方案。实测 2025 年 BTC 现货净收益奔向 **38.14%**，夏普比率高达 18.40，且回撤完美压制在 12%，提前并超额完成了用户设定的 30% 盈利目标，标志着“进化共振网格”架构的正规化转型成功。 [[归档]](history/2026-03-04_20-48_zen_7_1_evolution_king.md)
 - [x] 2026-03-04_18-27: 针对 Z7 共振策略单层全仓易死损的致命伤，成功迭代出“多维共振 + 网格止损装甲”的复合形态架构（Zen 7.1）。在不使用未来函数硬编码的苛刻条件下，实施多轮自动化正交寻优。最终在 10 层 25% 止损兜底配置下，一举扭亏为盈，实测 2025 全年斩获 19.33% 的真实稳健纯利与 100% 的做单胜率，最大回撤压制在 16.9% 安全线，彻底确立了“技术分析辅助+网格底座”的新一代圣杯路线。 [[归档]](history/2026-03-04_18-27_zen_7_1_grid_optimized.md)
@@ -24,7 +24,7 @@
 - [x] 2026-03-03_22-12: 在 `CTS1` 建立高性能回测 Arena 架构，实现 2025 年全年数据 12 秒级回测，完成策略“Skill 化”解耦。 [[归档]](history/2026-03-03_22-12_backtest_arena_impl.md)
 - [x] 2026-03-03_21-51: 从 GitHub 下载并同步最新内容，包含 `CTS 6.0 MTF` 神经网络策略、配套 `dashboard_v60` 及运行脚本。 [[归档]](history/2026-03-03_21-51_sync_github_updates.md)
 - [x] 2026-03-03_13-43: 从 GitHub 同步 `multi_runner` 分支代码，包含 25 个文件变动，涉及 V6.0 神经网络策略及系统架构 2.0 文档更新。 [[归档]](history/2026-03-03_13-43_sync_multi_runner.md)
->>>>>>> Stashed changes
+- [x] 2026-03-05_08-10: 【致命Bug】修复 V6.0/V6.5 _update_data 将2秒快照当5分钟K线追加的问题，修复Pivot选点算法（取最近N个转折点） [2026-03-05_08-10_fix_update_data_dedup_and_pivot.md](history/2026-03-05_08-10_fix_update_data_dedup_and_pivot.md)
 - [x] 2026-03-02_17-30: 项目代码库深度瘦身，移除冗余的回测与测试脚本，并将 V4 系列的策略逻辑与 HTML 文件彻底归档，强制将 `main.py` 统一切换至标准的 V5.2 环境。 [[归档]](file:///c:/Projects/TradingGarage/CTS1/docs/task/history/2026-03-02_17-30_cleanup_and_archive.md)
 - [x] 2026-03-02_17-30: CTS 全系统 5.2 版本标准化处理，完成文件名、类名、配置及看板的统一清理。 [[归档]](file:///c:/Projects/TradingGarage/CTS1/docs/task/history/2026-03-02_17-30_standardize_v52_renaming.md)
 - [x] 2026-03-01_20-30: 优化 V5.1 状态同步逻辑，解决网格在数据更新后消失的问题。 [[归档]](file:///c:/Projects/TradingGarage/CTS1/docs/task/history/2026-03-01_20-30_fix_v51_grid_stability.md)
