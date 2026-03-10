@@ -31,8 +31,8 @@ class GridStrategyV85(BaseStrategy):
         super().__init__(name, **params)
         self.symbol = params.get('symbol', 'BTC-USDT')
         
-        # 数据缓存 (满足 6h = 360min 的数据要求)
-        self._data_buffer = deque(maxlen=600)   # 冗余缓存
+        # 数据缓存 (满足 4h = 240min 的数据要求)
+        self._data_buffer = deque(maxlen=500)   # 冗余缓存
         self._initialized = False
         
         @dataclass
@@ -76,10 +76,10 @@ class GridStrategyV85(BaseStrategy):
         # 1. 数据对齐与缓存
         self._data_buffer.append(data)
         
-        # 预热检查 (360min)
-        if len(self._data_buffer) < 360:
+        # 预热检查 (240min)
+        if len(self._data_buffer) < 240:
             if len(self._data_buffer) % 60 == 0:
-                print(f"[V8.5] 数据预热中: {len(self._data_buffer)}/360")
+                print(f"[V8.5] 数据预热中: {len(self._data_buffer)}/240")
             return []
 
         # 2. 计算指标
@@ -102,17 +102,19 @@ class GridStrategyV85(BaseStrategy):
         return []
 
     def _calculate_indicators(self):
-        closes = pd.Series([d.close for d in self._data_buffer])
-        # 标准 RSI (Wilder's Smoothing / EMA)
+        # 取满足计算所需的最小切片 (例如 period=14，取3倍数据保证差分及窗口充分)
+        lookback = min(len(self._data_buffer), self.rsi_period * 3)
+        if lookback < self.rsi_period + 1:
+            return  # 数据不足时不计算
+            
+        closes = pd.Series([d.close for d in list(self._data_buffer)[-lookback:]])
+        
+        # 使用传统的简单移动平均 (SMA) 对应 14 周期原始算式的期望
         delta = closes.diff()
-        gain = (delta.where(delta > 0, 0))
-        loss = (-delta.where(delta < 0, 0))
+        gain = (delta.where(delta > 0, 0)).rolling(window=self.rsi_period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=self.rsi_period).mean()
         
-        # 使用 ewm 匹配标准算法 (com=period-1 相当于 alpha=1/period)
-        avg_gain = gain.ewm(com=self.rsi_period - 1, min_periods=self.rsi_period).mean()
-        avg_loss = loss.ewm(com=self.rsi_period - 1, min_periods=self.rsi_period).mean()
-        
-        rs = avg_gain / avg_loss
+        rs = gain / loss
         self.state.current_rsi = 100 - (100 / (1 + rs.iloc[-1])) if not np.isnan(rs.iloc[-1]) else 50.0
 
     def _rebalance_grid_logic(self, data: MarketData, context: Optional[StrategyContext] = None):
@@ -125,8 +127,8 @@ class GridStrategyV85(BaseStrategy):
 
     def _calculate_5_take_3_grid(self, data: MarketData, context: Optional[StrategyContext] = None):
         """核心: 5取3抗插针算法"""
-        history = list(self._data_buffer)[-360:]
-        segment_size = 72 # 360 / 5
+        history = list(self._data_buffer)[-240:]
+        segment_size = 48 # 240 / 5
         
         h_points = []
         l_points = []
@@ -178,14 +180,20 @@ class GridStrategyV85(BaseStrategy):
                 # 计算大约持有多少份 (层)
                 pos_in_layers = round((pos.size * data.close) / unit_val)
                 if pos_in_layers > 0:
-                    # 从最底层开始锁定对应数量的实体买入层
-                    # lines 结构: [V-2, V-1, B, L1, ...] -> B 的索引是 2
+                    # 核心修复 3：持仓继承避开 L0 禁区
                     v_lower_count = 2
-                    for i in range(pos_in_layers):
-                        target_l_idx = v_lower_count + i
-                        if target_l_idx < len(self.state.grid_lines) - 1:
-                            self.state.layer_holdings[target_l_idx] = True
-                    print(f"[V8.5 INHERIT] 检测到持仓 {pos.size:.4f} BTC，自动继承锁定新网格底部的 {pos_in_layers} 个实体层")
+                    n = self.state.active_layers_mode
+                    l0_idx = v_lower_count + (n // 2)
+                    locked_count = 0
+                    current_idx = v_lower_count # 从最底层的实体层开始
+
+                    while locked_count < pos_in_layers and current_idx < len(self.state.grid_lines) - 1:
+                        # 必须跳过 L0 禁区和卖出层 (只锁买入层，即索引小于 l0_idx)
+                        if current_idx < l0_idx:
+                            self.state.layer_holdings[current_idx] = True
+                            locked_count += 1
+                        current_idx += 1
+                    print(f"[V8.5 INHERIT] 检测到持仓 {pos.size:.4f} BTC，自动继承锁定新网格底部的 {locked_count} 个实体买入层")
         
         # 增强日志
         print(f"\n>>>> [V8.5 GRID RECALC] {data.timestamp} <<<<")
@@ -218,9 +226,9 @@ class GridStrategyV85(BaseStrategy):
     def _handle_observation(self, data: MarketData, context: Optional[StrategyContext] = None) -> List[Signal]:
         elapsed = (data.timestamp - self.state.observe_start_time).total_seconds()
         
-        # 如果价格回到核心网格内 (BaseBottom 到 BaseTop)
-        if self.state.base_bottom <= data.close <= self.state.base_top:
-            print(f"[V8.5] 熔断解除: 价格回到核心网格内 (耗时 {elapsed/60:.1f}min)")
+        # 核心修复 4：熔断解除条件对齐 (包含虚拟层)
+        if self.state.grid_lines[0] <= data.close <= self.state.grid_lines[-1]:
+            print(f"[V8.5] 熔断解除: 价格回到网格工作区内 (耗时 {elapsed/60:.1f}min)")
             self.state.is_observing = False
             return []
             
@@ -323,18 +331,36 @@ class GridStrategyV85(BaseStrategy):
             is_crossing_up = (last_price < trigger_line and price >= trigger_line)
             
             if is_crossing_up and pos_size > 0:
+                # 核心修复 5：均价保护机制 (Cost Basis Protection)
+                avg_cost = float(pos.avg_price) if hasattr(pos, 'avg_price') else 0.0
+                # 如果当前价格低于持仓均价，拒绝卖出（防止网格下移导致的割肉）
+                if avg_cost > 0 and price < avg_cost:
+                    print(f"[V8.5 PROTECT] 触发卖出信号但价格({price:.2f})低于均价({avg_cost:.2f})，拒绝割肉。")
+                    return []
+
                 # RSI 过滤 (仅虚拟层)
                 if is_virtual_sell and self.state.current_rsi < self.state.dynamic_rsi_sell:
                     return []
                 
-                # 1/n 卖出算法
-                sell_qty = pos_size / n
-                if pos_size * price < 200: sell_qty = pos_size
+                # 核心修复 1：1/n 卖出算法优化 (处理芝诺的乌龟)
+                current_capital = context.total_value
+                target_sell_val = (current_capital * self.max_position_pct) / n
+                sell_qty = target_sell_val / price
+
+                # 兜底与精度保护：防止卖出量超过实际持仓，或处理尾仓
+                if sell_qty > pos_size or (pos_size - sell_qty) * price < 10.0:
+                    sell_qty = pos_size  # 如果剩余尾仓价值小于 10 U，直接清仓
+
+                # 最小下单额度拦截 (假设交易所要求单笔至少 5 USDT)
+                if sell_qty * price < 5.0:
+                    return [] 
                 
-                # 解锁最底层的一个买入锁
+                # 核心修复 2：解锁逻辑优化 (LIFO)
                 if self.state.layer_holdings:
-                    lowest_locked = min(self.state.layer_holdings.keys())
-                    self.state.layer_holdings.pop(lowest_locked)
+                    # 解锁当前已被锁定的最高层（最靠近当前反弹价格的买入层）
+                    highest_locked = max(self.state.layer_holdings.keys())
+                    self.state.layer_holdings.pop(highest_locked)
+                    print(f"[V8.5 DEBUG] 成功解锁层级 L({highest_locked - l0_idx})")
                 
                 print(f"[V8.5 TRADE] SELL | 层级: L({rel_idx}) | 穿过价格: {trigger_line:.2f} | RSI: {self.state.current_rsi:.1f}")
                 signals.append(Signal(
