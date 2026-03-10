@@ -157,7 +157,6 @@ class GridMTFStrategyV6_0(BaseStrategy):
         self._data_15m = deque(maxlen=200)  # 15m 重采样缓存
         self._last_15m_ts: Optional[datetime] = None
 
-<<<<<<< Updated upstream
         # 策略内部状态
         @dataclass
         class StrategyState:
@@ -182,9 +181,6 @@ class GridMTFStrategyV6_0(BaseStrategy):
             last_grid_reset: Optional[datetime] = None
             last_buy_time: Optional[datetime] = None
             last_buy_price: float = 0.0
-
-=======
->>>>>>> Stashed changes
         self.state = StrategyState()
         self.indicators = IncrementalIndicatorsV6(self.params)
         self._last_5m_ts = None
@@ -317,8 +313,6 @@ class GridMTFStrategyV6_0(BaseStrategy):
             bar['high'] = max(bar['high'], data.high)
             bar['low'] = min(bar['low'], data.low)
             bar['close'] = data.close
-<<<<<<< Updated upstream
-            
             # 计算 15m 周期内的精确 volume：
             # 找到在当前 15m 周期内（属于这段 period_ts），但【已经完结】（不仅指最新一根正在跑的）的所有 5m K线。
             # 直接遍历 self._data_5m 从后往前找，把 timestamp 大于等于 period_ts 且与 period_ts 属于同一 15m 窗口的所有完整 5m 累加。
@@ -334,12 +328,6 @@ class GridMTFStrategyV6_0(BaseStrategy):
                     vol_sum += d.volume
             
             bar['volume'] = vol_sum
-
-
-=======
-            bar['volume'] += data.volume
-            self._last_15m_bar_close = data.close
->>>>>>> Stashed changes
 
     # 指标计算已移至 IncrementalIndicatorsV6 增量引擎
     def _calculate_indicators(self):
@@ -359,7 +347,6 @@ class GridMTFStrategyV6_0(BaseStrategy):
             lookback = self.params.get('grid_lookback_hours', 6)
             bars = list(self._data_5m)[-int(lookback * 12):]
             if not bars: return
-<<<<<<< Updated upstream
             upper = max(b.high for b in bars)
             lower = min(b.low for b in bars)
         else:
@@ -379,21 +366,6 @@ class GridMTFStrategyV6_0(BaseStrategy):
         layers = self.params.get('grid_layers', 5)
         self.state.grid_lines = np.linspace(self.state.grid_lower, self.state.grid_upper, layers + 1).tolist()
         self.state.last_grid_reset = now
-=======
-            
-            high = max(b.high for b in bars)
-            low = min(b.low for b in bars)
-            buffer = self.params.get('grid_buffer', 0.02)
-            
-            self.state.grid_upper = high * (1 + buffer)
-            self.state.grid_lower = low * (1 - buffer)
-            
-            # 生成网格线
-            layers = self.params.get('grid_layers', 5)
-            self.state.grid_lines = np.linspace(self.state.grid_lower, self.state.grid_upper, layers + 1).tolist()
-            self.state.last_grid_reset = now
-            self.log(f"[V6.0] 网格重置: {self.state.grid_lower:.2f} - {self.state.grid_upper:.2f} | 层数: {layers}")
->>>>>>> Stashed changes
 
     def _check_halt(self, data: MarketData) -> bool:
         """黑天鹅检测"""

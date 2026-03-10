@@ -63,6 +63,9 @@ class DashboardServer:
         # 重置回调（兼容旧版 run_okx_demo.py）
         self.on_reset_callback: Optional[callable] = None
 
+        # 回测并发锁，防止多用户或重复点击导致进程堆叠与文件冲突
+        self._backtest_lock = threading.Lock()
+
         self._setup_routes()
         self._setup_socketio()
 
@@ -112,13 +115,58 @@ class DashboardServer:
             return redirect(url_for('index_4'))
 
         @self.app.route('/api/status')
-        def api_status():
-            strategy_id = request.args.get('strategy_id')
-            if strategy_id:
+        def get_status():
+            strategy_id = request.args.get('strategy_id', 'default')
+            # If strategy_id is provided, return data for that strategy.
+            # If no strategy_id or 'default' is provided, return all strategies.
+            if strategy_id != 'default' and strategy_id in self._data:
                 data = self._data.get(strategy_id, DashboardServer._EMPTY_STRATEGY_DATA())
                 return jsonify(self._clean_data(data))
-            # 无参数：返回所有策略
+            # If no specific strategy_id is requested or it's 'default', return all strategies
             return jsonify({sid: self._clean_data(d) for sid, d in self._data.items()})
+
+        @self.app.route('/api/run_backtest', methods=['POST'])
+        def run_backtest():
+            """
+            接收: { "start": "2025-03-16", "end": "2025-03-16" }
+            执行回测脚本并生成最新的 backtest_data.json
+            """
+            import subprocess
+            import sys
+            import os
+            
+            # 使用非阻塞锁，如果当前已经有人在计算，立即返回
+            if not self._backtest_lock.acquire(blocking=False):
+                return jsonify({"status": "error", "message": "回测引擎正忙，请稍后再试"}), 429
+            
+            try:
+                data = request.json
+                start_date = data.get('start', '2025-03-16')
+                end_date = data.get('end', '2025-03-16')
+                
+                print(f"[API] 触发回测请求: {start_date} -> {end_date}")
+                
+                base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                script_path = os.path.join(base_dir, 'run_v85_static_viewer.py')
+                
+                # 增加 60 秒硬超时，防止脚本挂起
+                cmd = [sys.executable, script_path, '--start', start_date, '--end', end_date]
+                result = subprocess.run(cmd, capture_output=True, text=True, cwd=base_dir, timeout=60)
+                
+                if result.returncode == 0:
+                    return jsonify({"status": "success", "message": "回测完成，数据已刷新"})
+                else:
+                    return jsonify({"status": "error", "message": f"计算失败: {result.stderr}"}), 500
+                    
+            except subprocess.TimeoutExpired:
+                print("[API] 回测进程超时被强杀")
+                return jsonify({"status": "error", "message": "回测执行超时 (60s)，请缩小时间范围或选择更具体日期"}), 504
+            except Exception as e:
+                print(f"[API] 后端异常: {str(e)}")
+                return jsonify({"status": "error", "message": str(e)}), 500
+            finally:
+                # 释放锁
+                self._backtest_lock.release()
 
         @self.app.route('/api/strategies')
         def api_strategies():
@@ -293,7 +341,8 @@ class DashboardServer:
             # 限制历史数据长度
             for key in ['history_candles', 'history_rsi', 'history_equity', 'trades']:
                 if key in self._data[strategy_id] and isinstance(self._data[strategy_id][key], list):
-                    self._data[strategy_id][key] = self._data[strategy_id][key][-500:]
+                    # 提升至 3000 以支持全天 (1440) 甚至 2 天的数据展示
+                    self._data[strategy_id][key] = self._data[strategy_id][key][-3000:]
 
             # 推送到对应房间
             clean = self._clean_data(data)

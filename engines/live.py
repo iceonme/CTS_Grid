@@ -332,7 +332,7 @@ class LiveEngine:
                 self._history_rsi.append({'time': timestamp_ms, 'value': rsi_val})
             else:
                 self._history_rsi[-1] = {'time': timestamp_ms, 'value': rsi_val}
-            if len(self._history_rsi) > 1000: self._history_rsi = self._history_rsi[-1000:]
+            if len(self._history_rsi) > 3000: self._history_rsi = self._history_rsi[-3000:]
             
         # 同步增量 MACD
         m_val = strategy_status.get('macd')
@@ -347,7 +347,16 @@ class LiveEngine:
                 self._history_macd.append(macd_data)
             else:
                 self._history_macd[-1] = macd_data
-            if len(self._history_macd) > 1000: self._history_macd = self._history_macd[-1000:]
+            if len(self._history_macd) > 3000: self._history_macd = self._history_macd[-3000:]
+            
+        # 同步历史资产曲线
+        if not hasattr(self, '_history_equity'):
+            self._history_equity = []
+        if not self._history_equity or self._history_equity[-1]['time'] < timestamp_ms:
+            self._history_equity.append({'time': timestamp_ms, 'value': total_value})
+        else:
+            self._history_equity[-1] = {'time': timestamp_ms, 'value': total_value}
+        if len(self._history_equity) > 3000: self._history_equity = self._history_equity[-3000:]
 
         return {
             'timestamp': data.timestamp.isoformat(),
@@ -380,9 +389,10 @@ class LiveEngine:
                 } for p in positions
             },
             'trade_history': trade_history, # 统一字段名为 trade_history
-            'history_candles': self._history_candles[-200:],  # 同步历史K线数据
-            'history_rsi': self._history_rsi[-200:] if hasattr(self, '_history_rsi') else [],
-            'history_macd': self._history_macd[-200:] if hasattr(self, '_history_macd') else []
+            'history_candles': self._history_candles[-3000:],  # 同步历史K线数据
+            'history_rsi': self._history_rsi[-3000:] if hasattr(self, '_history_rsi') else [],
+            'history_macd': self._history_macd[-3000:] if hasattr(self, '_history_macd') else [],
+            'history_equity': self._history_equity[-3000:] if hasattr(self, '_history_equity') else []
         }
     
     def _sync_history_candles(self, data: MarketData):
@@ -400,8 +410,8 @@ class LiveEngine:
         else:
             self._history_candles.append(candle)
         # 限制历史数据大小
-        if len(self._history_candles) > 1000:
-            self._history_candles = self._history_candles[-1000:]
+        if len(self._history_candles) > 3000:
+            self._history_candles = self._history_candles[-3000:]
 
     def save_trades(self, filepath: str):
         """保存交易记录"""

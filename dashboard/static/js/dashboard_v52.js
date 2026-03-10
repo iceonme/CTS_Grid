@@ -71,9 +71,8 @@ function convertTime(timestamp) {
         return null;
     }
     const seconds = Math.floor(ms / 1000);
-    // LightweightCharts 默认展示为 UTC，我们需要根据本地时区调整
-    const localOffset = new Date().getTimezoneOffset() * 60;
-    return seconds - localOffset;
+    // LightweightCharts 建议直接使用 UTC/Unix 时间戳，不要手动加偏移，否则会导致坐标错位
+    return seconds;
 }
 
 function convertAndValidateCandle(c) {
@@ -240,13 +239,13 @@ function updateEquity(totalValue, timestamp) {
 
 function updateChart(data, tradeHistory) {
     if (!candleSeries) return;
-    const candles = Array.isArray(data) ? data : [data].filter(x => x);
+    const candles = Array.isArray(data) ? data : [data];
     if (candles.length === 0 && (!tradeHistory || tradeHistory.length === 0)) return;
     const tvData = candles.map(c => convertAndValidateCandle(c)).filter(x => x);
     if (tvData.length === 0) return;
     try {
         if (Array.isArray(data) && data.length > 1) {
-            candleDataBuffer = tvData.sort((a, b) => a.time - b.time).slice(-500);
+            candleDataBuffer = tvData.sort((a, b) => a.time - b.time).slice(-3000);
             candleSeries.setData(candleDataBuffer);
             if (volumeSeries) {
                 const volData = candleDataBuffer.map(d => ({
@@ -287,7 +286,7 @@ function upsertCandle(buffer, candle) {
         const idx = buffer.findIndex(x => x.time === candle.time);
         if (idx >= 0) buffer[idx] = candle; else { buffer.push(candle); buffer.sort((a, b) => a.time - b.time); }
     }
-    if (buffer.length > 500) buffer.splice(0, buffer.length - 500);
+    if (buffer.length > 3000) buffer.splice(0, buffer.length - 3000);
 }
 
 function updateTradeMarkers(tradeHistory) {
@@ -297,14 +296,15 @@ function updateTradeMarkers(tradeHistory) {
         const price = parseFloat(trade.price);
         if (!time || isNaN(price)) return null;
         return {
-            time, position: trade.type === 'BUY' ? 'belowBar' : 'aboveBar',
-            color: trade.type === 'BUY' ? '#00d084' : '#ff4757',
-            shape: trade.type === 'BUY' ? 'arrowUp' : 'arrowDown',
-            text: trade.type === 'BUY' ? `买入` : `卖出`,
+            time, position: trade.side.toUpperCase() === 'BUY' ? 'belowBar' : 'aboveBar',
+            color: trade.side.toUpperCase() === 'BUY' ? '#00d084' : '#ff4757',
+            shape: trade.side.toUpperCase() === 'BUY' ? 'arrowUp' : 'arrowDown',
+            text: trade.side.toUpperCase() === 'BUY' ? `买入` : `卖出`,
             size: 1.5,
-            id: `trade_${trade.time}_${trade.id || ''}`
+            id: `trade_${trade.time}_${trade.id || Math.random()}`
         };
     }).filter(x => x);
+    console.log(`[Markers] 刷新标记数量: ${globalTradeMarkers.length}`);
     refreshMarkers();
 }
 
@@ -338,38 +338,35 @@ function refreshMarkers() {
     candleSeries.setMarkers(all);
 }
 
-function drawGridLines(gridLower, gridUpper, gridLevels) {
-    if (!candleSeries || !gridLevels || gridLevels < 2) return;
+function drawGridLines(gridLinesArray) {
+    if (!candleSeries || !Array.isArray(gridLinesArray) || gridLinesArray.length === 0) return;
 
-    // 决定哪些标签需要显示 (保留 3-5 个)
-    const showIndices = new Set();
-    showIndices.add(0); // 下界
-    showIndices.add(gridLevels - 1); // 上界
-    if (gridLevels > 2) showIndices.add(Math.floor(gridLevels / 2)); // 中间
-    if (gridLevels > 6) {
-        showIndices.add(Math.floor(gridLevels / 4));
-        showIndices.add(Math.floor(3 * gridLevels / 4));
-    }
+    if (window.gridLines) window.gridLines.forEach(l => candleSeries.removePriceLine(l));
+    window.gridLines = [];
 
-    if (!window.gridLines || window.gridLines.length !== gridLevels) {
-        if (window.gridLines) window.gridLines.forEach(l => candleSeries.removePriceLine(l));
-        window.gridLines = [];
-        const colors = ['#00d084', '#a855f7', '#ff4757'];
-        for (let i = 0; i < gridLevels; i++) {
-            const color = i === 0 ? colors[0] : (i === gridLevels - 1 ? colors[2] : colors[1]);
-            const isLabelVisible = showIndices.has(i);
-            window.gridLines.push(candleSeries.createPriceLine({
-                price: gridLower,
-                color,
-                lineWidth: 1,
-                lineStyle: LightweightCharts.LineStyle.Dashed,
-                axisLabelVisible: isLabelVisible,
-                title: i === 0 ? '网格下界' : (i === gridLevels - 1 ? '网格上界' : (isLabelVisible ? `网格${i}` : ''))
-            }));
-        }
-    }
-    const step = (gridUpper - gridLower) / (gridLevels - 1);
-    for (let i = 0; i < gridLevels; i++) window.gridLines[i].applyOptions({ price: gridLower + step * i });
+    gridLinesArray.forEach((price, i) => {
+        let label = '';
+        if (i === 0) label = 'V-2';
+        else if (i === 1) label = 'V-1';
+        else if (i === 2) label = 'Bottom(L0)';
+        else if (i === gridLinesArray.length - 3) label = `Top(L${gridLinesArray.length - 5})`;
+        else if (i === gridLinesArray.length - 2) label = 'V+1';
+        else if (i === gridLinesArray.length - 1) label = 'V+2';
+        else label = `L${i - 2}`;
+
+        const isEdge = i < 2 || i >= gridLinesArray.length - 2;
+        const color = isEdge ? 'rgba(255, 152, 0, 0.5)' : 'rgba(33, 150, 243, 0.7)';
+        const lineStyle = isEdge ? LightweightCharts.LineStyle.Dotted : LightweightCharts.LineStyle.Dashed;
+
+        window.gridLines.push(candleSeries.createPriceLine({
+            price: price,
+            color: color,
+            lineWidth: 1,
+            lineStyle: lineStyle,
+            axisLabelVisible: true,
+            title: label
+        }));
+    });
 }
 
 // UI 业务逻辑
@@ -478,7 +475,23 @@ function renderStrategyDoc(strategyData) {
 // Socket 事件
 socket.on('connect', () => { isConnected = true; reconnectAttempts = 0; document.getElementById('statusDot').className = 'status-dot connected'; document.getElementById('statusText').textContent = '已连接'; });
 socket.on('disconnect', () => { isConnected = false; document.getElementById('statusDot').className = 'status-dot disconnected'; document.getElementById('statusText').textContent = '已断开'; });
-socket.on('strategies_list', () => { socket.emit('join', { strategy_id: currentStrategyId }); });
+socket.on('strategies_list', (data) => {
+    // 优先从 URL 参数获取 strategy_id
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlSid = urlParams.get('strategy_id');
+
+    if (urlSid) {
+        currentStrategyId = urlSid;
+        console.log('[SocketIO] 从 URL 检测到 Strategy ID:', currentStrategyId);
+    } else if (data && data.strategies && data.strategies.length > 0) {
+        // 如果 URL 没带，默认选已注册的第一个
+        currentStrategyId = data.strategies[0].id;
+        console.log('[SocketIO] 默认使用第一个策略:', currentStrategyId);
+    }
+
+    console.log('[SocketIO] 执行 Join 房间:', currentStrategyId);
+    socket.emit('join', { strategy_id: currentStrategyId });
+});
 socket.on('reset_ui', (data) => {
     const isSoft = data && data.soft;
     console.log(`[SocketIO] 执行重置信号: sid=${currentStrategyId}, soft=${isSoft}`);
@@ -671,7 +684,7 @@ socket.on('update', (data) => {
         if (ts) {
             updatePivotMarkers(s.pivots);
             updateMACD({ macd: s.macd, macdsignal: s.macdsignal, macdhist: s.macdhist }, ts);
-            if (s.grid_lines) drawGridLines(s.grid_lines[0], s.grid_lines[s.grid_lines.length - 1], s.grid_lines.length);
+            if (s.grid_lines) drawGridLines(s.grid_lines);
         }
     }
 
@@ -679,7 +692,10 @@ socket.on('update', (data) => {
     if (ts) {
         if (data.rsi !== undefined) updateRSI(data.rsi, ts);
         if (data.total_value !== undefined) updateEquity(data.total_value, ts);
-        if (data.candle) updateChart(data.candle, data.trade_history);
+        // 重要：显式传递 trade_history 或 data.trades 以便更新标记
+        const trades = data.trade_history || data.trades || [];
+        updateChart(data.candle, trades);
+        if (data.strategy) updateDebugLabel(data.strategy);
     }
 
     // 4. 其他 UI 状态
@@ -734,3 +750,25 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('strategyDocModal').classList.remove('show');
     };
 });
+
+// 调试信息显示增强
+function updateDebugLabel(status) {
+    if (!candleSeries) return;
+    const text = `状态: ${status.strategy_state || 'Unknown'} | 层级: ${status.layers}层 | RSI: ${status.rsi}`;
+
+    if (!window.debugPriceLine) {
+        window.debugPriceLine = candleSeries.createPriceLine({
+            price: 0,
+            color: 'rgba(255, 255, 255, 0.4)',
+            lineWidth: 1,
+            lineStyle: LightweightCharts.LineStyle.SparseDotted,
+            axisLabelVisible: true,
+            title: text
+        });
+    } else {
+        window.debugPriceLine.applyOptions({
+            price: status.grid_lines && status.grid_lines.length > 0 ? status.grid_lines[0] : 0,
+            title: text
+        });
+    }
+}
