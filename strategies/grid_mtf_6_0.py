@@ -323,10 +323,9 @@ class GridMTFStrategyV6_0(BaseStrategy):
                 if d_period_ts < period_ts:
                     break  # 已经跨越到上一个 15m 周期，停止
                 if d_period_ts == period_ts:
-                    # 只要是属于这个 15m 周期内的 5m K线，直接把它们内部已经整理好的 `volume` 加起来。
+                    # 只要是属于 this 15m 周期内的 5m K线，直接把它们内部已经整理好的 `volume` 加起来。
                     # 注意如果 `_data_5m` 已经是去重过的，那么最后一根就是包含当前 data.volume 的
                     vol_sum += d.volume
-            
             bar['volume'] = vol_sum
 
     # 指标计算已移至 IncrementalIndicatorsV6 增量引擎

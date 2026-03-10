@@ -122,6 +122,7 @@ def run_v85_static_viewer():
     # 计算基准收益
     last_price = engine._current_prices.get("BTC-USDT", first_price_in_range) if first_price_in_range else 0
     full_history["meta"]["market_pnl_pct"] = round(((last_price / first_price_in_range - 1) * 100), 2) if first_price_in_range else 0
+    full_history["meta"]["l0_idx"] = engine.strategy.get_status().get('params', {}).get('l0_idx', 5)
 
     # 整理交易记录
     first_candle_time = full_history["candles"][0]["time"] if full_history["candles"] else 0
@@ -134,6 +135,9 @@ def run_v85_static_viewer():
                 "size": t.get('size', 0), "id": f"t_{trade_ts_ms}"
             })
         except: continue
+
+    # 注入决策日志
+    full_history["decision_trace"] = engine.strategy.decision_trace
 
     output_path = "dashboard/static/backtest_data.json"
     with open(output_path, "w", encoding='utf-8') as f:

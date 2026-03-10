@@ -4,6 +4,16 @@
 - [ ] Confirming system architecture 3.0 migration <!-- id: 4 -->
 
 ## DONE
+- [x] 2026-03-10_13-52: 实现了全动态**网格带状背景填充 (Grid Zone Fills)**。不同于单纯的线条染色，现在 Dashboard 会根据买入、卖出和观望区域自动铺设淡色背景层。这使得 K 线在不同逻辑区间内的穿梭变得极具视觉冲击力，逻辑复盘体验达到专业交易站标准。 [[归档]](history/2026-03-10_13-52_grid_zone_fills.md)
+- [x] 2026-03-10_13-45: 彻底解决了网格配色失效问题。建立了 **l0_idx 全链路同步**，使 Dashboard 图表网格线能够根据策略的实时网格结构点亮红、绿、灰三色：买入区（绿）、卖出区（红）、L0 禁区（灰）。自此视觉呈现与策略逻辑实现了 100% 同步。 [[归档]](history/2026-03-10_13-45_dynamic_grid_colors.md)
+- [x] 2026-03-10_13-42: 修复了**日志配色不显示**的问题。主要原因是 CSS 优先级冲突，现已通过优化 `.log-msg` 的选择器权重解决。
+- [x] 2026-03-10_13-35: 实现了决策日志的**视觉配色系统 (Color Coding)**。根据日志的层级属性自动切换颜色：淡绿色（买入/L-）、淡红色（卖出/L+）、淡灰色（观望/L0/熔断），极大提升了复盘效率。 [[归档]](history/2026-03-10_13-35_log_color_coding.md)
+- [x] 2026-03-10_13-25: 完善了决策日志的**成交规模 (Trade Size)** 展示。现在每一笔 `成交买入` 和 `成交卖出` 都会在日志中精确记录成交时的实时价格以及具体的交易规模（USDT 金额或 Units 数量）。 [[归档]](history/2026-03-10_13-25_trade_size_logs.md)
+- [x] 2026-03-10_13-15: 完成了**深度决策日志 (Debug Plus)** 增强。现在逻辑追踪包含：实时层级映射 (实体/虚拟)、具体的跳过原因 (RSI 过滤、防复吸锁定、割肉保护)、以及熔断期间的精确偏离度。 [[归档]](history/2026-03-10_13-15_debug_plus_logs.md)
+- [x] 2026-03-10_13-05: 升级完成了**全量交互式决策追踪系统**。实现了 Dashboard 与 K 线图的光标位置联动显示逻辑，支持回测过程的全量“逻辑审计”。 [[归档]](history/2026-03-10_13-05_interactive_trace_system.md)
+- [x] 2026-03-10_12-45: 构建并集成了 V8.5 策略验证系统。新增了策略决策追踪 (Decision Trace) 机制，并在 Dashboard 实现了可视化日志面板。编写了 `test_v85_logic.py` 确保 5取3 算法及层级锁定的准确性。 [[归档]](history/2026-03-10_12-45_strategy_trace_system.md)
+- [x] 2026-03-10_12-30: 修复了 `grid_mtf_6_0.py` 和 `grid_mtf_6_5.py` 中的 Git 冲突标记导致的 `SyntaxError`。验证 `run_v85_static_viewer.py` 恢复正常运行，确保了回测分析工具链的可用性。 [[归档]](history/2026-03-10_12-30_fix_conflict_syntax_error.md)
+- [x] 2026-03-10_12-25: 从 GitHub `Zen` 分支同步最新代码，处理了 `dashboard_v52.js` 等文件的合并冲突。拉取内容包含完整 Dashboard 系统更新及 V85 策略逻辑修复 (a018402, b0e27db)。 [[归档]](history/2026-03-10_12-25_github_sync_walkthrough.md)
 - [x] 2026-03-09_21-05: 将最新的 V8.5 策略及相关回测分析文档上传至 GitHub `Zen` 分支。包含 `grid_v85.py` 以及 2025 年 3 月行情的多维度分析报告。 [[归档]](history/2026-03-09_19-45_v85_week2_backtest_analysis.md)
 - [x] 2026-03-09_19-45: 针对 V85 执行 2025-03-16/22 跨周回测。实测收益 -3.04%，回撤 3.41%。分析确认亏损系因该时段“先暴涨后阴跌”的尖峰反转行情导致网格高位接货，属于网格策略固有局限。 [[分析报告]](history/2026-03-09_19-45_v85_week2_backtest_analysis.md)
 - [x] 2026-03-09_19-30: 实现 V85 深度防重买优化。引入 Crossing Logic (事件穿过触发) 和 Position Inheritance (持仓继承)。回测显示交易数减少 29%，最大回撤降低 30%，大幅提升了策略在震荡市中的逻辑健壮性。 [[归档]](history/2026-03-09_19-30_v85_deep_optimization_walkthrough.md)
@@ -51,6 +61,9 @@
 - [x] 代码库格式清理与标准 Python 模块化 [2026-02-23_19-15_code_format_cleanup.md](history/2026-02-23_19-15_code_format_cleanup.md)
 - [x] 接入OKX交易所模拟盘 [2026-02-23_19-51_okx_api_setup.md](history/2026-02-23_19-51_okx_api_setup.md)
 - [x] 构建实时交易引擎与高端监控看板 [2026-02-23_20-05_live_trading_setup.md](history/2026-02-23_20-05_live_trading_setup.md)
+- [x] 初始化并确认当前 Git 状态
+- [x] 从 GitHub 拉取最新代码
+- [/] 验证更新内容并更新看板
 - [x] Dashboard 服务运行验证- [x] 修复前台显示静态及服务冲突问题 (2026-02-23) [归档](file:///c:/Projects/CTS1/docs/task/history/2026-02-23_20-40_dashboard_live_fix.md)
 - [x] 分支修复：Playwright 环境与后端依赖 [2026-02-23_20-30_playwright_fix.md](history/2026-02-23_20-30_playwright_fix.md)
 - [x] 修复 OKX API 401 权限问题并验证下单链路 [2026-02-23_21-40_okx_auth_fix.md](history/2026-02-23_21-40_okx_auth_fix.md)
