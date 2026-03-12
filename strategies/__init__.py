@@ -9,6 +9,7 @@ from .grid_mtf_6_0 import GridMTFStrategyV6_0
 from .neural_net_6_0 import NeuralNetStrategyV6_0
 from .grid_mtf_6_5 import GridStrategyV65A
 from .grid_mtf_6_5_doge import GridStrategyV65B
+from .grid_v85 import GridStrategyV85
 
 __all__ = [
     'BaseStrategy',
@@ -18,4 +19,5 @@ __all__ = [
     'NeuralNetStrategyV6_0',
     'GridStrategyV65A',
     'GridStrategyV65B',
+    'GridStrategyV85',
 ]

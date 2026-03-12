@@ -83,9 +83,9 @@ class OKXAPI:
         
         try:
             if method == 'GET':
-                response = self.session.get(url, headers=headers, params=params, timeout=10)
+                response = self.session.get(url, headers=headers, params=params, timeout=30)
             else:
-                response = self.session.post(url, headers=headers, data=body_str, timeout=10)
+                response = self.session.post(url, headers=headers, data=body_str, timeout=30)
             
             response.raise_for_status()
             return response.json()

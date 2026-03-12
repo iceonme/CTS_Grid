@@ -1,0 +1,242 @@
+[
+  {
+    "unlock_mode": "fifo",
+    "lookback_hours": 2.0,
+    "observe_hours": 0.5,
+    "total_return": -0.043991619463724964,
+    "max_drawdown": 0.06915237140872321,
+    "win_rate": 0.58,
+    "total_trades": 104,
+    "profit_factor": 7.725936278855562
+  },
+  {
+    "unlock_mode": "fifo",
+    "lookback_hours": 2.0,
+    "observe_hours": 1.0,
+    "total_return": -0.029264699799697518,
+    "max_drawdown": 0.04523897453081302,
+    "win_rate": 0.7368421052631579,
+    "total_trades": 114,
+    "profit_factor": 4.059728952249343
+  },
+  {
+    "unlock_mode": "fifo",
+    "lookback_hours": 2.0,
+    "observe_hours": 1.5,
+    "total_return": -0.02174428096175616,
+    "max_drawdown": 0.038676453083998405,
+    "win_rate": 0.5733333333333334,
+    "total_trades": 155,
+    "profit_factor": 3.633436935902873
+  },
+  {
+    "unlock_mode": "fifo",
+    "lookback_hours": 2.0,
+    "observe_hours": 2.0,
+    "total_return": -0.03598699736616745,
+    "max_drawdown": 0.047629207765404524,
+    "win_rate": 0.6307692307692307,
+    "total_trades": 133,
+    "profit_factor": 3.129969254133476
+  },
+  {
+    "unlock_mode": "fifo",
+    "lookback_hours": 4.0,
+    "observe_hours": 0.5,
+    "total_return": -0.043171047616495165,
+    "max_drawdown": 0.056446624432737895,
+    "win_rate": 0.627906976744186,
+    "total_trades": 92,
+    "profit_factor": 2.561252507702726
+  },
+  {
+    "unlock_mode": "fifo",
+    "lookback_hours": 4.0,
+    "observe_hours": 1.0,
+    "total_return": -0.05019157493214043,
+    "max_drawdown": 0.06616478622590148,
+    "win_rate": 0.8297872340425532,
+    "total_trades": 97,
+    "profit_factor": 2.563634309813804
+  },
+  {
+    "unlock_mode": "fifo",
+    "lookback_hours": 4.0,
+    "observe_hours": 1.5,
+    "total_return": -0.04050238831795032,
+    "max_drawdown": 0.05643964289824146,
+    "win_rate": 0.825,
+    "total_trades": 85,
+    "profit_factor": 3.6265610570315605
+  },
+  {
+    "unlock_mode": "fifo",
+    "lookback_hours": 4.0,
+    "observe_hours": 2.0,
+    "total_return": -0.021110453729013535,
+    "max_drawdown": 0.035131203506457154,
+    "win_rate": 0.4482758620689655,
+    "total_trades": 121,
+    "profit_factor": 3.2558003841635985
+  },
+  {
+    "unlock_mode": "fifo",
+    "lookback_hours": 6.0,
+    "observe_hours": 0.5,
+    "total_return": -0.048633205717965394,
+    "max_drawdown": 0.061543537681206635,
+    "win_rate": 0.574468085106383,
+    "total_trades": 98,
+    "profit_factor": 4.1220690406603255
+  },
+  {
+    "unlock_mode": "fifo",
+    "lookback_hours": 6.0,
+    "observe_hours": 1.0,
+    "total_return": -0.05698618624864594,
+    "max_drawdown": 0.0713891132570125,
+    "win_rate": 0.7551020408163265,
+    "total_trades": 102,
+    "profit_factor": 2.446157350396006
+  },
+  {
+    "unlock_mode": "fifo",
+    "lookback_hours": 6.0,
+    "observe_hours": 1.5,
+    "total_return": -0.03215891083085353,
+    "max_drawdown": 0.04982320345514694,
+    "win_rate": 0.7014925373134329,
+    "total_trades": 136,
+    "profit_factor": 2.7164106018048386
+  },
+  {
+    "unlock_mode": "fifo",
+    "lookback_hours": 6.0,
+    "observe_hours": 2.0,
+    "total_return": -0.0043111683187140445,
+    "max_drawdown": 0.024892180459931457,
+    "win_rate": 0.7384615384615385,
+    "total_trades": 128,
+    "profit_factor": 3.8594494725667445
+  },
+  {
+    "unlock_mode": "lifo",
+    "lookback_hours": 2.0,
+    "observe_hours": 0.5,
+    "total_return": -0.040017868894243656,
+    "max_drawdown": 0.06898639790974762,
+    "win_rate": 0.6470588235294118,
+    "total_trades": 106,
+    "profit_factor": 7.606753820008329
+  },
+  {
+    "unlock_mode": "lifo",
+    "lookback_hours": 2.0,
+    "observe_hours": 1.0,
+    "total_return": -0.02954497106868057,
+    "max_drawdown": 0.04543908343444088,
+    "win_rate": 0.7543859649122807,
+    "total_trades": 114,
+    "profit_factor": 3.128367468595179
+  },
+  {
+    "unlock_mode": "lifo",
+    "lookback_hours": 2.0,
+    "observe_hours": 1.5,
+    "total_return": -0.021873549711015766,
+    "max_drawdown": 0.03903627463135475,
+    "win_rate": 0.5405405405405406,
+    "total_trades": 153,
+    "profit_factor": 3.8714251365195462
+  },
+  {
+    "unlock_mode": "lifo",
+    "lookback_hours": 2.0,
+    "observe_hours": 2.0,
+    "total_return": -0.03354310678854454,
+    "max_drawdown": 0.04758117024670882,
+    "win_rate": 0.6181818181818182,
+    "total_trades": 113,
+    "profit_factor": 4.420156410210495
+  },
+  {
+    "unlock_mode": "lifo",
+    "lookback_hours": 4.0,
+    "observe_hours": 0.5,
+    "total_return": -0.042731765711462685,
+    "max_drawdown": 0.05619884226410658,
+    "win_rate": 0.5476190476190477,
+    "total_trades": 90,
+    "profit_factor": 3.8070529978466507
+  },
+  {
+    "unlock_mode": "lifo",
+    "lookback_hours": 4.0,
+    "observe_hours": 1.0,
+    "total_return": -0.04387623100872297,
+    "max_drawdown": 0.05965489230877962,
+    "win_rate": 0.7659574468085106,
+    "total_trades": 98,
+    "profit_factor": 2.8428296217181095
+  },
+  {
+    "unlock_mode": "lifo",
+    "lookback_hours": 4.0,
+    "observe_hours": 1.5,
+    "total_return": -0.04097028619298708,
+    "max_drawdown": 0.05649975134571359,
+    "win_rate": 0.8,
+    "total_trades": 85,
+    "profit_factor": 3.4178562836107145
+  },
+  {
+    "unlock_mode": "lifo",
+    "lookback_hours": 4.0,
+    "observe_hours": 2.0,
+    "total_return": -0.020511591996542483,
+    "max_drawdown": 0.0346307704802547,
+    "win_rate": 0.49122807017543857,
+    "total_trades": 119,
+    "profit_factor": 3.0289403706100417
+  },
+  {
+    "unlock_mode": "lifo",
+    "lookback_hours": 6.0,
+    "observe_hours": 0.5,
+    "total_return": -0.04262640583604752,
+    "max_drawdown": 0.055802595126781075,
+    "win_rate": 0.5681818181818182,
+    "total_trades": 93,
+    "profit_factor": 3.573058578656856
+  },
+  {
+    "unlock_mode": "lifo",
+    "lookback_hours": 6.0,
+    "observe_hours": 1.0,
+    "total_return": -0.057612410493807144,
+    "max_drawdown": 0.07175336276592312,
+    "win_rate": 0.6739130434782609,
+    "total_trades": 97,
+    "profit_factor": 2.8052529665001797
+  },
+  {
+    "unlock_mode": "lifo",
+    "lookback_hours": 6.0,
+    "observe_hours": 1.5,
+    "total_return": -0.03704365204087481,
+    "max_drawdown": 0.05073625648794828,
+    "win_rate": 0.6029411764705882,
+    "total_trades": 137,
+    "profit_factor": 2.241817991630225
+  },
+  {
+    "unlock_mode": "lifo",
+    "lookback_hours": 6.0,
+    "observe_hours": 2.0,
+    "total_return": -0.007130148023070251,
+    "max_drawdown": 0.024586449350782944,
+    "win_rate": 0.7741935483870968,
+    "total_trades": 122,
+    "profit_factor": 3.25856036983888
+  }
+]

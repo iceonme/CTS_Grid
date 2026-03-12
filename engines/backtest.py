@@ -138,6 +138,8 @@ class BacktestEngine:
         self._equity_curve.append(snapshot)
     
     def run(self, data_feed: BaseDataFeed, 
+            start: Optional[datetime] = None,
+            end: Optional[datetime] = None,
             progress_callback: Optional[Callable[[int, int], None]] = None,
             fast_mode: bool = False) -> Dict[str, Any]:
         """
@@ -145,6 +147,8 @@ class BacktestEngine:
         
         Args:
             data_feed: 数据流
+            start: 开始时间 (可选)
+            end: 结束时间 (可选)
             progress_callback: 进度回调 (current, total)
             fast_mode: 极速模式（关闭所有 UI 信息和不必要的记录）
         """
@@ -166,7 +170,7 @@ class BacktestEngine:
         data_count = 0
         
         # 事件循环
-        for data in data_feed.stream():
+        for data in data_feed.stream(start=start, end=end):
             self._current_time = data.timestamp
             self._current_prices[data.symbol] = data.close
             

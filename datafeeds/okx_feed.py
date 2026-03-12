@@ -24,7 +24,8 @@ class OKXDataFeed(BaseDataFeed):
                  api_secret: Optional[str] = None,
                  passphrase: Optional[str] = None,
                  is_demo: bool = True,
-                 poll_interval: float = 2.0):
+                 poll_interval: float = 2.0,
+                 record_to: Optional[str] = None):
         """
         Args:
             symbol: 交易对
@@ -40,6 +41,8 @@ class OKXDataFeed(BaseDataFeed):
         self.symbol = symbol
         self.timeframe = timeframe
         self.poll_interval = poll_interval
+        self.record_to = record_to
+        self._last_recorded_ts = None
         
         if api:
             self.api = api
@@ -68,6 +71,21 @@ class OKXDataFeed(BaseDataFeed):
         
         print(f"启动 OKX 数据流: {self.symbol} {self.timeframe}")
         
+        # 初始化录制文件
+        if self.record_to:
+            import os
+            try:
+                record_path = os.path.abspath(self.record_to)
+                os.makedirs(os.path.dirname(record_path), exist_ok=True)
+                if not os.path.exists(record_path):
+                    with open(record_path, 'w', encoding='utf-8') as f:
+                        f.write("timestamp,open,high,low,close,volume\n")
+                    print(f"[DataFeed] 行情录制已开启: {record_path}")
+                else:
+                    print(f"[DataFeed] 行情录制将追加至: {record_path}")
+            except Exception as e:
+                print(f"[DataFeed] 初始化录制文件失败: {e}")
+
         while self._running:
             try:
                 # 获取最近 2 根 K 线
@@ -88,6 +106,17 @@ class OKXDataFeed(BaseDataFeed):
                     )
                     
                     self._notify_data(data)
+                    
+                    # 录制逻辑 (去重并追加)
+                    if self.record_to and timestamp != self._last_recorded_ts:
+                        try:
+                            ts_str = timestamp.strftime('%Y-%m-%d %H:%M:%S')
+                            with open(self.record_to, 'a', encoding='utf-8') as f:
+                                f.write(f"{ts_str},{data.open},{data.high},{data.low},{data.close},{data.volume}\n")
+                            self._last_recorded_ts = timestamp
+                        except Exception as e:
+                            print(f"[DataFeed] 记录行情失败: {e}")
+
                     yield data
                 
                 time.sleep(self.poll_interval)

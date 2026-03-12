@@ -32,13 +32,19 @@ class GridStrategyV85(BaseStrategy):
         self.symbol = params.get('symbol', 'BTC-USDT')
         
         # 数据缓存 (满足 4h = 240min 的数据要求)
-        self._data_buffer = deque(maxlen=500)   # 冗余缓存
+        self._data_1m = deque(maxlen=500)   # 冗余缓存
         self._initialized = False
         
         @dataclass
         class StrategyState:
             current_rsi: float = 50.0
             volatility: float = 0.0
+            avg_gain: float = 0.0          # 已废弃，保留兼容性
+            avg_loss: float = 0.0          # 已废弃，保留兼容性
+            gain_dq: deque = field(default_factory=lambda: deque(maxlen=14))
+            loss_dq: deque = field(default_factory=lambda: deque(maxlen=14))
+            gain_sum: float = 0.0
+            loss_sum: float = 0.0
             base_top: float = 0.0           # 网格顶部 (中枢)
             base_bottom: float = 0.0        # 网格底部 (中枢)
             active_layers_mode: int = 5     # 5 或 7
@@ -68,22 +74,70 @@ class GridStrategyV85(BaseStrategy):
         self.rsi_period = params.get('rsi_period', 14)
         self.observe_hours = params.get('observe_hours', 2.0)
         self.max_position_pct = params.get('max_position_pct', 0.8)
+        self.lookback_hours = params.get('lookback_hours', 4.0) # 新增：支持 2h/4h/6h 回看
+        self.unlock_mode = params.get('unlock_mode', 'fifo')    # 新增：'fifo' 或 'lifo'
+        self.range_multiplier = params.get('range_multiplier', 1.0) # 新增：网格宽度缩放系数
+        self.verbose = params.get('verbose', False)            # 新增：控制日志输出
         
         # 资金管理参数
         self.initial_capital = params.get('initial_capital', 10000.0)
+        self.initialize()
+
+    def initialize(self):
+        """[标准接口] 初始化/重置策略状态"""
+        super().initialize()
+        self._data_1m.clear()
+        
+        # 重新初始化 StrategyState (避免旧网格和持仓干扰)
+        @dataclass
+        class StrategyState:
+            current_rsi: float = 50.0
+            volatility: float = 0.0
+            avg_gain: float = 0.0          # 已废弃，保留兼容性
+            avg_loss: float = 0.0          # 已废弃，保留兼容性
+            gain_dq: deque = field(default_factory=lambda: deque(maxlen=14))
+            loss_dq: deque = field(default_factory=lambda: deque(maxlen=14))
+            gain_sum: float = 0.0
+            loss_sum: float = 0.0
+            base_top: float = 0.0           # 网格顶部 (中枢)
+            base_bottom: float = 0.0        # 网格底部 (中枢)
+            active_layers_mode: int = 5     # 5 或 7
+            grid_lines: List[float] = field(default_factory=list)
+            
+            # RSI 动态阈值
+            dynamic_rsi_buy: float = 25.0
+            dynamic_rsi_sell: float = 75.0
+            
+            # 熔断观察状态
+            is_observing: bool = False
+            observe_start_time: Optional[datetime] = None
+            observe_trigger_price: float = 0.0
+            
+            # 记录上次重算时间
+            last_rebalance_time: Optional[datetime] = None
+            
+            # 记录上次价格 (用于 Crossing Logic)
+            last_marker_price: float = 0.0
+            
+            # 记录层级持仓锁定 (防复吸)
+            layer_holdings: Dict[int, bool] = field(default_factory=dict)
+            
+        self.state = StrategyState()
+        if self.verbose:
+            print(f"[V8.5] 策略内部状态已重置")
 
     def on_data(self, data: MarketData, context: Optional[StrategyContext]) -> List[Signal]:
         # 1. 数据对齐与缓存
-        self._data_buffer.append(data)
+        self._data_1m.append(data)
+        
+        # 2. 计算指标 (即使在预热期也计算，以便 Dashboard 有数据)
+        self._calculate_indicators()
         
         # 预热检查 (240min)
-        if len(self._data_buffer) < 240:
-            if len(self._data_buffer) % 60 == 0:
-                print(f"[V8.5] 数据预热中: {len(self._data_buffer)}/240")
+        if len(self._data_1m) < 240:
+            if self.verbose and len(self._data_1m) % 60 == 0:
+                print(f"[V8.5] 数据预热中: {len(self._data_1m)}/240")
             return []
-
-        # 2. 计算指标
-        self._calculate_indicators()
 
         # 3. 网格重算逻辑 (每 6 小时或初次或熔断恢复)
         self._rebalance_grid_logic(data, context)
@@ -102,20 +156,46 @@ class GridStrategyV85(BaseStrategy):
         return []
 
     def _calculate_indicators(self):
-        # 取满足计算所需的最小切片 (例如 period=14，取3倍数据保证差分及窗口充分)
-        lookback = min(len(self._data_buffer), self.rsi_period * 3)
-        if lookback < self.rsi_period + 1:
-            return  # 数据不足时不计算
+        if not self._data_1m:
+            return
             
-        closes = pd.Series([d.close for d in list(self._data_buffer)[-lookback:]])
+        data = self._data_1m[-1]
+        if len(self._data_1m) < 2:
+            return
+            
+        prev_data = self._data_1m[-2]
+        delta = data.close - prev_data.close
+        gain = max(0, delta)
+        loss = max(0, -delta)
         
-        # 使用传统的简单移动平均 (SMA) 对应 14 周期原始算式的期望
-        delta = closes.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=self.rsi_period).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=self.rsi_period).mean()
+        # 更新队列长度（如果参数改变）
+        if self.state.gain_dq.maxlen != self.rsi_period:
+            self.state.gain_dq = deque(list(self.state.gain_dq), maxlen=self.rsi_period)
+            self.state.loss_dq = deque(list(self.state.loss_dq), maxlen=self.rsi_period)
+
+        # 增量更新 SMA
+        if len(self.state.gain_dq) == self.rsi_period:
+            self.state.gain_sum -= self.state.gain_dq.popleft()
+            self.state.loss_sum -= self.state.loss_dq.popleft()
         
-        rs = gain / loss
-        self.state.current_rsi = 100 - (100 / (1 + rs.iloc[-1])) if not np.isnan(rs.iloc[-1]) else 50.0
+        self.state.gain_dq.append(gain)
+        self.state.loss_dq.append(loss)
+        self.state.gain_sum += gain
+        self.state.loss_sum += loss
+        
+        # 计算 RSI (SMA Based - Cutler's RSI)
+        count = len(self.state.gain_dq)
+        if count == 0:
+            self.state.current_rsi = 50.0
+        else:
+            rsi_g = self.state.gain_sum / count
+            rsi_l = self.state.loss_sum / count
+            
+            if rsi_l < 1e-9:
+                self.state.current_rsi = 100.0
+            else:
+                rs = rsi_g / rsi_l
+                self.state.current_rsi = 100.0 - (100.0 / (1.0 + rs))
 
     def _rebalance_grid_logic(self, data: MarketData, context: Optional[StrategyContext] = None):
         now = data.timestamp
@@ -127,8 +207,9 @@ class GridStrategyV85(BaseStrategy):
 
     def _calculate_5_take_3_grid(self, data: MarketData, context: Optional[StrategyContext] = None):
         """核心: 5取3抗插针算法"""
-        history = list(self._data_buffer)[-240:]
-        segment_size = 48 # 240 / 5
+        lookback_mins = int(self.lookback_hours * 60)
+        history = list(self._data_1m)[-lookback_mins:]
+        segment_size = len(history) // 5
         
         h_points = []
         l_points = []
@@ -193,20 +274,22 @@ class GridStrategyV85(BaseStrategy):
                             self.state.layer_holdings[current_idx] = True
                             locked_count += 1
                         current_idx += 1
-                    print(f"[V8.5 INHERIT] 检测到持仓 {pos.size:.4f} BTC，自动继承锁定新网格底部的 {locked_count} 个实体买入层")
+                    if self.verbose:
+                        print(f"[V8.5 INHERIT] 检测到持仓 {pos.size:.4f} BTC，自动继承锁定新网格底部的 {locked_count} 个实体买入层")
         
         # 增强日志
-        print(f"\n>>>> [V8.5 GRID RECALC] {data.timestamp} <<<<")
-        print(f"| 原始高点: {[f'{x:.1f}' for x in h_points]} -> 保留: {[f'{x:.1f}' for x in h_trimmed]}")
-        print(f"| 原始低点: {[f'{x:.1f}' for x in l_points]} -> 保留: {[f'{x:.1f}' for x in l_trimmed]}")
-        print(f"| 中枢顶部: {self.state.base_top:.2f} | 底部: {self.state.base_bottom:.2f}")
-        print(f"| 波动率: {vol*100:.2f}% -> 模式: {self.state.active_layers_mode}层 | RSI: {self.state.dynamic_rsi_buy}/{self.state.dynamic_rsi_sell}")
-        print(f"| 核心网格范围: {self.state.grid_lines[0]:.1f} - {self.state.grid_lines[-1]:.1f}\n")
+        if self.verbose:
+            print(f"\n>>>> [V8.5 GRID RECALC] {data.timestamp} <<<<")
+            print(f"| 原始高点: {[f'{x:.1f}' for x in h_points]} -> 保留: {[f'{x:.1f}' for x in h_trimmed]}")
+            print(f"| 原始低点: {[f'{x:.1f}' for x in l_points]} -> 保留: {[f'{x:.1f}' for x in l_trimmed]}")
+            print(f"| 中枢顶部: {self.state.base_top:.2f} | 底部: {self.state.base_bottom:.2f}")
+            print(f"| 波动率: {vol*100:.2f}% -> 模式: {self.state.active_layers_mode}层 | RSI: {self.state.dynamic_rsi_buy}/{self.state.dynamic_rsi_sell}")
+            print(f"| 核心网格范围: {self.state.grid_lines[0]:.1f} - {self.state.grid_lines[-1]:.1f}\n")
 
     def _build_grid_lines(self):
         """构建包含 2 层虚拟层的价格刻度"""
         n = self.state.active_layers_mode
-        h = (self.state.base_top - self.state.base_bottom) / n
+        h = ((self.state.base_top - self.state.base_bottom) / n) * self.range_multiplier
         
         lines = []
         # 下方 2 层虚拟: V-2, V-1
@@ -228,13 +311,15 @@ class GridStrategyV85(BaseStrategy):
         
         # 核心修复 4：熔断解除条件对齐 (包含虚拟层)
         if self.state.grid_lines[0] <= data.close <= self.state.grid_lines[-1]:
-            print(f"[V8.5] 熔断解除: 价格回到网格工作区内 (耗时 {elapsed/60:.1f}min)")
+            if self.verbose:
+                print(f"[V8.5] 熔断解除: 价格回到网格工作区内 (耗时 {elapsed/60:.1f}min)")
             self.state.is_observing = False
             return []
             
         # 满 N 小时未回归
         if elapsed >= self.observe_hours * 3600:
-            print(f"[V8.5] 熔断超时 ({self.observe_hours}h): 启动网格重算 (保留持仓)")
+            if self.verbose:
+                print(f"[V8.5] 熔断超时 ({self.observe_hours}h): 启动网格重算 (保留持仓)")
             self.state.is_observing = False
             # 熔断重算也需要 context 来处理持仓继承
             self._calculate_5_take_3_grid(data, context) 
@@ -248,7 +333,8 @@ class GridStrategyV85(BaseStrategy):
         
         # 检查是否突破整网格边缘 (进入观察期)
         if price < lines[0] or price > lines[-1]:
-            print(f"[V8.5] 触发熔断观察: 价格 {price:.2f} 溢出网格边界 [{lines[0]:.1f}, {lines[-1]:.1f}]")
+            if self.verbose:
+                print(f"[V8.5] 触发熔断观察: 价格 {price:.2f} 溢出网格边界 [{lines[0]:.1f}, {lines[-1]:.1f}]")
             self.state.is_observing = True
             self.state.observe_start_time = data.timestamp
             self.state.observe_trigger_price = price
@@ -315,14 +401,24 @@ class GridStrategyV85(BaseStrategy):
                     if is_virtual_buy and self.state.current_rsi > self.state.dynamic_rsi_buy:
                         return []
                         
-                    # 5层模式: n=5, 实体买入层有 2 层，实体卖出层有 2 层，L0 居中
-                    current_capital = context.total_value
-                    buy_val = (current_capital * self.max_position_pct) / n
+                    # 核心修正：1/n 动态分仓（基于当前可用 USDT 资金）
+                    # 用户要求：买入仓位需要是当前所拥有的资金USDT的1/n
+                    buy_val = context.cash / n
                     self.state.layer_holdings[layer_idx] = True
-                    print(f"[V8.5 TRADE] BUY | 层级: L({rel_idx}) | 穿过价格: {trigger_line:.2f} | RSI: {self.state.current_rsi:.1f}")
+                    if self.verbose:
+                        print(f"[V8.5 TRADE] BUY | 层级: L({rel_idx}) | 穿过价格: {trigger_line:.2f} | RSI: {self.state.current_rsi:.1f}")
                     signals.append(Signal(
                         timestamp=data.timestamp, symbol=self.symbol, side=Side.BUY,
-                        size=buy_val, meta={'size_in_quote': True},
+                        size=buy_val, meta={
+                            'size_in_quote': True,
+                            "rsi": self.state.current_rsi,
+                            "volatility": self.state.volatility,
+                            "layer_idx": layer_idx,
+                            "rel_idx": rel_idx,
+                            "active_layers": self.state.active_layers_mode,
+                            "holdings_count": len(self.state.layer_holdings),
+                            "snapshot_pos": pos_size
+                        },
                         reason=f"L({rel_idx}) Crossing Down {trigger_line:.2f}"
                     ))
                     
@@ -335,7 +431,8 @@ class GridStrategyV85(BaseStrategy):
                 avg_cost = float(pos.avg_price) if hasattr(pos, 'avg_price') else 0.0
                 # 如果当前价格低于持仓均价，拒绝卖出（防止网格下移导致的割肉）
                 if avg_cost > 0 and price < avg_cost:
-                    print(f"[V8.5 PROTECT] 触发卖出信号但价格({price:.2f})低于均价({avg_cost:.2f})，拒绝割肉。")
+                    if self.verbose:
+                        print(f"[V8.5 PROTECT] 触发卖出信号但价格({price:.2f})低于均价({avg_cost:.2f})，拒绝割肉。")
                     return []
 
                 # RSI 过滤 (仅虚拟层)
@@ -355,43 +452,87 @@ class GridStrategyV85(BaseStrategy):
                 if sell_qty * price < 5.0:
                     return [] 
                 
-                # 核心修复 2：解锁逻辑优化 (LIFO)
+                # 核心修复 2：解锁逻辑优化 (支持 FIFO/LIFO)
                 if self.state.layer_holdings:
-                    # 解锁当前已被锁定的最高层（最靠近当前反弹价格的买入层）
-                    highest_locked = max(self.state.layer_holdings.keys())
-                    self.state.layer_holdings.pop(highest_locked)
-                    print(f"[V8.5 DEBUG] 成功解锁层级 L({highest_locked - l0_idx})")
+                    # 解锁逻辑
+                    if self.unlock_mode == 'lifo':
+                        # LIFO: 解锁最近买入的（通常是价格最低的层级）
+                        target_key = min(self.state.layer_holdings.keys())
+                        mode_label = "LIFO"
+                    else:
+                        # FIFO (Default): 解锁最早买入的（通常是价格最高的层级）
+                        target_key = max(self.state.layer_holdings.keys())
+                        mode_label = "FIFO"
+                        
+                        
+                    self.state.layer_holdings.pop(target_key)
+                    if self.verbose:
+                        print(f"[V8.5 DEBUG] 使用 {mode_label} 成功解锁层级 L({target_key - l0_idx})")
                 
-                print(f"[V8.5 TRADE] SELL | 层级: L({rel_idx}) | 穿过价格: {trigger_line:.2f} | RSI: {self.state.current_rsi:.1f}")
+                if self.verbose:
+                    print(f"[V8.5 TRADE] SELL | 层级: L({rel_idx}) | 穿过价格: {trigger_line:.2f} | RSI: {self.state.current_rsi:.1f}")
                 signals.append(Signal(
                     timestamp=data.timestamp, symbol=self.symbol, side=Side.SELL,
-                    size=sell_qty, reason=f"L({rel_idx}) Crossing Up {trigger_line:.2f}"
+                    size=sell_qty, reason=f"L({rel_idx}) Crossing Up {trigger_line:.2f}",
+                    meta={
+                        "rsi": self.state.current_rsi,
+                        "volatility": self.state.volatility,
+                        "layer_idx": layer_idx,
+                        "rel_idx": rel_idx,
+                        "active_layers": self.state.active_layers_mode,
+                        "holdings_count": len(self.state.layer_holdings),
+                        "snapshot_pos": pos_size,
+                        "avg_cost": float(pos.avg_price) if hasattr(pos, 'avg_price') else 0.0
+                    }
                 ))
 
         return signals
 
     def get_status(self, context: Optional[StrategyContext] = None) -> Dict[str, Any]:
+        # 判定当前信号文本和颜色
+        signal_text = "等待信号"
+        signal_color = "neutral"
+        if self.state.is_observing:
+            signal_text = "熔断观察中"
+            signal_color = "warning"
+        
         status = {
             'name': self.name,
-            'rsi': round(self.state.current_rsi, 2),
-            'vol': f"{self.state.volatility*100:.2f}%",
-            'layers': self.state.active_layers_mode,
-            'state': "观察期" if self.state.is_observing else "运行中",
-            'base_range': f"{self.state.base_bottom:.1f} - {self.state.base_top:.1f}",
-            'locked_layers': list(self.state.layer_holdings.keys()),
+            'current_rsi': round(self.state.current_rsi, 2),
+            'rsi_oversold': self.state.dynamic_rsi_buy,
+            'rsi_overbought': self.state.dynamic_rsi_sell,
+            'volatility': self.state.volatility,
+            'atrVal': self.state.volatility * 100, # V85用中枢宽度百分比拟合
+            'signal_text': signal_text,
+            'signal_color': signal_color,
+            'signal_strength_val': f"{self.state.volatility*100:.2f}%",
+            'marketRegime': f"{self.state.active_layers_mode} 层模式",
+            'vol_trend': "上升" if self.state.volatility > 0.01 else "平稳", # 简单示例逻辑
+            'grid_lower': self.state.base_bottom,
+            'grid_upper': self.state.base_top,
+            'layers_mode': self.state.active_layers_mode,
+            'state_label': "观察期" if self.state.is_observing else "运行中",
+            'layer_holdings': list(self.state.layer_holdings.keys()),
+            'position_count': len(self.state.layer_holdings),
             'grid_lines': self.state.grid_lines
         }
+
         if context and self.symbol in context.positions:
             pos = context.positions[self.symbol]
             status.update({
-                'pos_size': float(pos.size),
-                'pos_pnl': float(pos.unrealized_pnl)
+                'position_size': float(pos.size),
+                'position_avg_price': float(pos.avg_price) if hasattr(pos, 'avg_price') else 0.0,
+                'position_unrealized_pnl': float(pos.unrealized_pnl)
             })
         
         # 补充参数信息供 Dashboard 显示
         status['params'] = {
+            'symbol': self.symbol,
             'rsi_period': self.rsi_period,
+            'lookback_hours': self.lookback_hours,
             'observe_hours': self.observe_hours,
-            'max_position_pct': self.max_position_pct
+            'max_position_pct': self.max_position_pct,
+            'unlock_mode': self.unlock_mode,
+            'range_multiplier': self.range_multiplier
         }
         return status

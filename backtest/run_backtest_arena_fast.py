@@ -10,8 +10,9 @@ import argparse
 import json
 from datetime import datetime
 
-# 自动处理路径
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# 自动处理路径 - 向上寻找项目根目录
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(BASE_DIR)
 
 from engines.backtest import BacktestEngine
 from datafeeds.csv_feed import CSVDataFeed
@@ -128,7 +129,7 @@ def run_arena(strategy_name: str, params: dict, csv_path: str):
 
     # 5. 自动可视化
     try:
-        from plot_arena_results import plot_results
+        from backtest.utils.plot_arena_results import plot_results
         img_path = plot_results(result_file)
         if img_path:
             print(f"[Arena] 可视化曲线已生成: {img_path}")

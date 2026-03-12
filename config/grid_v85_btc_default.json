@@ -1,0 +1,11 @@
+{
+  "version": "8.5-BTC-Jeff",
+  "symbol": "BTC-USDT",
+  "rsi_period": 14,
+  "lookback_hours": 4.0,
+  "observe_hours": 2.0,
+  "max_position_pct": 0.8,
+  "unlock_mode": "fifo",
+  "range_multiplier": 1.0,
+  "verbose": true
+}

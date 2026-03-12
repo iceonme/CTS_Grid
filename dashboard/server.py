@@ -143,14 +143,15 @@ class DashboardServer:
                 data = request.json
                 start_date = data.get('start', '2025-03-16')
                 end_date = data.get('end', '2025-03-16')
+                strategy_id = data.get('strategy', 'grid_v85')
                 
-                print(f"[API] 触发回测请求: {start_date} -> {end_date}")
+                print(f"[API] 触发回测请求: {strategy_id} | {start_date} -> {end_date}")
                 
                 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                script_path = os.path.join(base_dir, 'run_v85_static_viewer.py')
+                script_path = os.path.join(base_dir, 'backtest', 'run_backtest_arena_viewer.py')
                 
                 # 增加 60 秒硬超时，防止脚本挂起
-                cmd = [sys.executable, script_path, '--start', start_date, '--end', end_date]
+                cmd = [sys.executable, script_path, '--strategy', strategy_id, '--start', start_date, '--end', end_date]
                 result = subprocess.run(cmd, capture_output=True, text=True, cwd=base_dir, timeout=60)
                 
                 if result.returncode == 0:

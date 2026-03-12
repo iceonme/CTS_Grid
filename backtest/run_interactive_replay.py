@@ -3,9 +3,9 @@ import sys
 import time
 from datetime import datetime
 
-# 确保模块路径
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, current_dir)
+# 自动处理路径 - 向上寻找项目根目录
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, BASE_DIR)
 
 print(f"[REPLAY] Starting script at {datetime.now()}")
 
@@ -73,7 +73,7 @@ def run_v85_replay():
     warmup_count = 0
     # 为保证数据连续性，我们临时使用提取出来的完整日线数据
     for data in engine.data_feed.stream():
-        engine.strategy._data_buffer.append(data)
+        engine.strategy._data_1m.append(data)
         engine._sync_history_candles(data)
         warmup_count += 1
         if warmup_count >= 240:

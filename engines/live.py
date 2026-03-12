@@ -1,4 +1,4 @@
-﻿"""
+"""
 实盘引擎
 连接真实交易所运行策略
 """
@@ -212,8 +212,12 @@ class LiveEngine:
             import traceback
             traceback.print_exc()
         
+        if self.warmup_bars > 0 and len(self.strategy._data_1m) == 0:
+            print("  错误: 预热未成功，未能填充历史数据")
+            return False
+            
         self._is_warmed = True
-        print("预热完成")
+        print("预_热完成")
         return True
     
     def run(self):

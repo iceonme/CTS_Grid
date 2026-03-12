@@ -1,3 +1,8 @@
+import os
+import sys
+# 自动处理路径 - 向上寻找项目根目录
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, BASE_DIR)
 
 import json
 import os

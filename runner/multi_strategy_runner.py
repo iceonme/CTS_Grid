@@ -374,7 +374,7 @@ class MultiStrategyRunner:
             hc[-1] = candle
         else:
             hc.append(candle)
-            if len(hc) > 500:
+            if len(hc) > 2000:
                 hc.pop(0)
 
         hrsi = slot_cache.get('history_rsi', [])
@@ -382,7 +382,7 @@ class MultiStrategyRunner:
             hrsi[-1]['v'] = rsi_val
         else:
             hrsi.append({'t': candle['t'], 'v': rsi_val})
-            if len(hrsi) > 500:
+            if len(hrsi) > 2000:
                 hrsi.pop(0)
 
         heq = slot_cache.get('history_equity', [])
@@ -390,11 +390,12 @@ class MultiStrategyRunner:
             heq[-1]['v'] = total_value
         else:
             heq.append({'t': candle['t'], 'v': total_value})
-            if len(heq) > 500:
+            if len(heq) > 2000:
                 heq.pop(0)
 
-        # 实时维护 MACD 历史缓存（刷新后仍能完整对齐）
+        # 实时维护 MACD 历史缓存
         hmacd = slot_cache.get('history_macd', [])
+        ts_ms = candle['t']
         macd_item = {'time': ts_ms, 'macd': None, 'macdsignal': None, 'macdhist': None}
         if strategy_status:
             ml = strategy_status.get('macd')
@@ -410,7 +411,7 @@ class MultiStrategyRunner:
             hmacd[-1] = macd_item
         else:
             hmacd.append(macd_item)
-            if len(hmacd) > 500:
+            if len(hmacd) > 2000:
                 hmacd.pop(0)
         slot_cache['history_macd'] = hmacd
 
