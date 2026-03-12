@@ -20,7 +20,8 @@ let equitySeries = null;
 let latestStrategyInfo = null;
 let isConnected = false;
 let reconnectAttempts = 0;
-let currentStrategyId = 'grid_v52';
+let currentStrategyId = new URLSearchParams(window.location.search).get('strategy_id') || 'grid_v52';
+console.log('[APP] 当前策略 ID:', currentStrategyId);
 let currentSlotStatus = 'stopped';
 let candleDataBuffer = [];
 let lastCandleTime = null;
@@ -72,6 +73,8 @@ function convertTime(timestamp) {
     }
     const seconds = Math.floor(ms / 1000);
     // LightweightCharts 建议直接使用 UTC/Unix 时间戳，不要手动加偏移，否则会导致坐标错位
+    // 移除本地时区偏移纠正，直接显示 UTC 时间戳。
+    // 因为历史回测数据通常是 UTC 格式，LightweightCharts 默认也按 UTC 处理。
     return seconds;
 }
 

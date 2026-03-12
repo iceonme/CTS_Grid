@@ -402,6 +402,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
             bar['high'] = max(bar['high'], data.high)
             bar['low'] = min(bar['low'], data.low)
             bar['close'] = data.close
+<<<<<<< HEAD
             
             vol_sum = 0
             for i in range(len(self._data_1m) - 1, -1, -1):
@@ -409,6 +410,20 @@ class GridMTFStrategyV6_0(BaseStrategy):
                 d_period = d.timestamp.replace(minute=(d.timestamp.minute // 5) * 5, second=0, microsecond=0)
                 if d_period < period_5m_ts: break
                 if d_period == period_5m_ts:
+=======
+            # 计算 15m 周期内的精确 volume：
+            # 找到在当前 15m 周期内（属于这段 period_ts），但【已经完结】（不仅指最新一根正在跑的）的所有 5m K线。
+            # 直接遍历 self._data_5m 从后往前找，把 timestamp 大于等于 period_ts 且与 period_ts 属于同一 15m 窗口的所有完整 5m 累加。
+            vol_sum = 0
+            for i in range(len(self._data_5m) - 1, -1, -1):
+                d = self._data_5m[i]
+                d_period_ts = d.timestamp.replace(minute=(d.timestamp.minute // 15) * 15, second=0, microsecond=0)
+                if d_period_ts < period_ts:
+                    break  # 已经跨越到上一个 15m 周期，停止
+                if d_period_ts == period_ts:
+                    # 只要是属于 this 15m 周期内的 5m K线，直接把它们内部已经整理好的 `volume` 加起来。
+                    # 注意如果 `_data_5m` 已经是去重过的，那么最后一根就是包含当前 data.volume 的
+>>>>>>> 5b4c418cc0d0db4c6afd0386967253223c3b26af
                     vol_sum += d.volume
             bar['volume'] = vol_sum
 

@@ -52,5 +52,5 @@
     "atr_lookback_hours": 6,
     "atr_multiplier": 3
   },
-  "config_path": "C:\\CS\\grid_multi\\config\\grid_v80_opt_btc_runtime.json"
+  "config_path": "c:\\Projects\\TradingGarage\\CTS1\\config\\grid_v80_opt_btc_runtime.json"
 }
