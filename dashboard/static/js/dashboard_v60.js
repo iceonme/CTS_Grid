@@ -454,6 +454,7 @@ function updateTradeMarkers(tradeHistory) {
             id: `trade_${trade.time}_${trade.id || ''}`
         };
     }).filter(x => x);
+    // console.log(`[Chart] 转换交易标记: ${globalTradeMarkers.length} 个`);
     refreshMarkers();
 }
 
@@ -504,7 +505,8 @@ function refreshMarkers() {
         if (!validTimes.has(snappedTime)) return;
 
         // 改进 ID 逻辑：确保同一位置的同类标记不堆叠
-        const typeKey = m.id && m.id.startsWith('trade') ? 'trade' : (m.position === 'aboveBar' ? 'res' : 'sup');
+        // 核心修复：Key 包含 type (BUY/SELL)，防止一分钟内多笔交易互相覆盖
+        const typeKey = m.id && m.id.startsWith('trade') ? (m.text || 'trade') : (m.position === 'aboveBar' ? 'res' : 'sup');
         const key = `${snappedTime}_${typeKey}`;
 
         if (!snappedMarkers.has(key)) {
@@ -512,6 +514,7 @@ function refreshMarkers() {
         } else {
             // 如果已有标记，如果是交易标记则保留（交易更重要），否则保留已有的
             const existing = snappedMarkers.get(key);
+            // 如果是同类型的交易（比如两次买入），我们也只显示一个，但如果是不同类型（买和卖），key 已经不同了
             if (m.id && m.id.startsWith('trade') && (!existing.id || !existing.id.startsWith('trade'))) {
                 snappedMarkers.set(key, { ...m, time: snappedTime });
             }
@@ -921,6 +924,8 @@ socket.on('update', (data) => {
     if (data.trade) {
         tradePaginationState.allTrades.unshift(data.trade);
         renderTradeList();
+        // 核心修复：实时更新图表标记
+        updateTradeMarkers(tradePaginationState.allTrades.slice().reverse());
     }
 });
 
