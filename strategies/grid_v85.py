@@ -81,13 +81,16 @@ class GridStrategyV85(BaseStrategy):
         
         # 资金管理参数
         self.initial_capital = params.get('initial_capital', 10000.0)
-<<<<<<< HEAD
         self.initialize()
+        
+        # 决策追踪 (Trace Log): {timestamp_ms: [msg1, msg2, ...]}
+        self.decision_trace = {}
 
     def initialize(self):
         """[标准接口] 初始化/重置策略状态"""
         super().initialize()
         self._data_1m.clear()
+        self.decision_trace.clear()
         
         # 重新初始化 StrategyState (避免旧网格和持仓干扰)
         @dataclass
@@ -126,11 +129,6 @@ class GridStrategyV85(BaseStrategy):
         self.state = StrategyState()
         if self.verbose:
             print(f"[V8.5] 策略内部状态已重置")
-=======
-        
-        # 决策追踪 (Trace Log): {timestamp_ms: [msg1, msg2, ...]}
-        self.decision_trace = {}
->>>>>>> 5b4c418cc0d0db4c6afd0386967253223c3b26af
 
     def on_data(self, data: MarketData, context: Optional[StrategyContext]) -> List[Signal]:
         # 1. 数据对齐与缓存
@@ -150,16 +148,10 @@ class GridStrategyV85(BaseStrategy):
                 print(f"[V8.5] 数据预热中: {len(self._data_1m)}/240")
             return []
 
-<<<<<<< HEAD
-=======
-        # 2. 计算指标
-        self._calculate_indicators()
-
         # 记录基础状态 Trace (即使没有任何信号)
         ts_ms = int(data.timestamp.timestamp() * 1000)
         self._trace(ts_ms, f"Price: {data.close:.1f} | RSI: {self.state.current_rsi:.1f}")
-        
->>>>>>> 5b4c418cc0d0db4c6afd0386967253223c3b26af
+
         # 3. 网格重算逻辑 (每 6 小时或初次或熔断恢复)
         self._rebalance_grid_logic(data, context)
 
@@ -333,14 +325,10 @@ class GridStrategyV85(BaseStrategy):
         # 核心修复 4：熔断解除条件对齐 (包含虚拟层)
         ts_ms = int(data.timestamp.timestamp() * 1000)
         if self.state.grid_lines[0] <= data.close <= self.state.grid_lines[-1]:
-<<<<<<< HEAD
+            msg = f"熔断解除: 价格 {data.close:.2f} 回归区间 (耗时 {elapsed/60:.1f}min)"
             if self.verbose:
-                print(f"[V8.5] 熔断解除: 价格回到网格工作区内 (耗时 {elapsed/60:.1f}min)")
-=======
-            msg = f"熔断解除: 价格 {data.close:.2f} 回归区间"
-            print(f"[V8.5] {msg}")
+                print(f"[V8.5] {msg}")
             self._trace(ts_ms, msg)
->>>>>>> 5b4c418cc0d0db4c6afd0386967253223c3b26af
             self.state.is_observing = False
             return []
         else:
@@ -366,15 +354,11 @@ class GridStrategyV85(BaseStrategy):
         
         # 检查是否突破整网格边缘 (进入观察期)
         if price < lines[0] or price > lines[-1]:
-<<<<<<< HEAD
-            if self.verbose:
-                print(f"[V8.5] 触发熔断观察: 价格 {price:.2f} 溢出网格边界 [{lines[0]:.1f}, {lines[-1]:.1f}]")
-=======
             ts_ms = int(data.timestamp.timestamp() * 1000)
-            msg = f"触发熔断: 价格 {price:.2f} 溢出边界 [{lines[0]:.1f}, {lines[-1]:.1f}]"
-            print(f"[V8.5] {msg}")
+            msg = f"触发熔断观察: 价格 {price:.2f} 溢出边界 [{lines[0]:.1f}, {lines[-1]:.1f}]"
+            if self.verbose:
+                print(f"[V8.5] {msg}")
             self._trace(ts_ms, msg)
->>>>>>> 5b4c418cc0d0db4c6afd0386967253223c3b26af
             self.state.is_observing = True
             self.state.observe_start_time = data.timestamp
             self.state.observe_trigger_price = price
@@ -454,9 +438,10 @@ class GridStrategyV85(BaseStrategy):
                     # 用户要求：买入仓位需要是当前所拥有的资金USDT的1/n
                     buy_val = context.cash / n
                     self.state.layer_holdings[layer_idx] = True
-<<<<<<< HEAD
+                    msg = f"成交买入: L({rel_idx}) 价格 {price:.1f} 量 {buy_val:.1f} USDT"
                     if self.verbose:
-                        print(f"[V8.5 TRADE] BUY | 层级: L({rel_idx}) | 穿过价格: {trigger_line:.2f} | RSI: {self.state.current_rsi:.1f}")
+                        print(f"[V8.5 TRADE] {msg} | RSI: {self.state.current_rsi:.1f}")
+                    self._trace(ts_ms, msg)
                     signals.append(Signal(
                         timestamp=data.timestamp, symbol=self.symbol, side=Side.BUY,
                         size=buy_val, meta={
@@ -470,15 +455,6 @@ class GridStrategyV85(BaseStrategy):
                             "snapshot_pos": pos_size
                         },
                         reason=f"L({rel_idx}) Crossing Down {trigger_line:.2f}"
-=======
-                    msg = f"成交买入: {layer_name} 价格 {price:.1f} 量 {buy_val:.1f} USDT"
-                    print(f"[V8.5 TRADE] {msg} | RSI: {self.state.current_rsi:.1f}")
-                    self._trace(ts_ms, msg)
-                    signals.append(Signal(
-                        timestamp=data.timestamp, symbol=self.symbol, side=Side.BUY,
-                        size=buy_val, meta={'size_in_quote': True},
-                        reason=f"{layer_name} Crossing Down {trigger_line:.2f}"
->>>>>>> 5b4c418cc0d0db4c6afd0386967253223c3b26af
                     ))
             else:
                 if price <= trigger_line:
@@ -491,16 +467,6 @@ class GridStrategyV85(BaseStrategy):
         elif rel_idx > 0:
             is_crossing_up = (last_price < trigger_line and price >= trigger_line)
             
-<<<<<<< HEAD
-            if is_crossing_up and pos_size > 0:
-                # 核心修复 5：均价保护机制 (Cost Basis Protection)
-                avg_cost = float(pos.avg_price) if hasattr(pos, 'avg_price') else 0.0
-                # 如果当前价格低于持仓均价，拒绝卖出（防止网格下移导致的割肉）
-                if avg_cost > 0 and price < avg_cost:
-                    if self.verbose:
-                        print(f"[V8.5 PROTECT] 触发卖出信号但价格({price:.2f})低于均价({avg_cost:.2f})，拒绝割肉。")
-                    return []
-=======
             if is_crossing_up:
                 if pos_size <= 0:
                     self._trace(ts_ms, f"跳过卖出: {layer_name} 触发，但当前无持仓")
@@ -509,11 +475,10 @@ class GridStrategyV85(BaseStrategy):
                     avg_cost = float(pos.avg_price) if hasattr(pos, 'avg_price') else 0.0
                     # 如果当前价格低于持仓均价，拒绝卖出（防止网格下移导致的割肉）
                     if avg_cost > 0 and price < avg_cost:
-                        msg = f"保护跳过: {layer_name} 价格({price:.2f}) < 均价({avg_cost:.2f})，拒绝割肉"
-                        print(f"[V8.5 PROTECT] {msg}")
-                        self._trace(ts_ms, msg)
+                        if self.verbose:
+                            print(f"[V8.5 PROTECT] 触发卖出信号但价格({price:.2f})低于均价({avg_cost:.2f})，拒绝割肉。")
+                        self._trace(ts_ms, f"保护跳过: 价格({price:.2f}) < 均价({avg_cost:.2f})")
                         return []
->>>>>>> 5b4c418cc0d0db4c6afd0386967253223c3b26af
 
                     if is_virtual_sell and self.state.current_rsi < self.state.dynamic_rsi_sell:
                         self._trace(ts_ms, f"跳过卖出: {layer_name} RSI({self.state.current_rsi:.1f}) < 阈值({self.state.dynamic_rsi_sell})")
@@ -528,9 +493,9 @@ class GridStrategyV85(BaseStrategy):
                     if sell_qty > pos_size or (pos_size - sell_qty) * price < 10.0:
                         sell_qty = pos_size  # 如果剩余尾仓价值小于 10 U，直接清仓
 
-<<<<<<< HEAD
                 # 最小下单额度拦截 (假设交易所要求单笔至少 5 USDT)
                 if sell_qty * price < 5.0:
+                    self._trace(ts_ms, f"跳过卖出: 下单金额 {sell_qty*price:.1f} 过小")
                     return [] 
                 
                 # 核心修复 2：解锁逻辑优化 (支持 FIFO/LIFO)
@@ -538,20 +503,22 @@ class GridStrategyV85(BaseStrategy):
                     # 解锁逻辑
                     if self.unlock_mode == 'lifo':
                         # LIFO: 解锁最近买入的（通常是价格最低的层级）
-                        target_key = min(self.state.layer_holdings.keys())
+                        target_key = max(self.state.layer_holdings.keys()) # 注意：LIFO应该解最高key(最深买入)
                         mode_label = "LIFO"
                     else:
                         # FIFO (Default): 解锁最早买入的（通常是价格最高的层级）
-                        target_key = max(self.state.layer_holdings.keys())
+                        target_key = min(self.state.layer_holdings.keys())
                         mode_label = "FIFO"
-                        
                         
                     self.state.layer_holdings.pop(target_key)
                     if self.verbose:
                         print(f"[V8.5 DEBUG] 使用 {mode_label} 成功解锁层级 L({target_key - l0_idx})")
                 
+                msg = f"成交卖出: L({rel_idx}) 价格 {price:.1f} 量 {sell_qty:.4f}"
                 if self.verbose:
-                    print(f"[V8.5 TRADE] SELL | 层级: L({rel_idx}) | 穿过价格: {trigger_line:.2f} | RSI: {self.state.current_rsi:.1f}")
+                    print(f"[V8.5 TRADE] {msg} | RSI: {self.state.current_rsi:.1f}")
+                self._trace(ts_ms, msg)
+                
                 signals.append(Signal(
                     timestamp=data.timestamp, symbol=self.symbol, side=Side.SELL,
                     size=sell_qty, reason=f"L({rel_idx}) Crossing Up {trigger_line:.2f}",
@@ -566,33 +533,12 @@ class GridStrategyV85(BaseStrategy):
                         "avg_cost": float(pos.avg_price) if hasattr(pos, 'avg_price') else 0.0
                     }
                 ))
-=======
-                    # 最小下单额度拦截 (假设交易所要求单笔至少 5 USDT)
-                    if sell_qty * price < 5.0:
-                        self._trace(ts_ms, f"跳过卖出: 下单金额 {sell_qty*price:.1f} USDT 过小")
-                        return [] 
-                    
-                    # 核心修复 2：解锁逻辑优化 (LIFO)
-                    if self.state.layer_holdings:
-                        # 解锁当前已被锁定的最高层（最靠近当前反弹价格的买入层）
-                        highest_locked = max(self.state.layer_holdings.keys())
-                        self.state.layer_holdings.pop(highest_locked)
-                        print(f"[V8.5 DEBUG] 成功解锁层级 L({highest_locked - l0_idx})")
-                    
-                    msg = f"成交卖出: {layer_name} 价格 {price:.1f} 量 {sell_qty:.4f} Units"
-                    print(f"[V8.5 TRADE] {msg} | RSI: {self.state.current_rsi:.1f}")
-                    self._trace(ts_ms, msg)
-                    signals.append(Signal(
-                        timestamp=data.timestamp, symbol=self.symbol, side=Side.SELL,
-                        size=sell_qty, reason=f"{layer_name} Crossing Up {trigger_line:.2f}"
-                    ))
             else:
                 if price >= trigger_line:
                     self._trace(ts_ms, f"等待卖出: 价格已在触发线 ({trigger_line:.1f}) 上方，等待回调穿越或下个周期")
                 else:
                     dist = trigger_line - price
                     self._trace(ts_ms, f"等待卖出: 距 {layer_name} 触发线还差 {dist:.1f} USDT")
->>>>>>> 5b4c418cc0d0db4c6afd0386967253223c3b26af
 
         return signals
 
@@ -612,34 +558,24 @@ class GridStrategyV85(BaseStrategy):
         
         status = {
             'name': self.name,
-<<<<<<< HEAD
             'current_rsi': round(self.state.current_rsi, 2),
             'rsi_oversold': self.state.dynamic_rsi_buy,
             'rsi_overbought': self.state.dynamic_rsi_sell,
             'volatility': self.state.volatility,
-            'atrVal': self.state.volatility * 100, # V85用中枢宽度百分比拟合
+            'atrVal': self.state.volatility * 100, 
             'signal_text': signal_text,
             'signal_color': signal_color,
             'signal_strength_val': f"{self.state.volatility*100:.2f}%",
             'marketRegime': f"{self.state.active_layers_mode} 层模式",
-            'vol_trend': "上升" if self.state.volatility > 0.01 else "平稳", # 简单示例逻辑
+            'vol_trend': "上升" if self.state.volatility > 0.01 else "平稳", 
             'grid_lower': self.state.base_bottom,
             'grid_upper': self.state.base_top,
             'layers_mode': self.state.active_layers_mode,
             'state_label': "观察期" if self.state.is_observing else "运行中",
             'layer_holdings': list(self.state.layer_holdings.keys()),
             'position_count': len(self.state.layer_holdings),
-            'grid_lines': self.state.grid_lines
-=======
-            'rsi': round(self.state.current_rsi, 2),
-            'vol': f"{self.state.volatility*100:.2f}%",
-            'layers': self.state.active_layers_mode,
-            'state': "观察期" if self.state.is_observing else "运行中",
-            'base_range': f"{self.state.base_bottom:.1f} - {self.state.base_top:.1f}",
-            'locked_layers': list(self.state.layer_holdings.keys()),
             'grid_lines': self.state.grid_lines,
             'decision_trace_count': len(self.decision_trace)
->>>>>>> 5b4c418cc0d0db4c6afd0386967253223c3b26af
         }
 
         if context and self.symbol in context.positions:
@@ -657,11 +593,8 @@ class GridStrategyV85(BaseStrategy):
             'lookback_hours': self.lookback_hours,
             'observe_hours': self.observe_hours,
             'max_position_pct': self.max_position_pct,
-<<<<<<< HEAD
             'unlock_mode': self.unlock_mode,
-            'range_multiplier': self.range_multiplier
-=======
+            'range_multiplier': self.range_multiplier,
             'l0_idx': 2 + (self.state.active_layers_mode // 2)
->>>>>>> 5b4c418cc0d0db4c6afd0386967253223c3b26af
         }
         return status

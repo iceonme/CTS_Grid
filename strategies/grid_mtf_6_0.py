@@ -136,46 +136,46 @@ class GridCalculator:
             lows.append(min([c.low for c in segment]))
         
         if len(highs) >= 5:
-            # 去极值
-            highs.remove(max(highs))
-            highs.remove(min(highs))
-            lows.remove(max(lows))
-            lows.remove(min(lows))
+            highs.sort()
+            lows.sort()
+            # 去掉最低1个和最高1个，保留中间3个
+            highs = highs[1:4]
+            lows = lows[1:4]
             
         base_top = sum(highs) / len(highs)
         base_bottom = sum(lows) / len(lows)
         
-        # 计算波动率定层数
-        mid_price = (base_top + base_bottom) / 2
-        volatility = (base_top - base_bottom) / mid_price if mid_price > 0 else 0
-        n_layers = 7 if volatility >= vol_threshold else 5
+        # 计算波动率定层数 (规范: (Top - Bottom) / Bottom)
+        volatility = (base_top - base_bottom) / base_bottom if base_bottom > 0 else 0
+        n_layers = 7 if volatility > vol_threshold else 5
         
-        # 生成实体层
+        # 生成对称网格
         layers = []
         step = (base_top - base_bottom) / n_layers if n_layers > 0 else 0
+        mid_price = (base_top + base_bottom) / 2
         
-        for i in range(n_layers):
-            layer_bottom = base_bottom + i * step
-            layer_top = layer_bottom + step
-            layer_mid = (layer_bottom + layer_top) / 2
+        # 实体范围设定
+        entity_half = n_layers // 2
+        # 总索引范围：虚拟层上下各扩2层
+        idx_min = -(entity_half + 2)
+        idx_max = (entity_half + 2)
+        
+        for idx in range(idx_min, idx_max + 1):
+            # 以 mid_price 为中心，L(0) 跨越中心线
+            l_bottom = mid_price + (idx - 0.5) * step
+            l_top = mid_price + (idx + 0.5) * step
+            
+            l_type = "BUFFER" if idx == 0 else "ENTITY" if abs(idx) <= entity_half else "VIRTUAL"
             
             layers.append({
-                "index": i,
-                "bottom": layer_bottom,
-                "top": layer_top,
-                "mid": layer_mid,
-                "buy_zone": layer_bottom + (layer_top - layer_bottom) * 0.5,
-                "sell_zone": layer_bottom + (layer_top - layer_bottom) * 0.5,
+                "index": idx,
+                "bottom": l_bottom,
+                "top": l_top,
+                "mid": (l_bottom + l_top) / 2,
+                "type": l_type,
                 "locked": False,
                 "position": 0.0
             })
-        
-        # 生成虚拟层
-        virtual_step = step * 0.5
-        virtual_top_1 = base_top + virtual_step
-        virtual_top_2 = virtual_top_1 + virtual_step
-        virtual_bottom_1 = base_bottom - virtual_step
-        virtual_bottom_2 = virtual_bottom_1 - virtual_step
         
         return {
             "base_top": base_top,
@@ -183,20 +183,15 @@ class GridCalculator:
             "volatility": volatility,
             "n_layers": n_layers,
             "layers": layers,
-            "virtual": {
-                "top_1": virtual_top_1,
-                "top_2": virtual_top_2,
-                "bottom_1": virtual_bottom_1,
-                "bottom_2": virtual_bottom_2
-            },
+            "mid_price": mid_price,
             "created_at": datetime.now(),
             "period_used": period_hours
         }
 
 class CircuitBreaker:
-    """1小时物理熔断器"""
+    """1小时物理熔断器 (支持上下双向破位检测 + MACD关联)"""
     def __init__(self, observation_period: int = 3600):
-        self.status = "NORMAL"  # NORMAL / OBSERVING
+        self.status = "NORMAL"  # NORMAL / OBSERVING_UP / OBSERVING_DOWN
         self.observation_start = None
         self.observation_period = observation_period
     
@@ -204,27 +199,37 @@ class CircuitBreaker:
         if not virtual_grid: return "NORMAL"
         
         if self.status == "NORMAL":
-            if price > virtual_grid["top_2"] or price < virtual_grid["bottom_2"]:
-                self.status = "OBSERVING"
+            if price > virtual_grid["top_2"]:
+                self.status = "OBSERVING_UP"
                 self.observation_start = datetime.now()
-                return "OBSERVING"
+                return "OBSERVING_UP"
+            elif price < virtual_grid["bottom_2"]:
+                self.status = "OBSERVING_DOWN"
+                self.observation_start = datetime.now()
+                return "OBSERVING_DOWN"
             return "NORMAL"
             
-        elif self.status == "OBSERVING":
+        elif self.status in ["OBSERVING_UP", "OBSERVING_DOWN"]:
             if not self.observation_start:
+                self.status = "NORMAL"
                 return "NORMAL"
             
             elapsed = (datetime.now() - self.observation_start).total_seconds()
+            
+            # 价格回到安全区，解除警报
             if virtual_grid["bottom_2"] <= price <= virtual_grid["top_2"]:
                 self.status = "NORMAL"
                 self.observation_start = None
                 return "NORMAL"
                 
+            # 观察期满，返回特化的重置信号供主逻辑结合MACD使用
             if elapsed >= self.observation_period:
+                res = "REBUILD_UP" if self.status == "OBSERVING_UP" else "REBUILD_DOWN"
                 self.status = "NORMAL"
                 self.observation_start = None
-                return "REBUILD"
-            return "OBSERVING"
+                return res
+                
+            return self.status
         return "NORMAL"
 
 
@@ -239,11 +244,24 @@ class StrategyState:
     grid: Optional[Dict] = None
     grid_period: int = 6
     
+    # 槽位管理: 列表中的每个 dict 代表一笔独立的买入
+    # 格式: {"size": float, "buy_price": float, "layer_idx": int, "is_virtual": bool}
+    slots: List[Dict] = field(default_factory=list)
+    
+    # 可视化增强
+    grid_lines: List[float] = field(default_factory=list)
+    l0_idx: int = 4  # 默认中间索引
+    
     is_halted: bool = False
     halt_reason: str = ""
     resume_time: Optional[datetime] = None
     last_volume: float = 0.0
     grid_lines: List[float] = field(default_factory=list)
+    
+    # 价格保护状态
+    last_marker_price: float = 0.0
+    last_buy_price: float = 0.0
+    last_sell_price: float = 0.0
 
 
 class GridMTFStrategyV6_0(BaseStrategy):
@@ -264,6 +282,9 @@ class GridMTFStrategyV6_0(BaseStrategy):
         self._data_5m = deque(maxlen=100)
         
         self.state = StrategyState()
+        
+        # 决策追踪 (Trace Log): {timestamp_ms: [msg1, msg2, ...]}
+        self.decision_trace = {}
 
         self.param_metadata = {}
         self._load_params()
@@ -303,8 +324,17 @@ class GridMTFStrategyV6_0(BaseStrategy):
                 
         self.state.grid_period = self.params.get('grid_period_initial', 6)
 
+    def _trace(self, ts_ms: int, msg: str):
+        """记录决策追踪日志"""
+        if ts_ms not in self.decision_trace:
+            self.decision_trace[ts_ms] = []
+        # 避免重复记录相同消息
+        if msg not in self.decision_trace[ts_ms]:
+            self.decision_trace[ts_ms].append(msg)
+
     def initialize(self):
         super().initialize()
+        self.decision_trace.clear()
         self.state = StrategyState()
         self.indicators = IncrementalIndicatorsV6(self.params)
         self.breaker = CircuitBreaker(self.params.get('observation_period', 3600))
@@ -313,19 +343,26 @@ class GridMTFStrategyV6_0(BaseStrategy):
         self._data_1m.clear()
         self._data_5m.clear()
         self._last_5m_ts = None
+        self.state.last_marker_price = 0.0
+        self.state.last_buy_price = 0.0
+        self.state.last_sell_price = 0.0
         print(f"[V6.0-Revival] {self.name} 初始化完成")
 
     def on_data(self, data: MarketData, context: Optional[StrategyContext]) -> List[Signal]:
-        # 0. 1m K线合并与指标更新 (RSI)
+        # 0. 1m K线合并与指标更新 (RSI & MACD committed history)
         is_new_1m_bar = (not self._last_1m_ts) or (data.timestamp > self._last_1m_ts)
         if is_new_1m_bar:
             if self._last_1m_bar:
                 self.indicators.update_1m(self._last_1m_bar, commit=True)
-                self.indicators.update_1m_macd(self._last_1m_bar.close, commit=True)
+                _, _, hist_commit = self.indicators.update_1m_macd(self._last_1m_bar.close, commit=True)
+                # 记录上一根已确认K线的 MACD hist，用于对比判断当前金叉/死叉
+                self.state.macdhist_prev = hist_commit 
+                
             self._last_1m_ts = data.timestamp
             self._update_data(data)
         self._last_1m_bar = data
 
+        ts_ms = int(data.timestamp.timestamp() * 1000)
         if len(self._data_1m) < 10: return []
 
         # 1. 指标实时预览
@@ -338,31 +375,68 @@ class GridMTFStrategyV6_0(BaseStrategy):
         self.state.macdsignal = sig
         self.state.macdhist = hist
 
-        # 2. 网格构建与熔断处理
+        # 记录基础状态 Trace
+        self._trace(ts_ms, f"Price: {data.close:.1f} | RSI: {rsi:.1f} | MACD: {hist:+.4f}")
+
+        # 判断 MACD 交叉状态 (当前 tick 相对前一根确认 K线 的状态)
+        macd_golden = False
+        macd_dead = False
+        if self.state.macdhist > 0 and self.state.macdhist_prev <= 0:
+            macd_golden = True
+        elif self.state.macdhist < 0 and self.state.macdhist_prev >= 0:
+            macd_dead = True
+            
+        self._macd_golden = macd_golden
+        self._macd_dead = macd_dead
+
+        # 3. 网格构建与熔断处理
         self._manage_grid(data)
         
         if not self.state.grid:
             return []
-
-        breaker_status = self.breaker.check(data.close, self.state.grid["virtual"])
+            
+        grid = self.state.grid
+        v_bounds = {
+            "top_2": grid["layers"][-1]["top"],
+            "bottom_2": grid["layers"][0]["bottom"]
+        }
+        breaker_status = self.breaker.check(data.close, v_bounds)
         
-        if breaker_status == "REBUILD":
-            self.state.grid_period = self.params.get('grid_period_rebuild', 4)
-            self._rebuild_grid()
-            self.state.grid_period = self.params.get('grid_period_initial', 6)
+        # 破位1小时后进行方向性重置判定
+        if breaker_status == "REBUILD_DOWN":
+            if not macd_golden:
+                self.state.grid_period = self.params.get('grid_period_rebuild', 4)
+                self._trace(ts_ms, f"⚠️ 破位重置网格 (REBUILD_DOWN) | Period: {self.state.grid_period}h")
+                self._rebuild_grid()
+            else:
+                self.state.is_halted = True
+                self.state.halt_reason = "破位但MACD金叉，等待回踩"
+                self._trace(ts_ms, f"🛑 熔断: {self.state.halt_reason}")
             return []
             
-        if breaker_status == "OBSERVING":
+        if breaker_status == "REBUILD_UP":
+            if not macd_dead:
+                self.state.grid_period = self.params.get('grid_period_rebuild', 4)
+                self._trace(ts_ms, f"⚠️ 破位重置网格 (REBUILD_UP) | Period: {self.state.grid_period}h")
+                self._rebuild_grid()
+            else:
+                self.state.is_halted = True
+                self.state.halt_reason = "破位但MACD死叉，等待回调"
+                self._trace(ts_ms, f"🛑 熔断: {self.state.halt_reason}")
+            return []
+            
+        if breaker_status in ["OBSERVING_UP", "OBSERVING_DOWN"]:
             self.state.is_halted = True
-            self.state.halt_reason = "1小时黑天鹅观察期"
+            self.state.halt_reason = f"1小时观察期 ({breaker_status})"
+            self._trace(ts_ms, f"👀 {self.state.halt_reason}")
             return []
             
         self.state.is_halted = False
         self.state.halt_reason = ""
 
-        # 3. 信号生成与仓位管理
+        # 4. 信号生成与仓位管理
         if context:
-            return self._generate_signals(data, context)
+            return self._generate_signals(data, context, ts_ms)
         return []
 
     def _update_data(self, data: MarketData):
@@ -402,28 +476,12 @@ class GridMTFStrategyV6_0(BaseStrategy):
             bar['high'] = max(bar['high'], data.high)
             bar['low'] = min(bar['low'], data.low)
             bar['close'] = data.close
-<<<<<<< HEAD
-            
             vol_sum = 0
             for i in range(len(self._data_1m) - 1, -1, -1):
                 d = self._data_1m[i]
                 d_period = d.timestamp.replace(minute=(d.timestamp.minute // 5) * 5, second=0, microsecond=0)
                 if d_period < period_5m_ts: break
                 if d_period == period_5m_ts:
-=======
-            # 计算 15m 周期内的精确 volume：
-            # 找到在当前 15m 周期内（属于这段 period_ts），但【已经完结】（不仅指最新一根正在跑的）的所有 5m K线。
-            # 直接遍历 self._data_5m 从后往前找，把 timestamp 大于等于 period_ts 且与 period_ts 属于同一 15m 窗口的所有完整 5m 累加。
-            vol_sum = 0
-            for i in range(len(self._data_5m) - 1, -1, -1):
-                d = self._data_5m[i]
-                d_period_ts = d.timestamp.replace(minute=(d.timestamp.minute // 15) * 15, second=0, microsecond=0)
-                if d_period_ts < period_ts:
-                    break  # 已经跨越到上一个 15m 周期，停止
-                if d_period_ts == period_ts:
-                    # 只要是属于 this 15m 周期内的 5m K线，直接把它们内部已经整理好的 `volume` 加起来。
-                    # 注意如果 `_data_5m` 已经是去重过的，那么最后一根就是包含当前 data.volume 的
->>>>>>> 5b4c418cc0d0db4c6afd0386967253223c3b26af
                     vol_sum += d.volume
             bar['volume'] = vol_sum
 
@@ -434,17 +492,22 @@ class GridMTFStrategyV6_0(BaseStrategy):
         new_grid = GridCalculator.calculate_grid(history, self.state.grid_period, vol_thr)
         if new_grid:
             self.state.grid = new_grid
-            # 导出兼容 V8.5 可视化组件的 grid_lines
+            # 提取网格线价格用于可视化 (包含所有层边界)
             lines = []
-            v = new_grid["virtual"]
-            lines.append(v["bottom_2"])
-            lines.append(v["bottom_1"])
-            for layer in new_grid["layers"]:
-                lines.append(layer["bottom"])
-            lines.append(new_grid["layers"][-1]["top"])
-            lines.append(v["top_1"])
-            lines.append(v["top_2"])
+            layers = new_grid["layers"]
+            if layers:
+                lines.append(layers[0]["bottom"])
+                for l in layers:
+                    lines.append(l["top"])
             self.state.grid_lines = lines
+            
+            # 计算 L0 索引 (即 type == "BUFFER" 的层在 lines 中的起始索引)
+            l0_line_idx = 0
+            for i, l in enumerate(layers):
+                if l["type"] == "BUFFER":
+                    l0_line_idx = i
+                    break
+            self.state.l0_idx = l0_line_idx
 
     def _manage_grid(self, data: MarketData):
         # 初始化网格
@@ -453,148 +516,118 @@ class GridMTFStrategyV6_0(BaseStrategy):
             if len(self._data_1m) >= 360:
                 self._rebuild_grid()
 
-    def _generate_signals(self, data: MarketData, context: StrategyContext) -> List[Signal]:
+    def _generate_signals(self, data: MarketData, context: StrategyContext, ts_ms: int) -> List[Signal]:
         signals = []
         pos = context.positions.get(self.symbol)
         pos_size = float(pos.size) if pos else 0.0
         
-        self.state.macdhist_prev = self.state.macdhist
-        
         price = data.close
         grid = self.state.grid
-        if not grid: return signals
+        if not grid or not grid.get('layers'): return signals
         
         rsi = self.state.current_rsi
-        macd_golden = False
-        macd_dead = False
-        if len(self._data_5m) >= 2:
-            sig = self.state.macdsignal
-            # 金叉判定(简化版)：hist 从负变正，或者 hist 大于 0 且在增加
-            # 严格按照原代码要求:
-            if self.state.macdhist > 0 and self.state.macdhist_prev <= 0:
-                macd_golden = True
-            elif self.state.macdhist < 0 and self.state.macdhist_prev >= 0:
-                macd_dead = True
-                
-        # 1. 确定当前所在的层和产生的信号
-        buy_signals = []
-        sell_signals = []
-        layer_idx = -1
+        macd_golden = self._macd_golden
+        macd_dead = self._macd_dead
         
-        for i, layer in enumerate(grid["layers"]):
-            if layer["bottom"] <= price <= layer["top"]:
-                layer_idx = i
-                # 买入区 且 未被锁定
-                if price <= layer["buy_zone"] and not layer["locked"]:
-                    buy_signals.append("GRID")
-                # 卖出区 且 持有这层的仓位
-                if price >= layer["sell_zone"] and layer["position"] > 0:
-                    sell_signals.append("GRID")
-                break
-                
-        # 补充全局 RSI / MACD 信号
-        rsi_buy_thr = self.params.get('rsi_buy', 25)
-        rsi_sell_thr = self.params.get('rsi_sell', 75)
-        rsi_extreme = self.params.get('rsi_extreme_sell', 85)
+        # 1. 获取当前层
+        current_layer = next((l for l in grid["layers"] if l["bottom"] <= price <= l["top"]), None)
+        if not current_layer: return signals
         
-        if rsi < rsi_buy_thr: buy_signals.append("RSI")
-        if rsi > rsi_extreme: sell_signals.append("RSI_EXTREME")
-        elif rsi > rsi_sell_thr: sell_signals.append("RSI")
-        
-        if macd_golden: buy_signals.append("MACD")
-        if macd_dead: sell_signals.append("MACD")
-        
-        # 2. 信号排斥处理：优先处理卖出/极端清仓，且确保同一 Bar 不会既买又卖
-        if "RSI_EXTREME" in sell_signals and pos_size > 0:
-            signals.append(Signal(
-                timestamp=data.timestamp, symbol=self.symbol, side=Side.SELL,
-                size=pos_size, reason="RSI_EXTREME(>85) 极端清仓",
-                meta={
-                    "rsi": self.state.current_rsi,
-                    "macd_hist": self.state.macdhist,
-                    "layer_idx": layer_idx,
-                    "snapshot_pos": pos_size
-                }
-            ))
-            # 全部卖出后重置网格状态
-            for l in grid['layers']: l['locked'] = False; l['position'] = 0.0
-            return signals # 极端清仓后直接返回，不进行后续买入
-            
-        # 计算需要卖出的具体数量（改为基于层的记录，更精准）
-        layers_to_sell = 0
-        if "GRID" in sell_signals:
-            layers_to_sell = 1
-            if "RSI" in sell_signals: layers_to_sell = 2
-            if "MACD" in sell_signals: layers_to_sell = 4
+        layer_idx = current_layer["index"]
+        # L(0) 观望
+        if layer_idx == 0: return signals
 
-        if layers_to_sell > 0 and pos_size > 0:
-            n = grid["n_layers"]
-            # 改进：优先卖出当前层所在的仓位，如果多层联动卖出，则按比例但受限于当前层记录
-            if layer_idx >= 0:
-                layer_pos = grid['layers'][layer_idx]['position']
-                sell_size = (pos_size / n) * layers_to_sell # 保留公式但限制在真实持仓范围内
-                sell_size = min(sell_size, pos_size, layer_pos if layer_pos > 0 else sell_size)
+        # 价格缓冲 (2 BPS)
+        price_buff = self.params.get('price_buffer_pct', 0.0002)
+
+        # 2. 卖出逻辑 (执行层 L1, L2, Lv1, Lv2)
+        if layer_idx > 0 and pos_size > 0 and self.state.slots:
+            # 判定卖出触发 (层内上半部 50%)
+            is_triggered = False
+            if price >= current_layer["mid"]:
+                if current_layer["type"] == "VIRTUAL":
+                    # 虚拟层卖出规则：上半部 + (RSI > 75 或 MACD 死叉)
+                    rsi_sell_thr = self.params.get('rsi_sell', 75)
+                    if rsi > rsi_sell_thr or macd_dead:
+                        is_triggered = True
+                else:
+                    # 实体层直接卖出 (L1, L2)
+                    is_triggered = True
+            
+            if is_triggered:
+                # 同价位保护
+                if self.state.last_sell_price > 0 and abs(price - self.state.last_sell_price) / self.state.last_sell_price < price_buff:
+                    return signals
+                
+                # LIFO 弹出
+                target_slot = self.state.slots.pop()
+                sell_size = min(target_slot["size"], pos_size)
+                t_idx = target_slot["layer_idx"]
                 
                 if sell_size > 0:
                     signals.append(Signal(
                         timestamp=data.timestamp, symbol=self.symbol, side=Side.SELL,
-                        size=sell_size, reason=f"MTF Sell: {layers_to_sell} Layers (Layer {layer_idx})",
-                        meta={
-                            "rsi": self.state.current_rsi,
-                            "macd_hist": self.state.macdhist,
-                            "layer_idx": layer_idx,
-                            "snapshot_pos": pos_size,
-                            "layers_to_sell": layers_to_sell
-                        }
+                        size=sell_size, reason=f"LIFO Sell at L({layer_idx}) matches L({t_idx})",
+                        meta={"rsi": rsi, "layer_idx": layer_idx, "matched_buy_idx": t_idx}
                     ))
-                    # 更新层级状态
-                    grid['layers'][layer_idx]['locked'] = False
-                    grid['layers'][layer_idx]['position'] = max(0, grid['layers'][layer_idx]['position'] - sell_size)
-                    return signals # 卖出信号触发后，不进行同 Bar 买入
+                    # 解锁买入时的那个层
+                    buy_layer = next((l for l in grid["layers"] if l["index"] == t_idx), None)
+                    if buy_layer:
+                        buy_layer['locked'] = False
+                        buy_layer['position'] = max(0, buy_layer['position'] - sell_size)
+                        
+                    self.state.last_sell_price = price
+                    self._trace(ts_ms, f"成交卖出: L({layer_idx}) 匹配 L({t_idx}) | 价格: {price:.1f}")
+                    return signals
 
-        # 3. 买入逻辑 (只有在没有卖出信号时才执行)
-        coef = 0.0
-        if "GRID" in buy_signals:
-            coef = 1.0
-            if "RSI" in buy_signals: coef = 2.0
-            if "MACD" in buy_signals: coef = 4.0
-        else:
-            if "RSI" in buy_signals: coef = 0.5
-            elif "MACD" in buy_signals: coef = 0.25
+        # 3. 买入逻辑 (执行层 L-1, L-2, Lv-1, Lv-2)
+        if layer_idx < 0:
+            # 判定买入触发 (层内下半部 50%)
+            is_triggered = False
+            if price <= current_layer["mid"] and not current_layer["locked"]:
+                if current_layer["type"] == "VIRTUAL":
+                    # 虚拟层买入规则：下半部 + (RSI < 25 或 MACD 金叉)
+                    rsi_buy_thr = self.params.get('rsi_buy', 25)
+                    if rsi < rsi_buy_thr or macd_golden:
+                        is_triggered = True
+                else:
+                    # 实体层直接买入 (L-1, L-2)
+                    is_triggered = True
             
-        if coef > 0:
-            n = grid["n_layers"]
-            # 文档公式: base = btc_balance/n if btc_balance>0 else (current_cash/n/price)
-            base = (pos_size / n) if pos_size > 0 else (context.cash / n / price)
-            buy_size = base * coef
-            
-            # 风控限制 (MAX_SINGLE_POSITION=0.8)
-            max_single_btc = (self.total_capital * self.params.get('max_single_position', 0.8)) / price
-            buy_size = min(buy_size, max_single_btc)
-            buy_usdt = buy_size * price
-            
-            if context.cash >= buy_usdt * 0.95 and buy_usdt > 10:
-                # 再次检查：如果是 GRID 买入，必须确保层未锁定
-                if "GRID" in buy_signals and layer_idx >= 0 and grid['layers'][layer_idx]['locked']:
-                    return [] # 已锁定则跳过
-                    
-                signals.append(Signal(
-                    timestamp=data.timestamp, symbol=self.symbol, side=Side.BUY,
-                    size=buy_usdt, meta={
-                        'size_in_quote': True,
-                        "rsi": self.state.current_rsi,
-                        "macd_hist": self.state.macdhist,
+            if is_triggered:
+                if self.state.last_buy_price > 0 and abs(price - self.state.last_buy_price) / self.state.last_buy_price < price_buff:
+                    return signals
+                
+                # 计算份额
+                n_layers = grid["n_layers"]
+                base_cash = self.total_capital / n_layers
+                weight = 2.0 if current_layer["type"] == "VIRTUAL" else 1.0
+                buy_usdt = base_cash * weight
+                
+                if context.cash >= buy_usdt * 0.98:
+                    signals.append(Signal(
+                        timestamp=data.timestamp, symbol=self.symbol, side=Side.BUY,
+                        size=buy_usdt, meta={'size_in_quote': True, "rsi": rsi, "layer_idx": layer_idx},
+                        reason=f"Slot Buy at L({layer_idx})"
+                    ))
+                    self.state.last_buy_price = price
+                    self.state.slots.append({
+                        "size": buy_usdt / price,
+                        "buy_price": price,
                         "layer_idx": layer_idx,
-                        "snapshot_pos": pos_size,
-                        "coef": coef
-                    },
-                    reason=f"MTF Buy: Coef={coef} Layer={layer_idx}"
-                ))
-                if layer_idx >= 0:
-                    grid['layers'][layer_idx]['locked'] = True
-                    grid['layers'][layer_idx]['position'] += buy_size
+                        "ts": data.timestamp
+                    })
+                    current_layer['locked'] = True
+                    current_layer['position'] += (buy_usdt / price)
+                    self._trace(ts_ms, f"成交买入: L({layer_idx}) | 价格: {price:.1f} | 量: {buy_usdt:.1f} USDT")
 
         return signals
+
+    def _trace(self, ts_ms: int, msg: str):
+        """记录决策追踪日志"""
+        if ts_ms not in self.decision_trace:
+            self.decision_trace[ts_ms] = []
+        self.decision_trace[ts_ms].append(msg)
 
     def get_status(self, context: Optional[StrategyContext] = None) -> Dict[str, Any]:
         is_bullish = self.state.macdhist > 0
@@ -623,13 +656,12 @@ class GridMTFStrategyV6_0(BaseStrategy):
 
         grid_lower = self.state.grid["base_bottom"] if self.state.grid else 0.0
         grid_upper = self.state.grid["base_top"] if self.state.grid else 0.0
-        grid_lines = []
+        grid_lines = self.state.grid_lines
         layers_info = []
         if self.state.grid:
-            grid_lines.append(self.state.grid["layers"][0]["bottom"])
             for l in self.state.grid["layers"]:
-                grid_lines.append(l["top"])
-                layers_info.append(f"Layer {l['index']}: {'Locked' if l['locked'] else 'Open'} (Pos: {l['position']:.4f})")
+                status_str = f"L({l['index']}) [{l['type']}]: {'Locked' if l['locked'] else 'Open'} (Pos: {l['position']:.4f})"
+                layers_info.append(status_str)
 
         return {
             'name': self.name,

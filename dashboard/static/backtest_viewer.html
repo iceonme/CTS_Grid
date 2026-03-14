@@ -4,7 +4,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<<<<<<< HEAD
     <title>Zen 竞技场 - 多策略视觉复盘 (Pro)</title>
     <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <style>
@@ -30,265 +29,32 @@
         .stat-value { font-weight: bold; font-family: "Consolas", monospace; color: #ffffff; font-size: 13px; }
         .profit { color: #00d084; } .loss { color: #ff4757; }
         
-        #view { flex: 1; display: flex; flex-direction: column; position: relative; width: 100%; border-top: 1px solid #2a2e39; }
+        #view { flex: 1; display: flex; flex-direction: row; position: relative; width: 100%; border-top: 1px solid #2a2e39; }
+        .chart-container { flex: 1; display: flex; flex-direction: column; height: 100%; }
         #chart-main { flex: 3; width: 100%; position: relative; }
         #chart-rsi { flex: 1; width: 100%; border-top: 2px solid #2a2e39; position: relative; }
         
+        .log-panel { width: 320px; border-left: 2px solid #2a2e39; background: #1a1e26; display: flex; flex-direction: column; font-size: 11px; }
+        .log-header { padding: 8px 12px; background: #2a2e39; font-weight: bold; font-size: 12px; color: #f2f6fa; border-bottom: 1px solid #363c4e; }
+        #log-content { flex: 1; overflow-y: auto; padding: 10px; font-family: "Consolas", monospace; line-height: 1.6; }
+        .log-entry { margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #2a2e39; word-break: break-all; }
+        .log-msg { color: #d1d4dc; }
+        .log-highlight { color: #0095ff; font-weight: bold; }
+        .log-buy .log-msg { color: #26a69a !important; }
+        .log-sell .log-msg { color: #ef5350 !important; }
+        .log-neutral .log-msg { color: #848e9c !important; }
+
         #loading { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(11, 14, 17, 0.9); display: flex; justify-content: center; align-items: center; z-index: 999; flex-direction: column; }
         .spinner { border: 4px solid rgba(255, 255, 255, 0.1); width: 24px; height: 24px; border-radius: 50%; border-left-color: #0095ff; animation: spin 0.8s linear infinite; margin-bottom: 8px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        /* 图例叠加 */
         .chart-legend { position: absolute; top: 10px; left: 10px; z-index: 10; pointer-events: none; display: flex; flex-direction: column; gap: 4px; }
         .legend-item { display: flex; align-items: center; gap: 6px; font-size: 11px; background: rgba(0,0,0,0.5); padding: 2px 8px; border-radius: 2px; }
         .color-dot { width: 8px; height: 8px; border-radius: 50%; }
-=======
-    <title>Zen 动态复盘系统 v8.5 (Pro)</title>
-    <script
-        src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: #0b0e11;
-            color: #d1d4dc;
-            font-family: "Microsoft YaHei", sans-serif;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-
-        .header {
-            background-color: #1a1e26;
-            padding: 0 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 2px solid #2a2e39;
-            height: 60px;
-            min-height: 60px;
-            box-sizing: border-box;
-        }
-
-        .title {
-            font-size: 16px;
-            font-weight: bold;
-            color: #f2f6fa;
-            white-space: nowrap;
-        }
-
-        .controls {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: #2a2e39;
-            padding: 5px 15px;
-            border-radius: 4px;
-            margin: 0 10px;
-        }
-
-        .controls input {
-            background: #161922;
-            border: 1px solid #363c4e;
-            color: #fff;
-            padding: 4px 8px;
-            border-radius: 3px;
-            font-size: 12px;
-        }
-
-        .btn-run {
-            background: #0095ff;
-            color: #fff;
-            border: none;
-            padding: 6px 15px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 12px;
-            font-weight: bold;
-        }
-
-        .btn-run:hover {
-            background: #007acc;
-        }
-
-        .btn-run:disabled {
-            background: #363c4e;
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
-
-        .stats {
-            display: flex;
-            gap: 12px;
-        }
-
-        .stat-item {
-            display: flex;
-            flex-direction: column;
-            min-width: 70px;
-            border-left: 1px solid #2a2e39;
-            padding-left: 12px;
-        }
-
-        .stat-item:first-child {
-            border: none;
-        }
-
-        .stat-label {
-            color: #848e9c;
-            font-size: 10px;
-            margin-bottom: 1px;
-        }
-
-        .stat-value {
-            font-weight: bold;
-            font-family: "Consolas", monospace;
-            color: #ffffff;
-            font-size: 13px;
-        }
-
-        .profit {
-            color: #00d084;
-        }
-
-        .loss {
-            color: #ff4757;
-        }
-
-        .market-pnl {
-            color: #848e9c;
-            font-size: 12px;
-        }
-
-        #view {
-            flex: 1;
-            display: flex;
-            position: relative;
-            width: 100%;
-            border-top: 1px solid #2a2e39;
-        }
-
-        .chart-container {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-
-        #chart-main {
-            flex: 3;
-            width: 100%;
-            position: relative;
-        }
-
-        #chart-rsi {
-            flex: 1;
-            width: 100%;
-            border-top: 2px solid #2a2e39;
-            position: relative;
-        }
-
-        .log-panel {
-            width: 320px;
-            border-left: 2px solid #2a2e39;
-            background: #1a1e26;
-            display: flex;
-            flex-direction: column;
-            font-size: 11px;
-        }
-
-        .log-header {
-            padding: 8px 12px;
-            background: #2a2e39;
-            font-weight: bold;
-            font-size: 12px;
-            color: #f2f6fa;
-            border-bottom: 1px solid #363c4e;
-        }
-
-        #log-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 10px;
-            font-family: "Consolas", monospace;
-            line-height: 1.6;
-        }
-
-        .log-entry {
-            margin-bottom: 6px;
-            padding-bottom: 6px;
-            border-bottom: 1px solid #2a2e39;
-            word-break: break-all;
-        }
-
-        .log-time {
-            color: #848e9c;
-            margin-right: 6px;
-            font-size: 10px;
-        }
-
-        .log-msg {
-            color: #d1d4dc;
-        }
-
-        .log-highlight {
-            color: #0095ff;
-            font-weight: bold;
-        }
-
-        .log-buy .log-msg {
-            color: #26a69a !important;
-        }
-
-        .log-sell .log-msg {
-            color: #ef5350 !important;
-        }
-
-        .log-neutral .log-msg {
-            color: #848e9c !important;
-        }
-
-        #loading {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(11, 14, 17, 0.9);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 999;
-            flex-direction: column;
-        }
-
-        .spinner {
-            border: 4px solid rgba(255, 255, 255, 0.1);
-            width: 24px;
-            height: 24px;
-            border-radius: 50%;
-            border-left-color: #0095ff;
-            animation: spin 0.8s linear infinite;
-            margin-bottom: 8px;
-        }
-
-        @keyframes spin {
-            0% {
-                transform: rotate(0deg);
-            }
-
-            100% {
-                transform: rotate(360deg);
-            }
-        }
->>>>>>> 5b4c418cc0d0db4c6afd0386967253223c3b26af
     </style>
 </head>
 
 <body>
-
-<<<<<<< HEAD
 <div class="header">
     <div class="title">Zen 竞技场 (Pro) <span id="ui-main-sid" style="font-weight:normal; color:#848e9c; font-size:11px;">--</span></div>
     
@@ -316,55 +82,22 @@
         <div class="stat-item"><span class="stat-label">主策略收益</span><span class="stat-value" id="ui-pnl">--</span></div>
         <div class="stat-item"><span class="stat-label">同期基准</span><span class="stat-value" id="ui-market-pnl">--</span></div>
         <div class="stat-item"><span class="stat-label">主策略成交</span><span class="stat-value" id="ui-count">--</span></div>
-=======
-    <div class="header">
-        <div class="title">Zen 系统复盘 <span style="font-weight:normal; color:#848e9c; font-size:11px;">v8.5</span></div>
-
-        <div class="controls">
-            <span style="font-size: 11px; color: #848e9c;">范围:</span>
-            <input type="date" id="date-start" value="2025-03-16">
-            <span style="color: #4a4f5d;">➔</span>
-            <input type="date" id="date-end" value="2025-03-16">
-            <button id="btn-execute" class="btn-run" onclick="triggerBacktest()">执行计算</button>
-        </div>
-
-        <div class="stats">
-            <div class="stat-item"><span class="stat-label">初始资金</span><span class="stat-value">10,000</span></div>
-            <div class="stat-item"><span class="stat-label">最终权益</span><span class="stat-value" id="ui-equity">--</span>
-            </div>
-            <div class="stat-item"><span class="stat-label">策略收益</span><span class="stat-value" id="ui-pnl">--</span>
-            </div>
-            <div class="stat-item"><span class="stat-label">同期基准</span><span class="stat-value"
-                    id="ui-market-pnl">--</span></div>
-            <div class="stat-item"><span class="stat-label">成交笔数</span><span class="stat-value" id="ui-count">--</span>
-            </div>
-        </div>
     </div>
+</div>
 
-    <div id="view">
-        <div class="chart-container">
-            <div id="chart-main"></div>
-            <div id="chart-rsi"></div>
-        </div>
-        <div class="log-panel">
-            <div class="log-header">策略决策追踪 (Grid V8.5 Trace)</div>
-            <div id="log-content">
-                <div style="color:#555; text-align:center; margin-top:50px;">点击"执行计算"后查看日志...</div>
-            </div>
-        </div>
-        <div id="loading" style="display:none;">
-            <div class="spinner"></div>
-            <div id="msg" style="color:#848e9c; font-size: 12px;">正在加载...</div>
-        </div>
->>>>>>> 5b4c418cc0d0db4c6afd0386967253223c3b26af
-    </div>
-
-<<<<<<< HEAD
 <div id="view">
-    <div id="chart-main">
-        <div class="chart-legend" id="legend-pnl"></div>
+    <div class="chart-container">
+        <div id="chart-main">
+            <div class="chart-legend" id="legend-pnl"></div>
+        </div>
+        <div id="chart-rsi"></div>
     </div>
-    <div id="chart-rsi"></div>
+    <div class="log-panel">
+        <div class="log-header">决策追踪面板</div>
+        <div id="log-content">
+            <div style="color:#555; text-align:center; margin-top:50px;">指点 K 线图查看决策细节</div>
+        </div>
+    </div>
     <div id="loading" style="display:none;">
         <div class="spinner"></div>
         <div id="msg" style="color:#848e9c; font-size: 12px;">竞技场计算中...</div>
@@ -374,54 +107,46 @@
 <script>
     let isSyncing = false;
     let mainChart, rsiChart, candleSeries, rsiSeries;
-    let equitySeriesMap = {}; // sid -> series
+    let equitySeriesMap = {}; 
     let gridSeriesPool = [];
+    let buyZoneSeries, bufferZoneSeries, sellZoneSeries;
     let state = { running: false, data: null };
     
     const STRATEGY_COLORS = {
-        "grid_v85": "#f5b041",    // 橙黄
-        "grid_mtf_6_0": "#3498db" // 蓝色
+        "grid_v85": "#f5b041",    
+        "grid_mtf_6_0": "#3498db" 
     };
-=======
-    <script>
-        let isSyncing = false;
-        let mainChart, rsiChart, candleSeries, equitySeries, rsiSeries;
-        let buyZoneSeries, sellZoneSeries, bufferZoneSeries;
-        let gridSeriesPool = [];
-        let state = { running: false, decision_trace: {} };
 
-        function initCharts() {
-            const theme = {
-                layout: { background: { type: 'solid', color: '#0b0e11' }, textColor: '#848e9c' },
-                grid: { vertLines: { color: '#161922' }, horzLines: { color: '#161922' } },
-                crosshair: { mode: 0 },
-                localization: { locale: 'zh-CN' },
-                timeScale: { borderColor: '#2b3139', timeVisible: true }
-            };
->>>>>>> 5b4c418cc0d0db4c6afd0386967253223c3b26af
+    function initCharts() {
+        const theme = {
+            layout: { background: { type: 'solid', color: '#0b0e11' }, textColor: '#848e9c' },
+            grid: { vertLines: { color: '#161922' }, horzLines: { color: '#161922' } },
+            crosshair: { mode: 0 },
+            localization: { locale: 'zh-CN' },
+            timeScale: { borderColor: '#2b3139', timeVisible: true }
+        };
 
-            mainChart = LightweightCharts.createChart(document.getElementById('chart-main'), { ...theme, rightPriceScale: { borderColor: '#2b3139' } });
-            
-            // 初始化背景填充层 (在底层渲染)
-            const zoneOptions = {
-                upColor: 'transparent', downColor: 'transparent',
-                borderVisible: false, wickVisible: false,
-                priceLineVisible: false, lastValueVisible: false,
-                crosshairMarkerVisible: false
-            };
-            buyZoneSeries = mainChart.addCandlestickSeries({ ...zoneOptions, upColor: 'rgba(38, 166, 154, 0.25)', downColor: 'rgba(38, 166, 154, 0.25)' });
-            sellZoneSeries = mainChart.addCandlestickSeries({ ...zoneOptions, upColor: 'rgba(239, 83, 80, 0.25)', downColor: 'rgba(239, 83, 80, 0.25)' });
-            bufferZoneSeries = mainChart.addCandlestickSeries({ ...zoneOptions, upColor: 'rgba(132, 142, 156, 0.3)', downColor: 'rgba(132, 142, 156, 0.3)' });
-
-<<<<<<< HEAD
         mainChart = LightweightCharts.createChart(document.getElementById('chart-main'), { ...theme, rightPriceScale: { borderColor: '#2b3139' } });
-        candleSeries = mainChart.addCandlestickSeries({ upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350' });
         
-        // 预定义权益曲线 (左侧轴)
+               // 背景填充层 (优先添加，使其位于底层)
+        buyZoneSeries = mainChart.addCandlestickSeries({
+            upColor: 'rgba(38, 166, 154, 0.08)', downColor: 'rgba(38, 166, 154, 0.08)',
+            borderVisible: false, wickVisible: false, priceLineVisible: false, lastValueVisible: false
+        });
+        bufferZoneSeries = mainChart.addCandlestickSeries({
+            upColor: 'rgba(132, 142, 156, 0.08)', downColor: 'rgba(132, 142, 156, 0.08)',
+            borderVisible: false, wickVisible: false, priceLineVisible: false, lastValueVisible: false
+        });
+        sellZoneSeries = mainChart.addCandlestickSeries({
+            upColor: 'rgba(239, 83, 80, 0.08)', downColor: 'rgba(239, 83, 80, 0.08)',
+            borderVisible: false, wickVisible: false, priceLineVisible: false, lastValueVisible: false
+        });
+
+        candleSeries = mainChart.addCandlestickSeries({ upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickColor: '#737373' });
+        
         mainChart.priceScale('left').applyOptions({ visible: true, borderColor: '#2b3139', scaleMargins: { top: 0.1, bottom: 0.3 } });
 
-        // 网格线
-        for (let i = 0; i < 15; i++) {
+        for (let i = 0; i < 25; i++) {
             gridSeriesPool.push(mainChart.addLineSeries({
                 lineWidth: 1, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false
             }));
@@ -440,7 +165,29 @@
         mainChart.timeScale().subscribeVisibleTimeRangeChange(() => sync(mainChart, rsiChart));
         rsiChart.timeScale().subscribeVisibleTimeRangeChange(() => sync(rsiChart, mainChart));
 
-        // 监听主策略切换
+        mainChart.subscribeCrosshairMove(param => {
+            if (!param.time || !state.data) return;
+            const sid = document.getElementById('select-primary').value;
+            const sData = state.data.strategies[sid];
+            if (!sData || !sData.decision_trace) return;
+
+            const ts_ms = param.time * 1000;
+            const logs = sData.decision_trace[ts_ms];
+            const logPanel = document.getElementById('log-content');
+
+            if (logs && logs.length > 0) {
+                logPanel.innerHTML = logs.map(msg => {
+                    let cls = "";
+                    if (msg.includes('买入')) cls = "log-buy";
+                    else if (msg.includes('卖出')) cls = "log-sell";
+                    else if (msg.includes('L0') || msg.includes('观察') || msg.includes('禁区') || msg.includes('观望') || msg.includes('熔断')) cls = "log-neutral";
+                    let text = msg;
+                    if (text.includes('成交')) text = `<span class="log-highlight">${text}</span>`;
+                    return `<div class="log-entry ${cls}"><span class="log-msg">${text}</span></div>`;
+                }).join('');
+            }
+        });
+
         document.getElementById('select-primary').addEventListener('change', () => {
             if (state.data) renderPrimaryStrategy();
         });
@@ -458,20 +205,28 @@
             candleSeries.setData([]);
             rsiSeries.setData([]);
             gridSeriesPool.forEach(s => s.setData([]));
+            buyZoneSeries.setData([]);
+            bufferZoneSeries.setData([]);
+            sellZoneSeries.setData([]);
             
-            // 清理旧的权益曲线
             Object.values(equitySeriesMap).forEach(s => mainChart.removeSeries(s));
             equitySeriesMap = {};
             document.getElementById('legend-pnl').innerHTML = '';
+            const select = document.getElementById('select-primary');
+            const oldVal = select.value;
+            select.innerHTML = '';
 
-            // 渲染 K 线
             if (raw.candles) {
                 candleSeries.setData(raw.candles.map(v => ({ time: v.time/1000, open:v.open, high:v.high, low:v.low, close:v.close })));
             }
 
-            // 渲染各策略权益曲线
             if (raw.strategies) {
                 Object.keys(raw.strategies).forEach(sid => {
+                    const option = document.createElement('option');
+                    option.value = sid;
+                    option.text = sid;
+                    select.appendChild(option);
+
                     const sData = raw.strategies[sid];
                     const color = STRATEGY_COLORS[sid] || '#ffffff';
                     
@@ -479,16 +234,18 @@
                     series.setData(sData.equity.map(v => ({ time: v.time/1000, value:v.value })));
                     equitySeriesMap[sid] = series;
 
-                    // 加图例
                     const lastE = sData.equity[sData.equity.length-1].value;
                     const pnl = ((lastE - 10000)/100).toFixed(2);
                     const legendHtml = `<div class="legend-item"><div class="color-dot" style="background:${color}"></div><span>${sid}: ${pnl}%</span></div>`;
                     document.getElementById('legend-pnl').innerHTML += legendHtml;
                 });
+
+                // 优先选中上次选中的，否则选中第一个
+                if (raw.strategies[oldVal]) select.value = oldVal;
+                else select.value = Object.keys(raw.strategies)[0];
             }
 
             renderPrimaryStrategy();
-
             mainChart.timeScale().fitContent();
             isSyncing = false;
             hideLoading();
@@ -503,10 +260,8 @@
         showLoading(`渲染主策略 [${sid}] 图层...`);
         document.getElementById('ui-main-sid').innerText = sid;
 
-        // 1. RSI
         if (sData.rsi) rsiSeries.setData(sData.rsi.map(v => ({ time: v.time/1000, value:v.value })));
 
-        // 2. 成交点
         if (sData.trades) {
             document.getElementById('ui-count').innerText = sData.trades.length;
             candleSeries.setMarkers(sData.trades.map(t => ({
@@ -518,7 +273,6 @@
             })));
         }
 
-        // 3. 统计
         const lastE = sData.equity[sData.equity.length-1].value;
         const pnl = ((lastE - 10000)/100).toFixed(2);
         document.getElementById('ui-pnl').innerText = (pnl>=0?'+':'')+pnl+'%';
@@ -528,21 +282,52 @@
         document.getElementById('ui-market-pnl').innerText = (mp>=0?'+':'')+mp+'%';
         document.getElementById('ui-market-pnl').className = `stat-value ${mp>=0?'profit':'loss'}`;
 
-        // 4. 网格线
         gridSeriesPool.forEach(s => s.setData([]));
         if (sData.grid_snapshots) {
             const tsList = Object.keys(sData.grid_snapshots).sort((a,b)=>a-b);
-            const dataPool = Array.from({length:15}, ()=>[]);
+            const dataPool = [];
+            
+            // 背景填充准备
+            const l0 = (sData.meta && sData.meta.l0_idx !== undefined) ? sData.meta.l0_idx : (sid === 'grid_v85' ? 5 : 4);
+            const buyZoneData = [];
+            const bufferZoneData = [];
+            const sellZoneData = [];
+
             tsList.forEach(ts => {
                 const ls = sData.grid_snapshots[ts];
                 const t = parseInt(ts)/1000;
-                // 简单的映射逻辑
-                for(let i=0; i<ls.length && i<15; i++) dataPool[i].push({time:t, value:ls[i]});
+                
+                // 填充网格线数据
+                for(let i=0; i<ls.length; i++) {
+                    if (!dataPool[i]) dataPool[i] = [];
+                    dataPool[i].push({time:t, value:ls[i]});
+                }
+
+                // 填充背景块 (V6.0/V8.5 通用背景渲染逻辑)
+                if (ls.length > l0 + 1) {
+                    // 买入区: 0 到 l0
+                    buyZoneData.push({ time: t, open: ls[0], high: ls[l0], low: ls[0], close: ls[l0] });
+                    // 缓冲区: l0 到 l0+1
+                    bufferZoneData.push({ time: t, open: ls[l0], high: ls[l0+1], low: ls[l0], close: ls[l0+1] });
+                    // 卖出区: l0+1 到 顶部
+                    sellZoneData.push({ time: t, open: ls[l0+1], high: ls[ls.length-1], low: ls[l0+1], close: ls[ls.length-1] });
+                }
             });
+
+            buyZoneSeries.setData(buyZoneData);
+            bufferZoneSeries.setData(bufferZoneData);
+            sellZoneSeries.setData(sellZoneData);
+
             gridSeriesPool.forEach((s, i) => {
-                const color = i < 2 || i > 12 ? 'rgba(255, 160, 0, 0.4)' : 'rgba(0, 145, 255, 0.4)';
-                s.applyOptions({ color: color, lineStyle: i < 2 || i > 12 ? 1 : 2 });
-                s.setData(dataPool[i]);
+                if (dataPool[i]) {
+                    // 线条颜色逻辑: L0=Gray, <L0=Green, >L0+1=Red
+                    let color = 'rgba(132, 142, 156, 0.4)'; // 默认 L0 边界
+                    if (i < l0) color = 'rgba(38, 166, 154, 0.6)';      // 买入区线条
+                    if (i > l0 + 1) color = 'rgba(239, 83, 80, 0.6)';    // 卖出区线条
+                    
+                    s.applyOptions({ color: color, lineWidth: 1 });
+                    s.setData(dataPool[i]);
+                }
             });
         }
         hideLoading();
@@ -550,249 +335,38 @@
 
     async function triggerBacktest() {
         if (state.running) return;
-        
         const checks = document.querySelectorAll('.st-check:checked');
         if (checks.length === 0) { alert("请至少选择一个策略"); return; }
-        
         const strategy = Array.from(checks).map(c => c.value).join(',');
         const start = document.getElementById('date-start').value;
         const end = document.getElementById('date-end').value;
         const btn = document.getElementById('btn-execute');
-        
         state.running = true;
         btn.disabled = true;
-        showLoading(`[竞技场正在计算] 正在同时运行: ${strategy}...`);
-        
+        showLoading(`竞技场开战: ${strategy}...`);
         try {
             const res = await fetch('/api/run_backtest', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ strategy, start, end })
             });
-
-            if (res.status === 429) {
-                alert("回测引擎正忙，请稍后。");
-            } else if (!res.ok) {
-                alert("回测失败: 服务器内部错误");
-            } else {
-                await loadData();
-            }
-        } catch (e) {
-            alert("本地连接异常: " + e.message);
-        } finally {
+            if (res.ok) await loadData();
+            else alert("回测引擎繁忙或失败");
+        } catch (e) { alert("连接异常: " + e.message); }
+        finally {
             state.running = false;
             btn.disabled = false;
             hideLoading();
-=======
-            candleSeries = mainChart.addCandlestickSeries({ upColor: '#26a69a', downColor: '#ef5350', borderVisible: false, wickUpColor: '#26a69a', wickDownColor: '#ef5350' });
-            equitySeries = mainChart.addLineSeries({ color: '#f5b041', lineWidth: 2, priceScaleId: 'left', title: '权益' });
-            mainChart.priceScale('left').applyOptions({ visible: true, borderColor: '#2b3139', scaleMargins: { top: 0.1, bottom: 0.3 } });
-
-            for (let i = 0; i < 15; i++) {
-                gridSeriesPool.push(mainChart.addLineSeries({
-                    color: 'rgba(132, 142, 156, 0.2)', // 默认淡灰色
-                    lineWidth: 1, lineStyle: 2,
-                    lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false
-                }));
-            }
-
-            rsiChart = LightweightCharts.createChart(document.getElementById('chart-rsi'), { ...theme, rightPriceScale: { borderColor: '#2b3139', autoScale: false, minValue: 0, maxValue: 100 }, timeScale: { visible: false } });
-            rsiSeries = rsiChart.addLineSeries({ color: '#c084fc', lineWidth: 1.5, title: 'RSI' });
-
-            const sync = (src, tgt) => {
-                if (isSyncing) return;
-                const r = src.timeScale().getVisibleRange();
-                if (!r || r.from === null || r.to === null) return;
-                isSyncing = true;
-                try {
-                    tgt.timeScale().setVisibleRange(r);
-                } catch (e) {
-                    console.warn("Chart sync failed:", e);
-                } finally {
-                    setTimeout(() => { isSyncing = false; }, 50);
-                }
-            };
-            mainChart.timeScale().subscribeVisibleTimeRangeChange(() => sync(mainChart, rsiChart));
-            rsiChart.timeScale().subscribeVisibleTimeRangeChange(() => sync(rsiChart, mainChart));
-
-            // 订阅光标移动事件，实现决策日志联动
-            mainChart.subscribeCrosshairMove(param => {
-                if (!param.time || !state.decision_trace) return;
-
-                // Lightweight Charts 返回的时间是秒级，转换为毫秒以匹配字典键
-                const ts_ms = param.time * 1000;
-                const logPanel = document.getElementById('log-content');
-
-                // 查找对应毫秒时间戳的记录 (容错：有些数据可能是 s 级有些是 ms 级)
-                const logs = state.decision_trace[ts_ms];
-                if (logs && logs.length > 0) {
-                    logPanel.innerHTML = logs.map(msg => {
-                        let cls = "";
-                        if (msg.includes('L-') || msg.includes('买入')) cls = "log-buy";
-                        else if (/(L[1-9])/.test(msg) || msg.includes('卖出')) cls = "log-sell";
-                        else if (msg.includes('L0') || msg.includes('观察') || msg.includes('禁区')) cls = "log-neutral";
-
-                        let text = msg;
-                        if (text.includes('成交')) text = `<span class="log-highlight">${text}</span>`;
-                        return `<div class="log-entry ${cls}"><span class="log-msg">${text}</span></div>`;
-                    }).join('');
-                } else {
-                    // 如果当前秒没日志，展示“无决策”或保留上一个（这里选清空提示）
-                    // logPanel.innerHTML = '<div style="color:#555; text-align:center;">该时间点无关键决策</div>';
-                }
-            });
->>>>>>> 5b4c418cc0d0db4c6afd0386967253223c3b26af
         }
+    }
 
-        async function loadData() {
-            showLoading("正在装载实时数据...");
-            try {
-                const res = await fetch(`backtest_data.json?t=${Date.now()}`);
-                if (!res.ok) throw new Error("回测数据尚未准备就绪 (404)");
-                const raw = await res.json();
-
-                isSyncing = true;
-                candleSeries.setData([]);
-                equitySeries.setData([]);
-                rsiSeries.setData([]);
-                gridSeriesPool.forEach(s => s.setData([]));
-
-                if (raw.candles) candleSeries.setData(raw.candles.map(v => ({ time: v.time / 1000, open: v.open, high: v.high, low: v.low, close: v.close })));
-                if (raw.equity) {
-                    equitySeries.setData(raw.equity.map(v => ({ time: v.time / 1000, value: v.value })));
-                    const last = raw.equity[raw.equity.length - 1].value;
-                    document.getElementById('ui-equity').innerText = Math.floor(last).toLocaleString();
-                    const pnl = ((last - 10000) / 100).toFixed(2);
-                    document.getElementById('ui-pnl').innerText = (pnl >= 0 ? '+' : '') + pnl + '%';
-                    document.getElementById('ui-pnl').className = `stat-value ${pnl >= 0 ? 'profit' : 'loss'}`;
-                }
-                if (raw.rsi) rsiSeries.setData(raw.rsi.map(v => ({ time: v.time / 1000, value: v.value })));
-                if (raw.trades) {
-                    document.getElementById('ui-count').innerText = raw.trades.length;
-                    candleSeries.setMarkers(raw.trades.map(t => ({
-                        time: t.time / 1000,
-                        position: t.side.toLowerCase().includes('buy') ? 'belowBar' : 'aboveBar',
-                        color: t.side.toLowerCase().includes('buy') ? '#00ffcc' : '#ff4455',
-                        shape: t.side.toLowerCase().includes('buy') ? 'arrowUp' : 'arrowDown',
-                        text: t.side.toLowerCase().includes('buy') ? '买' : '卖'
-                    })));
-                }
-                if (raw.meta) {
-                    const mp = raw.meta.market_pnl_pct;
-                    document.getElementById('ui-market-pnl').innerText = (mp >= 0 ? '+' : '') + mp + '%';
-                    document.getElementById('ui-market-pnl').className = `stat-value ${mp >= 0 ? 'profit' : 'loss'}`;
-                }
-                if (raw.grid_snapshots) {
-                    const tsList = Object.keys(raw.grid_snapshots).sort((a, b) => a - b);
-                    const dataPool = Array.from({ length: 15 }, () => []);
-                    tsList.forEach(ts => {
-                        const ls = raw.grid_snapshots[ts];
-                        const t = parseInt(ts) / 1000;
-                        for (let i = 0; i < ls.length && i < 15; i++) {
-                            dataPool[i].push({ time: t, value: ls[i] });
-                        }
-                    });
-
-                    // 动态更新网格颜色 & 背景填充: V8.5 逻辑
-                    const l0 = (raw.meta && raw.meta.l0_idx !== undefined) ? raw.meta.l0_idx : 5; 
-                    const buyZoneData = [];
-                    const sellZoneData = [];
-                    const bufferZoneData = [];
-
-                    tsList.forEach(ts => {
-                        const ls = raw.grid_snapshots[ts];
-                        const t = parseInt(ts) / 1000;
-                        if (ls.length >= l0 + 2) {
-                            // 买入区: 索引 0 到 l0 (底线到中枢线下缘)
-                            buyZoneData.push({ time: t, open: ls[0], high: ls[l0], low: ls[0], close: ls[l0] });
-                            // 缓冲区 L0: 索引 l0 到 l0+1 (中枢层)
-                            bufferZoneData.push({ time: t, open: ls[l0], high: ls[l0+1], low: ls[l0], close: ls[l0+1] });
-                            // 卖出区: 索引 l0+1 到顶部
-                            sellZoneData.push({ time: t, open: ls[l0+1], high: ls[ls.length-1], low: ls[l0+1], close: ls[ls.length-1] });
-                        }
-                    });
-
-                    buyZoneSeries.setData(buyZoneData);
-                    bufferZoneSeries.setData(bufferZoneData);
-                    sellZoneSeries.setData(sellZoneData);
-
-                    gridSeriesPool.forEach((s, i) => {
-                        let color = 'rgba(132, 142, 156, 0.3)'; // 观望/L0
-                        if (i < l0) color = 'rgba(38, 166, 154, 0.6)';   // 买入区 (绿)
-                        if (i > l0 + 1) color = 'rgba(239, 83, 80, 0.6)'; // 卖出区 (红)
-                        s.applyOptions({ color: color });
-                        s.setData(dataPool[i]);
-                    });
-                }
-
-                if (raw.decision_trace) {
-                    state.decision_trace = raw.decision_trace;
-                    const logEl = document.getElementById('log-content');
-                    logEl.innerHTML = '<div style="color:#848e9c; text-align:center; margin-top:30px;">指点 K 线图<br/>查看该分钟决策细节</div>';
-                }
-
-                mainChart.timeScale().fitContent();
-                isSyncing = false;
-                hideLoading();
-            } catch (e) {
-                console.error("LoadData error:", e);
-                showLoading("加载失败: " + e.message, true);
-            }
-        }
-
-        async function triggerBacktest() {
-            if (state.running) return;
-
-            const start = document.getElementById('date-start').value;
-            const end = document.getElementById('date-end').value;
-            const btn = document.getElementById('btn-execute');
-
-            state.running = true;
-            btn.disabled = true;
-            showLoading(`[复盘计算中] 扫描 2025 全年行情集 (${start})...`);
-
-            try {
-                const res = await fetch('/api/run_backtest', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ start, end })
-                });
-
-                if (res.status === 429) {
-                    alert("回测引擎正忙，请稍后（当前已有任务在运行）。");
-                } else if (!res.ok) {
-                    let errMsg = "服务器响应错误 (" + res.status + ")";
-                    try {
-                        const err = await res.json();
-                        errMsg = err.message || errMsg;
-                    } catch (e) {
-                        // 如果不是 JSON，尝试获取文本
-                        const text = await res.text();
-                        if (text && text.length < 100) errMsg = text;
-                    }
-                    alert("回测失败: " + errMsg);
-                } else {
-                    await loadData();
-                }
-            } catch (e) {
-                console.error("Backtest request error:", e);
-                alert("本地连接异常: " + e.message);
-            } finally {
-                state.running = false;
-                btn.disabled = false;
-                hideLoading();
-            }
-        }
-
-        function showLoading(msg, isErr = false) {
-            document.getElementById('loading').style.display = 'flex';
-            document.getElementById('msg').innerText = msg;
-            document.getElementById('msg').style.color = isErr ? '#ff4757' : '#848e9c';
-        }
-        function hideLoading() { document.getElementById('loading').style.display = 'none'; }
-
-        window.onload = () => { initCharts(); loadData(); };
-    </script>
+    function showLoading(msg, isErr = false) {
+        document.getElementById('loading').style.display = 'flex';
+        document.getElementById('msg').innerText = msg;
+        document.getElementById('msg').style.color = isErr ? '#ff4757' : '#848e9c';
+    }
+    function hideLoading() { document.getElementById('loading').style.display = 'none'; }
+    window.onload = () => { initCharts(); loadData(); };
+</script>
 </body>
-
 </html>

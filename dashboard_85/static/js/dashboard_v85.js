@@ -404,7 +404,7 @@ function updateTradeMarkers(tradeHistory) {
             time, position: trade.type === 'BUY' ? 'belowBar' : 'aboveBar',
             color: trade.type === 'BUY' ? '#00d084' : '#ff4757',
             shape: trade.type === 'BUY' ? 'arrowUp' : 'arrowDown',
-            text: trade.type === 'BUY' ? `买入` : `卖出`,
+            text: trade.type === 'BUY' ? `买入 ${parseFloat(trade.size).toFixed(4)}` : `卖出 ${parseFloat(trade.size).toFixed(4)}`,
             size: 2,
             id: `trade_${trade.time}_${trade.id || ''}`
         };

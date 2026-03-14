@@ -80,6 +80,14 @@ def run_single_strategy(strategy_id: str, df_slice: pd.DataFrame, start_dt, end_
     # 计算基准收益
     last_price = engine._current_prices.get("BTC-USDT", first_price_in_range) if first_price_in_range else 0
     res["meta"]["market_pnl_pct"] = round(((last_price / first_price_in_range - 1) * 100), 2) if first_price_in_range else 0
+    
+    # 记录策略特有元数据 (如 l0_idx)
+    if hasattr(engine.strategy.state, 'l0_idx'):
+        res["meta"]["l0_idx"] = engine.strategy.state.l0_idx
+
+    # 记录决策日志
+    if hasattr(engine.strategy, 'decision_trace'):
+        res["decision_trace"] = engine.strategy.decision_trace
 
     # 整理交易记录
     for t in engine._trades:
