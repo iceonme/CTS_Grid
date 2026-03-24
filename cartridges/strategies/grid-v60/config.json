@@ -1,0 +1,20 @@
+{
+  "symbol": "BTC-USDT",
+  "initial_balance": 10000,
+  "params": {
+    "total_capital": 10000,
+    "max_position_ratio": 0.8,
+    "rsi_period": 14,
+    "rsi_buy": 25,
+    "rsi_sell": 75,
+    "macd_fast": 12,
+    "macd_slow": 26,
+    "macd_signal": 9,
+    "atr_period": 14,
+    "grid_period_initial": 6,
+    "grid_period_rebuild": 4,
+    "volatility_threshold": 0.012,
+    "price_buffer_pct": 0.0002,
+    "observation_period": 3600
+  }
+}

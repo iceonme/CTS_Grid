@@ -1,0 +1,11 @@
+{
+  "name": "paper-executor",
+  "params": {
+    "initial_capital": 10000.0,
+    "fee_rate": 0.001,
+    "slippage_model": "adaptive",
+    "slippage_base": 0.0005,
+    "latency_ms": 0,
+    "fast_mode": false
+  }
+}

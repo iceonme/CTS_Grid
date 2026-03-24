@@ -1,0 +1,15 @@
+# Task: Reorganizing Data Directory
+
+- [/] Planning
+    - [x] Analyze `data/` directory usage
+    - [ ] Create implementation plan
+    - [ ] Get user approval
+- [ ] Execution
+    - [ ] Move `data/market` to `factory/data/market`
+    - [ ] Move `archive/` to `factory/archive/`
+    - [ ] Update file references in `factory/tests/`
+    - [ ] Remove root `data/` directory
+    - [ ] Remove root `archive/` directory
+- [ ] Verification
+    - [ ] Verify `factory/tests/run_v60.py` still works (locates data)
+    - [ ] Verify `console` / `launcher.py` is unaffected

@@ -1,0 +1,33 @@
+﻿import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from console.engines.backtest import BacktestEngine
+from cartridges.bridge.datafeeds.csv_feed import CSVDataFeed
+from cartridges.bridge.executors.paper import PaperExecutor
+from cartridges.strategies.grid_6_5_zen import GridZen65Strategy
+
+class SimpleLogger:
+    def info(self, msg): print(msg)
+    def warning(self, msg): print(f"[WARN] {msg}")
+    def error(self, msg): print(f"[ERR] {msg}")
+    def debug(self, msg): pass
+
+csv_path = 'data/btc_1m_2025.csv'
+
+strategy = GridZen65Strategy(
+    name="Zen_Debug", 
+    symbol="BTCUSDT",
+    grid_layers=5,
+    stop_loss_threshold=-0.025
+)
+strategy.set_logger(SimpleLogger())
+
+executor = PaperExecutor(initial_capital=10000.0, fast_mode=True)
+feed = CSVDataFeed(filepath=csv_path, symbol="BTCUSDT")
+engine = BacktestEngine(strategy=strategy, executor=executor)
+
+print("寮€濮?Zen 绛栫暐 Debug 鍥炴祴...")
+report = engine.run(feed, fast_mode=True)
+print(f"鎬荤泩浜?  {report['total_return']}")
+print(f"鎬讳氦鏄撴暟:  {report['total_trades']}")

@@ -1,0 +1,12 @@
+# Task: Cleaning up Infra Directory
+
+- [/] Planning
+    - [x] Analyze `infra` directory usage
+    - [ ] Propose cleanup strategy for [api_config.py](file:///c:/CS/CTA2/infra/config/api_config.py) and JSON files
+- [ ] Execution
+    - [ ] Move `infra/scripts/` to `factory/research/`
+    - [ ] Archive unused `.json` files from `infra/config/` to `factory/archive/deprecated/configs/`
+    - [ ] Potentially rename or move `api_config.py` to a more appropriate location (e.g., `console/env/` or just keep but document)
+- [ ] Verification
+    - [ ] Ensure `okx-feed` still finds API keys
+    - [ ] Ensure `launcher.py` and `console` still run

@@ -1,0 +1,6 @@
+{
+  "artifactType": "ARTIFACT_TYPE_WALKTHROUGH",
+  "summary": "Comprehensive cleanup and reorganization completed. The project now follows a pure Skill-based architecture with total elimination of the root `infra`, `data`, and `archive` directories. Secrets are properly isolated using `.env` files within each Skill, and all research/legacy components have been consolidated under the `factory` directory.",
+  "updatedAt": "2026-03-15T07:35:42.974160100Z",
+  "version": "1"
+}

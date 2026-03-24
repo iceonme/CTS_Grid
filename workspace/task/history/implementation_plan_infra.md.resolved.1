@@ -1,0 +1,38 @@
+# 彻底消除 Infra 目录并实现密钥 Skill 化
+
+按照 Skill 标准，将所有的系统配置、API 密钥以及工具脚本从根目录的 `infra/` 彻底移除。API 密钥将进入具体的 Skill 配置中，核心 API 逻辑将下沉为 Bridge 层的通用组件。
+
+## 用户审核要求
+
+> [!IMPORTANT]
+> 此操作将删除根目录下的 `infra/` 文件夹。API 密钥将不再统一存储在 [api_config.py](file:///c:/CS/CTA2/infra/config/api_config.py)，而是分布在各个 Skill 的 [config.json](file:///c:/CS/CTA2/cartridges/bridge/datafeeds/okx-feed/config.json) 中（或环境变量）。
+
+## 拟议变更
+
+### [Component] Bridge Layer Refactoring
+
+#### [NEW] [cartridges/bridge/utils/okx_api.py](file:///c:/CS/CTA2/cartridges/bridge/utils/okx_api.py)
+将原 [infra/config/okx_config.py](file:///c:/CS/CTA2/infra/config/okx_config.py) 中的 [OKXAPI](file:///c:/CS/CTA2/infra/config/okx_config.py#17-307) 类迁移至此，作为 Bridge 层的共用工具类，不再具有“基础设施”身份，而是“桥接工具”。
+
+#### [MODIFY] [okx-feed/scripts/feed.py](file:///c:/CS/CTA2/cartridges/bridge/datafeeds/okx-feed/scripts/feed.py)
+修改导入路径：从 `infra.config.okx_config` 改为 `cartridges.bridge.utils.okx_api`。
+
+#### [MODIFY] [okx-feed/config.json](file:///c:/CS/CTA2/cartridges/bridge/datafeeds/okx-feed/config.json)
+在 [params](file:///c:/CS/CTA2/factory/optimizer/evolve_z7.py#78-83) 中增加 `api_key`, `api_secret`, `passphrase` 字段。运行阶段由 `SkillLoader` 注入。
+
+### [Component] File System Cleanup
+
+#### [DELETE] [infra/](file:///c:/CS/CTA2/infra)
+彻底删除根目录下的 `infra/` 目录。
+
+#### [NEW] [factory/research/data_extraction/](file:///c:/CS/CTA2/factory/research/data_extraction)
+承接原 `infra/scripts/` 下的提取脚本。
+
+## 验证计划
+
+### 自动化测试
+- 启动 `python launcher.py grid-v60`。
+- 观察 `okx-feed` 是否能正确从其自身的 `config.json` 获取密钥并成功调用新的 `bridge.utils.okx_api` 模块。
+
+### 手动验证
+- 确认全案搜索 `infra` 字符串，除了历史存档外不再有业务逻辑引用。

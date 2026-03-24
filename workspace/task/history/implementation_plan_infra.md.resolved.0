@@ -1,0 +1,30 @@
+# Infra 目录清理与整合方案
+
+清理根目录下的 `infra/` 目录，将其中的“研究/临时”属性内容迁移至 `factory/`，将“策略参数”内容回归至 Skill 存储，保留必要的“系统级密钥配置”。
+
+## 用户审核要求
+
+> [!NOTE]
+> [infra/config/api_config.py](file:///c:/CS/CTA2/infra/config/api_config.py) 存储了 OKX 的 API 密钥，目前的 Bridge Skills (DataFeed/Executor) 仍在引用它。建议暂时保留在 `infra/` 中，或迁移至 `console/` 统一管理。
+
+## 拟议变更
+
+### [Component] Scripts Redirection
+
+#### [DELETE] [infra/scripts/](file:///c:/CS/CTA2/infra/scripts)
+#### [NEW] [factory/research/data_extraction/](file:///c:/CS/CTA2/factory/research/data_extraction)
+将 `infra/scripts/` 下的临时数据提取脚本迁移至研究目录。
+
+### [Component] Configuration Cleanup
+
+#### [MODIFY] [infra/config/](file:///c:/CS/CTA2/infra/config)
+- **保留**: `api_config.py` (及 example), `okx_config.py`。这些是系统级基础配置。
+- **归档**: 将所有 `grid_v*.json` 文件迁移至 `factory/archive/deprecated/configs/`。未来的策略配置遵循 Skill 标准，直接放在 `cartridges/strategies/[skill_name]/config.json` 中。
+
+## 验证计划
+
+### 自动化测试
+- 启动 `python launcher.py grid-v60`，验证其能通过 `okx-feed` 正常连接并获取 API 权限。
+
+### 手动验证
+- 检查 `factory/archive/deprecated/configs/` 是否成功接收了旧的 JSON 文件。

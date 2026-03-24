@@ -1,0 +1,6 @@
+{
+  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary": "Final plan to eliminate the `infra` directory. This includes updating the `SkillLoader` to support `.env` based secret isolation for Skills, migrating the core OKX API utility to the `bridge` layer, and relocating legacy research scripts. This achieves a decentralized, Skill-autonomous architecture where secrets and configurations are properly isolated.",
+  "updatedAt": "2026-03-15T07:34:43.893258200Z",
+  "version": "2"
+}

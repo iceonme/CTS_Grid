@@ -1,0 +1,27 @@
+# 目录结构优化总结 (Reorganization Walkthrough)
+
+成功将根目录下的研究性数据与存档文件迁移至 `factory/` 目录，实现了“生产运行环境”与“开发/研究环境”的物理分离。
+
+## 变更内容
+
+### 1. 目录迁移
+- **市场数据**: 原 `data/market/` 迁移至 `factory/data/market/`。
+- **历史存档**: 原 `archive/` 迁移至 `factory/archive/`。
+- **根目录清理**: 已删除根目录下的 `data/` 和 `archive/` 空文件夹。
+
+### 2. 脚本适配
+- **[run_v60.py](file:///c:/CS/CTA2/factory/tests/run_v60.py)**: 数据记录路径更新。
+- **[evolve_z7.py](file:///c:/CS/CTA2/factory/optimizer/evolve_z7.py)**: 训练数据加载路径更新。
+
+## 验证结果
+
+### 文件结构验证
+- [x] `factory/data/market/BTC_USDT_1m.csv` 存在。
+- [x] `factory/archive/deprecated/` 及其子目录存在。
+- [x] 根目录已无 `data` 或 `archive` 文件夹。
+
+### 脚本路径验证
+- 审计了 `factory/` 下的主要脚本，确保 `DATA` 或行情路径已指向 `factory/data/market/`。
+
+---
+> 目录清理任务已完成，根目录现在更加符合 V2.0 架构的简洁性要求。

@@ -1,0 +1,17 @@
+# Task: Cleaning up Infra Directory
+
+- [/] Planning
+    - [x] Analyze `infra` directory usage
+    - [ ] Propose cleanup strategy for `api_config.py` and JSON files
+- [x] Execution
+    - [x] Move `infra/scripts/` to `factory/research/data_extraction/`
+    - [x] Relocate OKX API logic to `cartridges/bridge/utils/`
+    - [x] Implement `.env` secret isolation in `SkillLoader`
+    - [x] Create `.env` for `okx-feed` skill
+    - [x] Remove root `infra/` directory
+- [x] Verification
+    - [x] Ensure `okx-feed` still finds API keys via .env
+    - [x] Ensure `launcher.py` and `console` still run
+- [/] Finalization
+    - [ ] Update `MEM001-AgentsThinking` with new architecture
+    - [ ] Update `MEMORY.md` with .env philosophy

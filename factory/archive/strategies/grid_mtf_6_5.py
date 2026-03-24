@@ -1,0 +1,317 @@
+﻿import os
+import json
+import numpy as np
+import pandas as pd
+from pathlib import Path
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from typing import List, Dict, Optional, Any, Tuple
+from collections import deque
+
+from console.core import (
+    MarketData, Signal, Side, OrderType, 
+    FillEvent, Position, StrategyContext
+)
+from cartridges.strategies.base import BaseStrategy
+from cartridges.strategies.grid_mtf_6_0 import IncrementalIndicatorsV6, StrategyState
+
+# ============================================================
+# V6.5A锛氬姩鎬佺綉鏍间氦鏄撶瓥鐣?(RSI + 鎴愪氦閲?+ K绾垮舰鎬?
+# ============================================================
+
+class GridStrategyV65A(BaseStrategy):
+    """
+    V6.5A 鍔ㄦ€佺綉鏍间氦鏄撶瓥鐣?
+    
+    鏍稿績鏀硅繘锛氬幓闄?MACD 瀵逛氦鏄撲俊鍙风殑褰卞搷锛岄噰鐢?"RSI + 鎴愪氦閲?+ K绾垮舰鎬? 涓夌淮楠岃瘉妯″瀷銆?
+    MACD 浠嶈绠楀苟灞曠ず鍦?Dashboard 涓婏紝浣嗕笉鍙備笌涔板崠鍐崇瓥銆?
+    鏂板锛氬洖鎾ゆ€ュ墽鎵╁ぇ鎴栬繛缁簭鎹熷悗鐨勭啍鏂満鍒躲€?
+    """
+
+    def __init__(self, name: str = "Grid_V65A_MTF", **params):
+        super().__init__(name, **params)
+        
+        current_file_dir = Path(__file__).parent.resolve()
+        config_dir = current_file_dir.parent / "config"
+        
+        self.params_path = params.get('config_path', str(config_dir / 'grid_v65_runtime.json'))
+        self.meta_path = self.params_path.replace('runtime.json', 'meta.json')
+        self.symbol = params.get('symbol', 'BTCUSDT')
+        self.param_metadata = {}
+        self._load_params()
+
+        # 鏁版嵁缂撳瓨
+        self._data_5m = deque(maxlen=400)
+        self._data_15m = deque(maxlen=200)
+        self._last_15m_ts: Optional[datetime] = None
+
+        # 绛栫暐鍐呴儴鐘舵€?(浣跨敤 V6.5A 鐨勭嫭绔嬪畾涔?
+        @dataclass
+        class StrategyStateV65A:
+            current_rsi: float = 50.0
+            macd: float = 0.0
+            macdsignal: float = 0.0
+            macdhist: float = 0.0
+            macd_prev: float = 0.0
+            macdsignal_prev: float = 0.0
+            macdhist_prev: float = 0.0
+            atr: float = 0.0
+            atr_ma: float = 0.0
+            
+            volume_ma: float = 0.0
+            is_bullish_candle: bool = False
+            
+            grid_lower: float = 0.0
+            grid_upper: float = 0.0
+            grid_lines: List[float] = field(default_factory=list)
+            
+            is_halted: bool = False
+            halt_reason: str = ""
+            resume_time: Optional[datetime] = None
+            pivots_high: List[Dict[str, Any]] = field(default_factory=list)
+            pivots_low: List[Dict[str, Any]] = field(default_factory=list)
+            
+            last_grid_reset: Optional[datetime] = None
+            last_buy_time: Optional[datetime] = None
+            last_buy_price: float = 0.0
+            
+            peak_equity: float = 0.0
+            current_drawdown: float = 0.0
+            consecutive_losses: int = 0
+            drawdown_halted: bool = False
+            loss_halted: bool = False
+
+        self.state = StrategyStateV65A()
+
+    def _load_params(self):
+        if os.path.exists(self.params_path):
+            try:
+                with open(self.params_path, 'r', encoding='utf-8') as f:
+                    self.params.update(json.load(f))
+            except Exception as e:
+                print(f"[V6.5A] 鍔犺浇鍙傛暟澶辫触: {e}")
+        if os.path.exists(self.meta_path):
+            try:
+                with open(self.meta_path, 'r', encoding='utf-8') as f:
+                    self.param_metadata = json.load(f)
+            except Exception as e:
+                print(f"[V6.5A] 鍔犺浇鍏冩暟鎹け璐? {e}")
+
+    def initialize(self):
+        super().initialize()
+        print(f"[V6.5A] {self.name} 鍒濆鍖栧畬鎴?)
+
+    def on_data(self, data: MarketData, context: Optional[StrategyContext]) -> List[Signal]:
+        self._update_data(data)
+        if len(self._data_5m) < 30 or len(self._data_15m) < 30:
+            return []
+
+        self._calculate_indicators()
+        if self._check_halt(data, context):
+            return []
+
+        self._manage_grid(data)
+        if context:
+            return self._generate_signals(data, context)
+        return []
+
+    def _update_data(self, data: MarketData):
+        ts = data.timestamp
+        bar_ts = ts.replace(minute=(ts.minute // 5) * 5, second=0, microsecond=0)
+        
+        if self._data_5m and self._data_5m[-1].timestamp.replace(minute=(self._data_5m[-1].timestamp.minute // 5) * 5, second=0, microsecond=0) == bar_ts:
+            last = self._data_5m[-1]
+            updated = MarketData(
+                timestamp=data.timestamp,
+                symbol=data.symbol,
+                open=last.open,
+                high=max(last.high, data.high),
+                low=min(last.low, data.low),
+                close=data.close,
+                volume=data.volume
+            )
+            self._data_5m[-1] = updated
+        else:
+            self._data_5m.append(data)
+        
+        period_ts = ts.replace(minute=(ts.minute // 15) * 15, second=0, microsecond=0)
+        if self._last_15m_ts is None or period_ts > self._last_15m_ts:
+            self._last_15m_ts = period_ts
+            self._data_15m.append({
+                'timestamp': period_ts,
+                'open': data.open, 'high': data.high, 
+                'low': data.low, 'close': data.close, 
+                'volume': data.volume
+            })
+        else:
+            bar = self._data_15m[-1]
+            bar['high'] = max(bar['high'], data.high)
+            bar['low'] = min(bar['low'], data.low)
+            bar['close'] = data.close
+            
+            vol_sum = 0
+            for i in range(len(self._data_5m) - 1, -1, -1):
+                d = self._data_5m[i]
+                d_period_ts = d.timestamp.replace(minute=(d.timestamp.minute // 15) * 15, second=0, microsecond=0)
+                if d_period_ts < period_ts:
+                    break
+                if d_period_ts == period_ts:
+                    vol_sum += d.volume
+            bar['volume'] = vol_sum
+
+    def _calculate_indicators(self):
+        closes_5m = pd.Series([d.close for d in self._data_5m])
+        self.state.current_rsi = self._rsi(closes_5m, self.params.get('rsi_period', 14))
+        
+        highs = pd.Series([d.high for d in self._data_5m])
+        lows = pd.Series([d.low for d in self._data_5m])
+        closes = pd.Series([d.close for d in self._data_5m])
+        atr_val = self._atr(highs, lows, closes, self.params.get('atr_period', 14))
+        self.state.atr = atr_val
+        self.state.atr_ma = pd.Series([getattr(d, 'atr', atr_val) for d in list(self._data_5m)[-72:]]).mean() if len(self._data_5m) >= 72 else atr_val
+
+        volumes = pd.Series([d.volume for d in self._data_5m])
+        vol_ma_period = self.params.get('volume_ma_period', 20)
+        vol_ma = volumes.rolling(window=vol_ma_period).mean().iloc[-1]
+        self.state.volume_ma = vol_ma if not np.isnan(vol_ma) else 0.0
+
+        latest = self._data_5m[-1]
+        self.state.is_bullish_candle = latest.close > latest.open
+
+        df_15m = pd.DataFrame(list(self._data_15m))
+        macd, signal, hist = self._macd(df_15m['close'], self.params.get('macd_fast', 12), self.params.get('macd_slow', 26), self.params.get('macd_signal', 9))
+        self.state.macd_prev, self.state.macdsignal_prev, self.state.macdhist_prev = self.state.macd, self.state.macdsignal, self.state.macdhist
+        self.state.macd, self.state.macdsignal, self.state.macdhist = macd, signal, hist
+
+        df_5m = pd.DataFrame(list(self._data_5m))
+        self._find_pivot_points(df_5m)
+
+    def _manage_grid(self, data: MarketData):
+        now = data.timestamp
+        if not self.state.pivots_high or not self.state.pivots_low:
+            lookback = self.params.get('grid_lookback_hours', 6)
+            bars = list(self._data_5m)[-int(lookback * 12):]
+            if not bars: return
+            upper, lower = max(b.high for b in bars), min(b.low for b in bars)
+        else:
+            upper, lower = max(p['price'] for p in self.state.pivots_high), min(p['price'] for p in self.state.pivots_low)
+
+        range_size = upper - lower
+        if range_size <= 0: range_size = upper * 0.01
+        buffer = self.params.get('grid_buffer', 0.02)
+        self.state.grid_upper, self.state.grid_lower = upper * (1 + buffer), lower * (1 - buffer)
+        layers = self.params.get('grid_layers', 5)
+        self.state.grid_lines = np.linspace(self.state.grid_lower, self.state.grid_upper, layers + 1).tolist()
+        self.state.last_grid_reset = now
+
+    def _check_halt(self, data: MarketData, context: Optional[StrategyContext] = None) -> bool:
+        if self.state.is_halted:
+            if self.state.resume_time and data.timestamp >= self.state.resume_time:
+                self.state.is_halted = False
+                print(f"[V6.5A] 鎭㈠浜ゆ槗")
+            else: return True
+        
+        if self.state.atr > self.state.atr_ma * self.params.get('atr_blackswan_mult', 3.0):
+            self.state.is_halted = True
+            self.state.halt_reason = "娉㈠姩椋庢帶 (ATR寮傚父)"
+            self.state.resume_time = data.timestamp + timedelta(minutes=self.params.get('atr_cooldown_min', 30))
+            print(f"[V6.5A] 瑙﹀彂鐔旀柇: {self.state.halt_reason}")
+            return True
+
+        if context:
+            pos = context.positions.get(self.symbol)
+            equity = context.cash + (float(pos.size) * data.close if pos else 0.0)
+            if equity > self.state.peak_equity: self.state.peak_equity = equity
+            if self.state.peak_equity > 0: self.state.current_drawdown = (self.state.peak_equity - equity) / self.state.peak_equity
+            
+            if self.state.current_drawdown > self.params.get('max_drawdown', 0.10):
+                self.state.drawdown_halted = True
+                self.state.halt_reason = f"鍥炴挙椋庢帶 ({self.state.current_drawdown:.1%})"
+                return True
+            else: self.state.drawdown_halted = False
+
+        if self.state.consecutive_losses >= self.params.get('max_consecutive_losses', 5):
+            self.state.loss_halted = True
+            self.state.halt_reason = f"杩炵画浜忔崯椋庢帶 ({self.state.consecutive_losses}娆?"
+            return True
+        return False
+
+    def _generate_signals(self, data: MarketData, context: StrategyContext) -> List[Signal]:
+        signals = []
+        pos = context.positions.get(self.symbol)
+        pos_size = float(pos.size) if pos else 0.0
+        layer_value = self.params.get('total_capital', 10000) / self.params.get('grid_layers', 5)
+        current_layers = int(round(pos_size * data.close / layer_value)) if pos_size > 0 else 0
+
+        cooldown_lock = False
+        if getattr(self.state, 'last_buy_time', None) and data.timestamp < self.state.last_buy_time + timedelta(minutes=self.params.get('buy_cooldown_min', 15)):
+            cooldown_lock = True
+
+        vol_confirmed = self.state.volume_ma > 0 and data.volume > self.state.volume_ma * self.params.get('volume_threshold', 1.3)
+
+        if pos_size > 0 and not cooldown_lock:
+            if self.state.current_rsi > self.params.get('rsi_sell_threshold', 70) and vol_confirmed and not self.state.is_bullish_candle:
+                sell_ratio = min(1, current_layers) / current_layers if current_layers > 0 else 1.0
+                signals.append(Signal(timestamp=data.timestamp, symbol=self.symbol, side=Side.SELL, size=pos_size * sell_ratio, reason="V6.5A Sell"))
+                if self.state.last_buy_price > 0:
+                    if data.close < self.state.last_buy_price: self.state.consecutive_losses += 1
+                    else: self.state.consecutive_losses = 0
+
+        if not cooldown_lock and self.state.current_rsi < self.params.get('rsi_buy_threshold', 30) and vol_confirmed and self.state.is_bullish_candle and current_layers < self.params.get('grid_layers', 5):
+            signals.append(Signal(timestamp=data.timestamp, symbol=self.symbol, side=Side.BUY, size=layer_value, meta={'size_in_quote': True}, reason="V6.5A Buy"))
+            self.state.last_buy_time, self.state.last_buy_price = data.timestamp, data.close
+        return signals
+
+    def _rsi(self, series, period):
+        delta = series.diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        rs = gain / loss
+        return 100 - (100 / (1 + rs.iloc[-1])) if not np.isnan(rs.iloc[-1]) else 50.0
+
+    def _atr(self, high, low, close, period):
+        tr = pd.concat([high - low, abs(high - close.shift()), abs(low - close.shift())], axis=1).max(axis=1)
+        return tr.rolling(window=period).mean().iloc[-1]
+
+    def _macd(self, series, fast, slow, signal):
+        ema_fast = series.ewm(span=fast, adjust=False).mean()
+        ema_slow = series.ewm(span=slow, adjust=False).mean()
+        macd = ema_fast - ema_slow
+        signal_line = macd.ewm(span=signal, adjust=False).mean()
+        return macd.iloc[-1], signal_line.iloc[-1], (macd - signal_line).iloc[-1]
+
+    def _find_pivot_points(self, df: pd.DataFrame):
+        if len(self._data_5m) < 20: return
+        n, window_size = 3, 10
+        data_list = list(self._data_5m)
+        highs, lows = df['high'].values, df['low'].values
+        curr_idx = len(df) - 1
+        if curr_idx < window_size + 1: return
+        all_h, all_l = [], []
+        for i in range(window_size, curr_idx + 1):
+            if lows[i] <= min(lows[i-window_size:i]):
+                if (i > curr_idx - window_size and (i == curr_idx or lows[i] <= min(lows[i+1:]))) or (i <= curr_idx - window_size and lows[i] < min(lows[i+1 : i+window_size+1])):
+                    all_l.append({'price': float(lows[i]), 'time': data_list[i].timestamp.isoformat(), 'index': i})
+            if highs[i] >= max(highs[i-window_size:i]):
+                if (i > curr_idx - window_size and (i == curr_idx or highs[i] >= max(highs[i+1:]))) or (i <= curr_idx - window_size and highs[i] > max(highs[i+1 : i+window_size+1])):
+                    all_h.append({'price': float(highs[i]), 'time': data_list[i].timestamp.isoformat(), 'index': i})
+        def _get_n(pivots):
+            res = []
+            for p in reversed(pivots):
+                if not res or (res[-1]['index'] - p['index']) >= window_size: res.append(p)
+                if len(res) >= n: break
+            res.reverse(); return res
+        self.state.pivots_high, self.state.pivots_low = _get_n(all_h), _get_n(all_l)
+
+    def get_status(self, context: Optional[StrategyContext] = None) -> Dict[str, Any]:
+        is_bullish = self.state.macdhist > 0
+        macd_trend = ("寮虹墰" if is_bullish and self.state.macdhist > self.state.macdhist_prev else "鐗涘競" if is_bullish else "寮虹唺" if self.state.macdhist < self.state.macdhist_prev else "鐔婂競")
+        pos = context.positions.get(self.symbol) if context else None
+        p_size = float(pos.size) if pos else 0.0
+        return {
+            'name': self.name, 'current_rsi': round(self.state.current_rsi, 2),
+            'macd_trend': macd_trend, 'position_size': p_size,
+            'grid_range': f"{self.state.grid_lower:.1f} - {self.state.grid_upper:.1f}",
+            'is_halted': self.state.is_halted or self.state.drawdown_halted or self.state.loss_halted,
+            'params': self.params
+        }

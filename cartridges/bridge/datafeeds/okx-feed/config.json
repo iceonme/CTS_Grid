@@ -1,0 +1,10 @@
+{
+  "name": "okx-feed",
+  "params": {
+    "symbol": "BTC-USDT",
+    "timeframe": "1m",
+    "poll_interval": 2.0,
+    "is_demo": true,
+    "record_to": null
+  }
+}
