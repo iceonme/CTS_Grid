@@ -1,0 +1,12 @@
+{
+    "okx": {
+        "api_key": "5d76baf2-21f2-4bfb-951e-2ba54e8a2d52",
+        "api_secret": "FE2BA8C81B72814CBDA7C425E4FF101F",
+        "passphrase": "Tonghua9527_",
+        "testnet": true,
+        "symbol": "ETH-USDT-SWAP",
+        "base_position": 0.05,
+        "leverage": 3
+    },
+    "port": 5090
+}

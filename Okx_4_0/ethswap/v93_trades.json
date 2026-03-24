@@ -1,0 +1,2245 @@
+[
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2093.0,
+        "size": 1.0,
+        "quote_amount": 209.3,
+        "pnl": 0.0,
+        "time": "2026-03-22T13:45:21.702000+00:00",
+        "t": 1774187121702,
+        "detail": "[同步] 开多 | 层级:- | 数量=1.0000 均价=2093.00",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3411973078171705344",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2091.6678,
+        "size": 0.96,
+        "quote_amount": 200.8001088,
+        "pnl": 0.0,
+        "time": "2026-03-22T13:45:59.632000+00:00",
+        "t": 1774187159632,
+        "detail": "[同步] 开多 | 层级:- | 数量=0.9600 均价=2091.67",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3411974350891311104",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2089.76,
+        "size": 2.0,
+        "quote_amount": 417.95200000000006,
+        "pnl": -0.51478,
+        "time": "2026-03-22T13:46:17.637000+00:00",
+        "t": 1774187177637,
+        "detail": "[同步] 平多 | 层级:- | 数量=2.0000 均价=2089.76",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3411974955038859264",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2078.3182333333334,
+        "size": 5.96,
+        "quote_amount": 1238.6776670666668,
+        "pnl": 0.0,
+        "time": "2026-03-22T13:52:04.165000+00:00",
+        "t": 1774187524165,
+        "detail": "[同步] 开多 | 层级:- | 数量=5.9600 均价=2078.32",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3411986582589071360",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2078.77,
+        "size": 6.0,
+        "quote_amount": 1247.262,
+        "pnl": 0.0,
+        "time": "2026-03-22T14:00:22.879000+00:00",
+        "t": 1774188022879,
+        "detail": "[同步] 开空 | 层级:- | 数量=6.0000 均价=2078.77",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412003316654071808",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2075.73025,
+        "size": 5.9,
+        "quote_amount": 1224.6808475000003,
+        "pnl": 0.0,
+        "time": "2026-03-22T14:02:14.782000+00:00",
+        "t": 1774188134782,
+        "detail": "[同步] 开空 | 层级:- | 数量=5.9000 均价=2075.73",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412007071495675904",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2108.0,
+        "size": 6.0,
+        "quote_amount": 1264.8000000000002,
+        "pnl": 0.0,
+        "time": "2026-03-22T14:04:34.688000+00:00",
+        "t": 1774188274688,
+        "detail": "[同步] 开空 | 层级:- | 数量=6.0000 均价=2108.00",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412011765962039296",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2105.0000333333332,
+        "size": 5.98,
+        "quote_amount": 1258.7900199333335,
+        "pnl": 0.0,
+        "time": "2026-03-22T14:04:36.770000+00:00",
+        "t": 1774188276770,
+        "detail": "[同步] 开空 | 层级:- | 数量=5.9800 均价=2105.00",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412011835822366720",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2107.2111833333333,
+        "size": 5.29,
+        "quote_amount": 1114.7147159833335,
+        "pnl": 0.0,
+        "time": "2026-03-22T14:07:25.033000+00:00",
+        "t": 1774188445033,
+        "detail": "[同步] 开空 | 层级:- | 数量=5.2900 均价=2107.21",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412017481791758336",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2110.1932833333335,
+        "size": 1.25,
+        "quote_amount": 263.7741604166667,
+        "pnl": 0.0,
+        "time": "2026-03-22T14:07:30.883000+00:00",
+        "t": 1774188450883,
+        "detail": "[同步] 开空 | 层级:- | 数量=1.2500 均价=2110.19",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412017678085185536",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2110.1467666666667,
+        "size": 1.89,
+        "quote_amount": 398.8177389,
+        "pnl": 0.0,
+        "time": "2026-03-22T14:07:31.272000+00:00",
+        "t": 1774188451272,
+        "detail": "[同步] 开空 | 层级:- | 数量=1.8900 均价=2110.15",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412017691104305152",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2116.0,
+        "size": 6.0,
+        "quote_amount": 1269.6000000000001,
+        "pnl": 0.0,
+        "time": "2026-03-22T14:07:37.483000+00:00",
+        "t": 1774188457483,
+        "detail": "[同步] 开空 | 层级:- | 数量=6.0000 均价=2116.00",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412017899544436736",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2117.2646666666665,
+        "size": 5.72,
+        "quote_amount": 1211.0753893333333,
+        "pnl": 0.0,
+        "time": "2026-03-22T14:07:39.351000+00:00",
+        "t": 1774188459351,
+        "detail": "[同步] 开空 | 层级:- | 数量=5.7200 均价=2117.26",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412017962224115712",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2117.2646666666665,
+        "size": 5.72,
+        "quote_amount": 1211.0753893333333,
+        "pnl": 0.0,
+        "time": "2026-03-22T14:07:43.710000+00:00",
+        "t": 1774188463710,
+        "detail": "[同步] 开空 | 层级:- | 数量=5.7200 均价=2117.26",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412018108487884800",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2086.2726166666666,
+        "size": 1.47,
+        "quote_amount": 306.68207465,
+        "pnl": 4.77263,
+        "time": "2026-03-22T14:28:17.240000+00:00",
+        "t": 1774189697240,
+        "detail": "[同步] 平多 | 层级:- | 数量=1.4700 均价=2086.27",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412059498852835328",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2087.33,
+        "size": 60.0,
+        "quote_amount": 12523.98,
+        "pnl": 103.36851,
+        "time": "2026-03-22T14:30:01.354000+00:00",
+        "t": 1774189801354,
+        "detail": "[同步] 平空 | 层级:- | 数量=60.0000 均价=2087.33",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412062992372523008",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2085.9086333333335,
+        "size": 2.2,
+        "quote_amount": 458.8998993333334,
+        "pnl": 0.0,
+        "time": "2026-03-22T14:48:12.105000+00:00",
+        "t": 1774190892105,
+        "detail": "[同步] 开多 | 层级:- | 数量=2.2000 均价=2085.91",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412099591869227008",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2075.632,
+        "size": 4.8,
+        "quote_amount": 996.3033600000001,
+        "pnl": -6.16598,
+        "time": "2026-03-22T14:53:06.673000+00:00",
+        "t": 1774191186673,
+        "detail": "[同步] 平多 | 层级:- | 数量=4.8000 均价=2075.63",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412109475964706816",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2076.07,
+        "size": 6.0,
+        "quote_amount": 1245.6420000000003,
+        "pnl": 0.0,
+        "time": "2026-03-22T14:53:10.636000+00:00",
+        "t": 1774191190636,
+        "detail": "[同步] 开多 | 层级:- | 数量=6.0000 均价=2076.07",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412109608940920832",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2091.590166666667,
+        "size": 5.96,
+        "quote_amount": 1246.5877393333335,
+        "pnl": 9.3121,
+        "time": "2026-03-22T15:20:37.113000+00:00",
+        "t": 1774192837113,
+        "detail": "[同步] 平多 | 层级:- | 数量=5.9600 均价=2091.59",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412164855541456896",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2147.195816666667,
+        "size": 1.46,
+        "quote_amount": 313.49058923333337,
+        "pnl": 0.0,
+        "time": "2026-03-22T15:29:08.512000+00:00",
+        "t": 1774193348512,
+        "detail": "[同步] 开空 | 层级:- | 数量=1.4600 均价=2147.20",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412182015244427264",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2111.9949666666666,
+        "size": 2.76,
+        "quote_amount": 582.9106108,
+        "pnl": 21.12051,
+        "time": "2026-03-22T15:29:52.481000+00:00",
+        "t": 1774193392481,
+        "detail": "[同步] 平空 | 层级:- | 数量=2.7600 均价=2111.99",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412183490565693440",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2166.78,
+        "size": 6.0,
+        "quote_amount": 1300.0680000000002,
+        "pnl": 0.0,
+        "time": "2026-03-22T16:12:56.466000+00:00",
+        "t": 1774195976466,
+        "detail": "[同步] 开空 | 层级:- | 数量=6.0000 均价=2166.78",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412270194748219392",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2183.13,
+        "size": 6.0,
+        "quote_amount": 1309.8780000000002,
+        "pnl": -9.81,
+        "time": "2026-03-22T16:14:56.264000+00:00",
+        "t": 1774196096264,
+        "detail": "[同步] 平空 | 层级:- | 数量=6.0000 均价=2183.13",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412274214468509696",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2257.4630166666666,
+        "size": 4.75,
+        "quote_amount": 1072.2949329166665,
+        "pnl": 0.0,
+        "time": "2026-03-22T16:19:00.121000+00:00",
+        "t": 1774196340121,
+        "detail": "[同步] 开空 | 层级:- | 数量=4.7500 均价=2257.46",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412282391314489344",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2258.5112,
+        "size": 4.31,
+        "quote_amount": 973.4183271999999,
+        "pnl": -0.6289099999999997,
+        "time": "2026-03-22T16:22:12.397000+00:00",
+        "t": 1774196532397,
+        "detail": "[同步] 平空 | 层级:- | 数量=4.3100 均价=2258.51",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412288848663601152",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2075.9182833333334,
+        "size": 3.66,
+        "quote_amount": 759.7860917000002,
+        "pnl": 0.0,
+        "time": "2026-03-22T18:03:17.994000+00:00",
+        "t": 1774202597994,
+        "detail": "[同步] 开多 | 层级:- | 数量=3.6600 均价=2075.92",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412492376359231488",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2127.98,
+        "size": 6.0,
+        "quote_amount": 1276.7880000000002,
+        "pnl": 31.23703,
+        "time": "2026-03-22T18:04:30.898000+00:00",
+        "t": 1774202670898,
+        "detail": "[同步] 平多 | 层级:- | 数量=6.0000 均价=2127.98",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412494822611542016",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2075.99,
+        "size": 3.99,
+        "quote_amount": 828.32001,
+        "pnl": 0.0,
+        "time": "2026-03-22T18:05:22.954000+00:00",
+        "t": 1774202722954,
+        "detail": "[同步] 开多 | 层级:- | 数量=3.9900 均价=2075.99",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412496569354608640",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2105.38,
+        "size": 4.0,
+        "quote_amount": 842.152,
+        "pnl": 11.756,
+        "time": "2026-03-22T18:21:54.439000+00:00",
+        "t": 1774203714439,
+        "detail": "[同步] 平多 | 层级:- | 数量=4.0000 均价=2105.38",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412529838070620160",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2080.8799833333333,
+        "size": 5.99,
+        "quote_amount": 1246.4471100166668,
+        "pnl": 0.0,
+        "time": "2026-03-22T19:11:17.278000+00:00",
+        "t": 1774206677278,
+        "detail": "[同步] 开多 | 层级:- | 数量=5.9900 均价=2080.88",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412629254450372608",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2124.99,
+        "size": 6.0,
+        "quote_amount": 1274.994,
+        "pnl": 26.46601,
+        "time": "2026-03-22T19:21:56.105000+00:00",
+        "t": 1774207316105,
+        "detail": "[同步] 平多 | 层级:- | 数量=6.0000 均价=2124.99",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412650689893949440",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2078.3478666666665,
+        "size": 5.95,
+        "quote_amount": 1236.6169806666667,
+        "pnl": 0.0,
+        "time": "2026-03-22T21:05:34.464000+00:00",
+        "t": 1774213534464,
+        "detail": "[同步] 开多 | 层级:- | 数量=5.9500 均价=2078.35",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3412859343431720960",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2076.4748833333333,
+        "size": 5.25,
+        "quote_amount": 1090.14931375,
+        "pnl": -1.12379,
+        "time": "2026-03-22T23:53:29.255000+00:00",
+        "t": 1774223609255,
+        "detail": "[同步] 平多 | 层级:- | 数量=5.2500 均价=2076.47",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3413197397287690240",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2055.97,
+        "size": 5.98,
+        "quote_amount": 1229.47006,
+        "pnl": 0.0,
+        "time": "2026-03-23T01:45:05.029000+00:00",
+        "t": 1774230305029,
+        "detail": "[同步] 开多 | 层级:- | 数量=5.9800 均价=2055.97",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3413422070181060608",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2070.78,
+        "size": 0.98,
+        "quote_amount": 202.93644000000003,
+        "pnl": 0.0,
+        "time": "2026-03-23T05:19:55.916000+00:00",
+        "t": 1774243195916,
+        "detail": "[同步] 开多 | 层级:- | 数量=0.9800 均价=2070.78",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3413854616572321792",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2168.55,
+        "size": 0.1,
+        "quote_amount": 216.85500000000002,
+        "pnl": 0.0,
+        "time": "2026-03-23T11:35:21.090000+00:00",
+        "t": 1774265721090,
+        "detail": "[同步] 开多 | 层级:- | 数量=1.0000 均价=2168.55",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414610436025139200",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2168.82,
+        "size": 0.1,
+        "quote_amount": 216.88200000000003,
+        "pnl": 0.0,
+        "time": "2026-03-23T11:35:52.869000+00:00",
+        "t": 1774265752869,
+        "detail": "[同步] 开多 | 层级:- | 数量=1.0000 均价=2168.82",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414611502351433728",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2168.62,
+        "size": 0.1,
+        "quote_amount": 216.862,
+        "pnl": 8.595666666666666,
+        "time": "2026-03-23T11:36:21.951000+00:00",
+        "t": 1774265781951,
+        "detail": "[同步] 平多 | 层级:- | 数量=1.0000 均价=2168.62",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414612478147870720",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2166.4,
+        "size": 0.7000000000000001,
+        "quote_amount": 1516.4800000000002,
+        "pnl": 58.61566666666667,
+        "time": "2026-03-23T11:36:50.392000+00:00",
+        "t": 1774265810392,
+        "detail": "[同步] 平多 | 层级:- | 数量=7.0000 均价=2166.40",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414613432503025664",
+            "cl_ord_id": "",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2156.59,
+        "size": 0.1,
+        "quote_amount": 215.65900000000002,
+        "pnl": 7.392666666666667,
+        "time": "2026-03-23T11:43:23.783000+00:00",
+        "t": 1774266203783,
+        "detail": "[同步] 平多 | 层级:- | 数量=1.0000 均价=2156.59",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414626632514584576",
+            "cl_ord_id": "testOrder1774266201",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2149.39,
+        "size": 0.6000000000000001,
+        "quote_amount": 1289.634,
+        "pnl": 0.0,
+        "time": "2026-03-23T11:45:31.016000+00:00",
+        "t": 1774266331016,
+        "detail": "[同步] 开多 | 层级:None | 数量=6.0000 均价=2149.39",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414630901745631232",
+            "cl_ord_id": "v93x1774266329085",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_oversold",
+                "posSide": "long",
+                "clOrdId": "v93x1774266329085"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2151.7072166666667,
+        "size": 0.386,
+        "quote_amount": 830.5589856333334,
+        "pnl": 1.39033,
+        "time": "2026-03-23T11:46:16.582000+00:00",
+        "t": 1774266376582,
+        "detail": "[同步] 平多 | 层级:None | 数量=3.8600 均价=2151.71",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414632430653325312",
+            "cl_ord_id": "v93x1774266374619",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_long",
+                "posSide": "long",
+                "clOrdId": "v93x1774266374619"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2153.26,
+        "size": 0.6000000000000001,
+        "quote_amount": 1291.9560000000004,
+        "pnl": 0.0,
+        "time": "2026-03-23T11:46:22.467000+00:00",
+        "t": 1774266382467,
+        "detail": "[同步] 开空 | 层级:None | 数量=6.0000 均价=2153.26",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414632628154712064",
+            "cl_ord_id": "v93x1774266380566",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_overbought",
+                "posSide": "short",
+                "clOrdId": "v93x1774266380566"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2151.898416666667,
+        "size": 0.375,
+        "quote_amount": 806.9619062500001,
+        "pnl": 0.0,
+        "time": "2026-03-23T11:47:00.400000+00:00",
+        "t": 1774266420400,
+        "detail": "[同步] 开多 | 层级:None | 数量=3.7500 均价=2151.90",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414633900941426688",
+            "cl_ord_id": "v93x1774266418468",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_oversold",
+                "posSide": "long",
+                "clOrdId": "v93x1774266418468"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2151.91,
+        "size": 0.6000000000000001,
+        "quote_amount": 1291.1460000000002,
+        "pnl": 0.81,
+        "time": "2026-03-23T11:47:01.698000+00:00",
+        "t": 1774266421698,
+        "detail": "[同步] 平空 | 层级:None | 数量=6.0000 均价=2151.91",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414633944528633856",
+            "cl_ord_id": "v93x1774266419667",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_short",
+                "posSide": "short",
+                "clOrdId": "v93x1774266419667"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2135.9272333333333,
+        "size": 0.393,
+        "quote_amount": 839.4194027,
+        "pnl": -9.58271,
+        "time": "2026-03-23T11:48:28.644000+00:00",
+        "t": 1774266508644,
+        "detail": "[同步] 平多 | 层级:None | 数量=3.9300 均价=2135.93",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414636861952278528",
+            "cl_ord_id": "v93x1774266506743",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "exit_long_layer3",
+                "posSide": "long",
+                "clOrdId": "v93x1774266506743"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2140.405,
+        "size": 0.5,
+        "quote_amount": 1070.2025,
+        "pnl": 0.0,
+        "time": "2026-03-23T11:48:47.203000+00:00",
+        "t": 1774266527203,
+        "detail": "[同步] 开空 | 层级:None | 数量=5.0000 均价=2140.41",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414637484688982016",
+            "cl_ord_id": "v93x1774266525305",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_overbought",
+                "posSide": "short",
+                "clOrdId": "v93x1774266525305"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2140.65,
+        "size": 0.6000000000000001,
+        "quote_amount": 1284.3900000000003,
+        "pnl": -0.147,
+        "time": "2026-03-23T11:50:21.022000+00:00",
+        "t": 1774266621022,
+        "detail": "[同步] 平空 | 层级:None | 数量=6.0000 均价=2140.65",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414640632732237824",
+            "cl_ord_id": "v93x1774266619010",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_short",
+                "posSide": "short",
+                "clOrdId": "v93x1774266619010"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2141.5983166666665,
+        "size": 0.49900000000000005,
+        "quote_amount": 1068.6575600166666,
+        "pnl": 0.0,
+        "time": "2026-03-23T11:50:40.244000+00:00",
+        "t": 1774266640244,
+        "detail": "[同步] 开多 | 层级:None | 数量=4.9900 均价=2141.60",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414641277681975296",
+            "cl_ord_id": "v93x1774266638336",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_oversold",
+                "posSide": "long",
+                "clOrdId": "v93x1774266638336"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2144.12,
+        "size": 0.6000000000000001,
+        "quote_amount": 1286.4720000000002,
+        "pnl": 1.51301,
+        "time": "2026-03-23T11:52:05.498000+00:00",
+        "t": 1774266725498,
+        "detail": "[同步] 平多 | 层级:None | 数量=6.0000 均价=2144.12",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414644138365075456",
+            "cl_ord_id": "v93x1774266723585",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_long",
+                "posSide": "long",
+                "clOrdId": "v93x1774266723585"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2153.3084833333332,
+        "size": 0.03900000000000001,
+        "quote_amount": 83.97903085000002,
+        "pnl": 0.0,
+        "time": "2026-03-23T11:54:09.489000+00:00",
+        "t": 1774266849489,
+        "detail": "[同步] 开空 | 层级:None | 数量=0.3900 均价=2153.31",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414648298779099136",
+            "cl_ord_id": "v93x1774266847572",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_overbought",
+                "posSide": "short",
+                "clOrdId": "v93x1774266847572"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2152.17,
+        "size": 0.6000000000000001,
+        "quote_amount": 1291.3020000000001,
+        "pnl": 0.6830900000000001,
+        "time": "2026-03-23T11:54:51.782000+00:00",
+        "t": 1774266891782,
+        "detail": "[同步] 平空 | 层级:None | 数量=6.0000 均价=2152.17",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414649717896691712",
+            "cl_ord_id": "v93x1774266889684",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_short",
+                "posSide": "short",
+                "clOrdId": "v93x1774266889684"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2151.46,
+        "size": 0.6000000000000001,
+        "quote_amount": 1290.8760000000002,
+        "pnl": 0.0,
+        "time": "2026-03-23T11:55:04.811000+00:00",
+        "t": 1774266904811,
+        "detail": "[同步] 开多 | 层级:None | 数量=6.0000 均价=2151.46",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414650155110940672",
+            "cl_ord_id": "v93x1774266902909",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_oversold",
+                "posSide": "long",
+                "clOrdId": "v93x1774266902909"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2142.9,
+        "size": 0.6000000000000001,
+        "quote_amount": 1285.7400000000002,
+        "pnl": 0.0,
+        "time": "2026-03-23T11:57:06.825000+00:00",
+        "t": 1774267026825,
+        "detail": "[同步] 开空 | 层级:- | 数量=6.0000 均价=2142.90",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414654249187852288",
+            "cl_ord_id": "v93x1774267024909",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2142.65,
+        "size": 0.6000000000000001,
+        "quote_amount": 1285.5900000000001,
+        "pnl": -5.286,
+        "time": "2026-03-23T11:57:07.463000+00:00",
+        "t": 1774267027463,
+        "detail": "[同步] 平多 | 层级:- | 数量=6.0000 均价=2142.65",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414654270629134336",
+            "cl_ord_id": "v93x1774267025554",
+            "source": "exchange",
+            "strategy_meta": {}
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2140.0234666666665,
+        "size": 0.010000000000000002,
+        "quote_amount": 21.40023466666667,
+        "pnl": 1.72592,
+        "time": "2026-03-23T12:37:51.037000+00:00",
+        "t": 1774269471037,
+        "detail": "[同步] 平空 | 层级:None | 数量=0.1000 均价=2140.02",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414736263333199872",
+            "cl_ord_id": "v93x1774269469098",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_short",
+                "posSide": "short",
+                "clOrdId": "v93x1774269469098"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2143.07,
+        "size": 0.6000000000000001,
+        "quote_amount": 1285.8420000000003,
+        "pnl": 0.0,
+        "time": "2026-03-23T12:42:37.313000+00:00",
+        "t": 1774269757313,
+        "detail": "[同步] 开空 | 层级:None | 数量=6.0000 均价=2143.07",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414745869195329536",
+            "cl_ord_id": "v93x1774269755368",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_overbought",
+                "posSide": "short",
+                "clOrdId": "v93x1774269755368"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2140.81,
+        "size": 0.6000000000000001,
+        "quote_amount": 1284.486,
+        "pnl": 1.356,
+        "time": "2026-03-23T12:43:19.566000+00:00",
+        "t": 1774269799566,
+        "detail": "[同步] 平空 | 层级:None | 数量=6.0000 均价=2140.81",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414747286970744832",
+            "cl_ord_id": "v93x1774269797623",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_short",
+                "posSide": "short",
+                "clOrdId": "v93x1774269797623"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2142.17,
+        "size": 0.6000000000000001,
+        "quote_amount": 1285.3020000000001,
+        "pnl": 0.0,
+        "time": "2026-03-23T12:46:10.792000+00:00",
+        "t": 1774269970792,
+        "detail": "[同步] 开多 | 层级:None | 数量=6.0000 均价=2142.17",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414753032328364032",
+            "cl_ord_id": "v93x1774269968838",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_oversold",
+                "posSide": "long",
+                "clOrdId": "v93x1774269968838"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2143.22,
+        "size": 0.6000000000000001,
+        "quote_amount": 1285.932,
+        "pnl": 0.63,
+        "time": "2026-03-23T12:46:30.736000+00:00",
+        "t": 1774269990736,
+        "detail": "[同步] 平多 | 层级:None | 数量=6.0000 均价=2143.22",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414753701571510272",
+            "cl_ord_id": "v93x1774269988787",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_long",
+                "posSide": "long",
+                "clOrdId": "v93x1774269988787"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2144.41,
+        "size": 0.6000000000000001,
+        "quote_amount": 1286.6460000000002,
+        "pnl": 0.0,
+        "time": "2026-03-23T12:46:55.273000+00:00",
+        "t": 1774270015273,
+        "detail": "[同步] 开空 | 层级:None | 数量=6.0000 均价=2144.41",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414754524896608256",
+            "cl_ord_id": "v93x1774270013330",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_overbought",
+                "posSide": "short",
+                "clOrdId": "v93x1774270013330"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2143.0,
+        "size": 0.6000000000000001,
+        "quote_amount": 1285.8000000000002,
+        "pnl": 0.846,
+        "time": "2026-03-23T12:48:26.884000+00:00",
+        "t": 1774270106884,
+        "detail": "[同步] 平空 | 层级:None | 数量=6.0000 均价=2143.00",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414757598851678208",
+            "cl_ord_id": "v93x1774270104932",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_short",
+                "posSide": "short",
+                "clOrdId": "v93x1774270104932"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2143.97,
+        "size": 0.6000000000000001,
+        "quote_amount": 1286.382,
+        "pnl": 0.0,
+        "time": "2026-03-23T12:48:35.500000+00:00",
+        "t": 1774270115500,
+        "detail": "[同步] 开多 | 层级:None | 数量=6.0000 均价=2143.97",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414757887956664320",
+            "cl_ord_id": "v93x1774270113270",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_oversold",
+                "posSide": "long",
+                "clOrdId": "v93x1774270113270"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2144.18,
+        "size": 0.6000000000000001,
+        "quote_amount": 1286.508,
+        "pnl": 0.126,
+        "time": "2026-03-23T12:50:25.555000+00:00",
+        "t": 1774270225555,
+        "detail": "[同步] 平多 | 层级:None | 数量=6.0000 均价=2144.18",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414761580789678080",
+            "cl_ord_id": "v93x1774270223604",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_long",
+                "posSide": "long",
+                "clOrdId": "v93x1774270223604"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2141.2,
+        "size": 0.6000000000000001,
+        "quote_amount": 1284.72,
+        "pnl": 0.0,
+        "time": "2026-03-23T12:50:58.102000+00:00",
+        "t": 1774270258102,
+        "detail": "[同步] 开多 | 层级:None | 数量=6.0000 均价=2141.20",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414762672852221952",
+            "cl_ord_id": "v93x1774270256151",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_oversold",
+                "posSide": "long",
+                "clOrdId": "v93x1774270256151"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2143.8,
+        "size": 0.6000000000000001,
+        "quote_amount": 1286.2800000000002,
+        "pnl": 0.0,
+        "time": "2026-03-23T12:51:34.454000+00:00",
+        "t": 1774270294454,
+        "detail": "[同步] 开空 | 层级:None | 数量=6.0000 均价=2143.80",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414763892656488448",
+            "cl_ord_id": "v93x1774270292497",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_overbought",
+                "posSide": "short",
+                "clOrdId": "v93x1774270292497"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2143.98,
+        "size": 0.6000000000000001,
+        "quote_amount": 1286.3880000000001,
+        "pnl": 1.668,
+        "time": "2026-03-23T12:51:35.134000+00:00",
+        "t": 1774270295134,
+        "detail": "[同步] 平多 | 层级:None | 数量=6.0000 均价=2143.98",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414763915473502208",
+            "cl_ord_id": "v93x1774270293174",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_long",
+                "posSide": "long",
+                "clOrdId": "v93x1774270293174"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2143.96,
+        "size": 0.6000000000000001,
+        "quote_amount": 1286.3760000000002,
+        "pnl": -0.096,
+        "time": "2026-03-23T12:52:38.902000+00:00",
+        "t": 1774270358902,
+        "detail": "[同步] 平空 | 层级:None | 数量=6.0000 均价=2143.96",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414766055172521984",
+            "cl_ord_id": "v93x1774270356941",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_short",
+                "posSide": "short",
+                "clOrdId": "v93x1774270356941"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2144.3783333333336,
+        "size": 0.5,
+        "quote_amount": 1072.1891666666668,
+        "pnl": 0.0,
+        "time": "2026-03-23T12:53:31.697000+00:00",
+        "t": 1774270411697,
+        "detail": "[同步] 开多 | 层级:None | 数量=5.0000 均价=2144.38",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414767826678759424",
+            "cl_ord_id": "v93x1774270409739",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_oversold",
+                "posSide": "long",
+                "clOrdId": "v93x1774270409739"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2142.53,
+        "size": 0.6000000000000001,
+        "quote_amount": 1285.5180000000003,
+        "pnl": -1.109,
+        "time": "2026-03-23T12:56:26.606000+00:00",
+        "t": 1774270586606,
+        "detail": "[同步] 平多 | 层级:None | 数量=6.0000 均价=2142.53",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414773695650906112",
+            "cl_ord_id": "v93x1774270584650",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_long",
+                "posSide": "long",
+                "clOrdId": "v93x1774270584650"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2145.29,
+        "size": 0.6000000000000001,
+        "quote_amount": 1287.1740000000002,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:00:13.457000+00:00",
+        "t": 1774270813457,
+        "detail": "[同步] 开空 | 层级:None | 数量=6.0000 均价=2145.29",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414781307507359744",
+            "cl_ord_id": "v93x1774270811498",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_overbought",
+                "posSide": "short",
+                "clOrdId": "v93x1774270811498"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2150.73,
+        "size": 0.6000000000000001,
+        "quote_amount": 1290.438,
+        "pnl": -3.264,
+        "time": "2026-03-23T13:01:21.591000+00:00",
+        "t": 1774270881591,
+        "detail": "[同步] 平空 | 层级:None | 数量=6.0000 均价=2150.73",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414783593705029632",
+            "cl_ord_id": "v93x1774270879408",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_short",
+                "posSide": "short",
+                "clOrdId": "v93x1774270879408"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2146.61,
+        "size": 0.6000000000000001,
+        "quote_amount": 1287.9660000000003,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:01:31.619000+00:00",
+        "t": 1774270891619,
+        "detail": "[同步] 开多 | 层级:None | 数量=6.0000 均价=2146.61",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414783930188873728",
+            "cl_ord_id": "v93x1774270889668",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_oversold",
+                "posSide": "long",
+                "clOrdId": "v93x1774270889668"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2144.135366666667,
+        "size": 0.27799999999999997,
+        "quote_amount": 596.0696319333333,
+        "pnl": -1.48478,
+        "time": "2026-03-23T13:03:08.059000+00:00",
+        "t": 1774270988059,
+        "detail": "[同步] 平多 | 层级:None | 数量=2.7800 均价=2144.14",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414787166178295808",
+            "cl_ord_id": "v93x1774270986094",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_long",
+                "posSide": "long",
+                "clOrdId": "v93x1774270986094"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2141.25,
+        "size": 0.6000000000000001,
+        "quote_amount": 1284.7500000000002,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:05:22.949000+00:00",
+        "t": 1774271122949,
+        "detail": "[同步] 开多 | 层级:None | 数量=6.0000 均价=2141.25",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414791692335628288",
+            "cl_ord_id": "v93x1774271120761",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_oversold",
+                "posSide": "long",
+                "clOrdId": "v93x1774271120761"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2142.1661833333333,
+        "size": 0.229,
+        "quote_amount": 490.55605598333335,
+        "pnl": 0.54971,
+        "time": "2026-03-23T13:08:16.465000+00:00",
+        "t": 1774271296465,
+        "detail": "[同步] 平多 | 层级:None | 数量=2.2900 均价=2142.17",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414797514566451200",
+            "cl_ord_id": "v93x1774271294496",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_long",
+                "posSide": "long",
+                "clOrdId": "v93x1774271294496"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2143.91,
+        "size": 0.6000000000000001,
+        "quote_amount": 1286.346,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:08:30.911000+00:00",
+        "t": 1774271310911,
+        "detail": "[同步] 开空 | 层级:None | 数量=6.0000 均价=2143.91",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414797999260221440",
+            "cl_ord_id": "v93x1774271308695",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_overbought",
+                "posSide": "short",
+                "clOrdId": "v93x1774271308695"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2143.27,
+        "size": 0.6000000000000001,
+        "quote_amount": 1285.9620000000002,
+        "pnl": 0.384,
+        "time": "2026-03-23T13:09:18.979000+00:00",
+        "t": 1774271358979,
+        "detail": "[同步] 平空 | 层级:None | 数量=6.0000 均价=2143.27",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414799612154658816",
+            "cl_ord_id": "v93x1774271356475",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_short",
+                "posSide": "short",
+                "clOrdId": "v93x1774271356475"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2147.71,
+        "size": 0.6000000000000001,
+        "quote_amount": 1288.6260000000002,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:14:21.341000+00:00",
+        "t": 1774271661341,
+        "detail": "[同步] 开空 | 层级:None | 数量=6.0000 均价=2147.71",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414809757773381632",
+            "cl_ord_id": "v93x1774271659361",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_overbought",
+                "posSide": "short",
+                "clOrdId": "v93x1774271659361"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2145.26,
+        "size": 0.6000000000000001,
+        "quote_amount": 1287.1560000000004,
+        "pnl": 1.47,
+        "time": "2026-03-23T13:14:43.080000+00:00",
+        "t": 1774271683080,
+        "detail": "[同步] 平空 | 层级:None | 数量=6.0000 均价=2145.26",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414810487213178880",
+            "cl_ord_id": "v93x1774271681115",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_short",
+                "posSide": "short",
+                "clOrdId": "v93x1774271681115"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2145.75,
+        "size": 0.6000000000000001,
+        "quote_amount": 1287.4500000000003,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:15:53.036000+00:00",
+        "t": 1774271753036,
+        "detail": "[同步] 开多 | 层级:None | 数量=6.0000 均价=2145.75",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414812834547023872",
+            "cl_ord_id": "v93x1774271750833",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_oversold",
+                "posSide": "long",
+                "clOrdId": "v93x1774271750833"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2148.62,
+        "size": 0.6000000000000001,
+        "quote_amount": 1289.172,
+        "pnl": 1.722,
+        "time": "2026-03-23T13:16:19.957000+00:00",
+        "t": 1774271779957,
+        "detail": "[同步] 平多 | 层级:None | 数量=6.0000 均价=2148.62",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414813737865887744",
+            "cl_ord_id": "v93x1774271777981",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_long",
+                "posSide": "long",
+                "clOrdId": "v93x1774271777981"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2146.24,
+        "size": 0.6000000000000001,
+        "quote_amount": 1287.7440000000001,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:17:06.534000+00:00",
+        "t": 1774271826534,
+        "detail": "[同步] 开多 | 层级:None | 数量=6.0000 均价=2146.24",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414815300730667008",
+            "cl_ord_id": "v93x1774271824160",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_oversold",
+                "posSide": "long",
+                "clOrdId": "v93x1774271824160"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2148.2916666666665,
+        "size": 0.5,
+        "quote_amount": 1074.1458333333333,
+        "pnl": 1.231,
+        "time": "2026-03-23T13:18:00.733000+00:00",
+        "t": 1774271880733,
+        "detail": "[同步] 平多 | 层级:None | 数量=5.0000 均价=2148.29",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414817119347326976",
+            "cl_ord_id": "v93x1774271878754",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_long",
+                "posSide": "long",
+                "clOrdId": "v93x1774271878754"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2148.15,
+        "size": 0.6000000000000001,
+        "quote_amount": 1288.8900000000003,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:18:08.786000+00:00",
+        "t": 1774271888786,
+        "detail": "[同步] 开空 | 层级:None | 数量=6.0000 均价=2148.15",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414817389527613440",
+            "cl_ord_id": "v93x1774271886812",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_overbought",
+                "posSide": "short",
+                "clOrdId": "v93x1774271886812"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2147.7,
+        "size": 0.6000000000000001,
+        "quote_amount": 1288.6200000000001,
+        "pnl": 0.27,
+        "time": "2026-03-23T13:18:53.878000+00:00",
+        "t": 1774271933878,
+        "detail": "[同步] 平空 | 层级:None | 数量=6.0000 均价=2147.70",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414818902597615616",
+            "cl_ord_id": "v93x1774271931912",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_short",
+                "posSide": "short",
+                "clOrdId": "v93x1774271931912"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2145.57,
+        "size": 0.6000000000000001,
+        "quote_amount": 1287.3420000000003,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:19:50.133000+00:00",
+        "t": 1774271990133,
+        "detail": "[同步] 开多 | 层级:None | 数量=6.0000 均价=2145.57",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414820790202187776",
+            "cl_ord_id": "v93x1774271988160",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_oversold",
+                "posSide": "long",
+                "clOrdId": "v93x1774271988160"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2147.42,
+        "size": 0.6000000000000001,
+        "quote_amount": 1288.4520000000002,
+        "pnl": 1.11,
+        "time": "2026-03-23T13:20:39.308000+00:00",
+        "t": 1774272039308,
+        "detail": "[同步] 平多 | 层级:None | 数量=6.0000 均价=2147.42",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414822440241381376",
+            "cl_ord_id": "v93x1774272037339",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_long",
+                "posSide": "long",
+                "clOrdId": "v93x1774272037339"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2150.125,
+        "size": 0.5,
+        "quote_amount": 1075.0625,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:21:16.370000+00:00",
+        "t": 1774272076370,
+        "detail": "[同步] 开空 | 层级:None | 数量=5.0000 均价=2150.12",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414823683802185728",
+            "cl_ord_id": "v93x1774272074375",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_overbought",
+                "posSide": "short",
+                "clOrdId": "v93x1774272074375"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2151.49975,
+        "size": 0.5900000000000001,
+        "quote_amount": 1269.3848525,
+        "pnl": -0.82485,
+        "time": "2026-03-23T13:22:43.624000+00:00",
+        "t": 1774272163624,
+        "detail": "[同步] 平空 | 层级:None | 数量=5.9000 均价=2151.50",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414826611594149888",
+            "cl_ord_id": "v93x1774272161621",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_short",
+                "posSide": "short",
+                "clOrdId": "v93x1774272161621"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2151.8688833333335,
+        "size": 0.067,
+        "quote_amount": 144.17521518333336,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:23:10.029000+00:00",
+        "t": 1774272190029,
+        "detail": "[同步] 开空 | 层级:None | 数量=0.6700 均价=2151.87",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414827497598926848",
+            "cl_ord_id": "v93x1774272188050",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_overbought",
+                "posSide": "short",
+                "clOrdId": "v93x1774272188050"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2151.63,
+        "size": 0.6000000000000001,
+        "quote_amount": 1290.9780000000003,
+        "pnl": 0.14333,
+        "time": "2026-03-23T13:24:00.178000+00:00",
+        "t": 1774272240178,
+        "detail": "[同步] 平空 | 层级:None | 数量=6.0000 均价=2151.63",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414829180286582784",
+            "cl_ord_id": "v93x1774272238204",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_short",
+                "posSide": "short",
+                "clOrdId": "v93x1774272238204"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2145.1499166666667,
+        "size": 0.49900000000000005,
+        "quote_amount": 1070.429808416667,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:30:24.885000+00:00",
+        "t": 1774272624885,
+        "detail": "[同步] 开多 | 层级:None | 数量=4.9900 均价=2145.15",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414842088945008640",
+            "cl_ord_id": "v93x1774272622900",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_oversold",
+                "posSide": "long",
+                "clOrdId": "v93x1774272622900"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2148.451233333333,
+        "size": 0.489,
+        "quote_amount": 1050.5926531,
+        "pnl": 1.9807899999999998,
+        "time": "2026-03-23T13:31:21.015000+00:00",
+        "t": 1774272681015,
+        "detail": "[同步] 平多 | 层级:None | 数量=4.8900 均价=2148.45",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414843972355276800",
+            "cl_ord_id": "v93x1774272679029",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_long",
+                "posSide": "long",
+                "clOrdId": "v93x1774272679029"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2147.32,
+        "size": 0.6000000000000001,
+        "quote_amount": 1288.3920000000003,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:32:31.671000+00:00",
+        "t": 1774272751671,
+        "detail": "[同步] 开多 | 层级:None | 数量=6.0000 均价=2147.32",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414846343177224192",
+            "cl_ord_id": "v93x1774272749683",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_oversold",
+                "posSide": "long",
+                "clOrdId": "v93x1774272749683"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2148.55,
+        "size": 0.6000000000000001,
+        "quote_amount": 1289.1300000000003,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:33:34.168000+00:00",
+        "t": 1774272814168,
+        "detail": "[同步] 开空 | 层级:None | 数量=6.0000 均价=2148.55",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414848440228560896",
+            "cl_ord_id": "v93x1774272812177",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_overbought",
+                "posSide": "short",
+                "clOrdId": "v93x1774272812177"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2148.0,
+        "size": 0.6000000000000001,
+        "quote_amount": 1288.8000000000002,
+        "pnl": 0.408,
+        "time": "2026-03-23T13:33:36.005000+00:00",
+        "t": 1774272816005,
+        "detail": "[同步] 平多 | 层级:None | 数量=6.0000 均价=2148.00",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414848501868052480",
+            "cl_ord_id": "v93x1774272814004",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_long",
+                "posSide": "long",
+                "clOrdId": "v93x1774272814004"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2146.51,
+        "size": 0.6000000000000001,
+        "quote_amount": 1287.9060000000004,
+        "pnl": 1.224,
+        "time": "2026-03-23T13:34:33.040000+00:00",
+        "t": 1774272873040,
+        "detail": "[同步] 平空 | 层级:None | 数量=6.0000 均价=2146.51",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414850415645081600",
+            "cl_ord_id": "v93x1774272870826",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_short",
+                "posSide": "short",
+                "clOrdId": "v93x1774272870826"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "开多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2145.2236666666668,
+        "size": 0.264,
+        "quote_amount": 566.339048,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:34:46.308000+00:00",
+        "t": 1774272886308,
+        "detail": "[同步] 开多 | 层级:None | 数量=2.6400 均价=2145.22",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414850860845285376",
+            "cl_ord_id": "v93x1774272884320",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_oversold",
+                "posSide": "long",
+                "clOrdId": "v93x1774272884320"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "平多",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2148.435,
+        "size": 0.5,
+        "quote_amount": 1074.2175,
+        "pnl": 1.9268,
+        "time": "2026-03-23T13:35:38.739000+00:00",
+        "t": 1774272938739,
+        "detail": "[同步] 平多 | 层级:None | 数量=5.0000 均价=2148.43",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414852620137709568",
+            "cl_ord_id": "v93x1774272936137",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_long",
+                "posSide": "long",
+                "clOrdId": "v93x1774272936137"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2153.3164666666667,
+        "size": 0.024,
+        "quote_amount": 51.6795952,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:37:23.343000+00:00",
+        "t": 1774273043343,
+        "detail": "[同步] 开空 | 层级:None | 数量=0.2400 均价=2153.32",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414856130031960064",
+            "cl_ord_id": "v93x1774273041353",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_overbought",
+                "posSide": "short",
+                "clOrdId": "v93x1774273041353"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2155.13,
+        "size": 0.5990000000000001,
+        "quote_amount": 1290.9228700000003,
+        "pnl": -1.08812,
+        "time": "2026-03-23T13:38:12.634000+00:00",
+        "t": 1774273092634,
+        "detail": "[同步] 平空 | 层级:None | 数量=5.9900 均价=2155.13",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414857783997022208",
+            "cl_ord_id": "v93x1774273090645",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "no_grid_exit_short",
+                "posSide": "short",
+                "clOrdId": "v93x1774273090645"
+            }
+        }
+    },
+    {
+        "type": "SELL",
+        "action": "开空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2178.76,
+        "size": 0.6000000000000001,
+        "quote_amount": 1307.2560000000003,
+        "pnl": 0.0,
+        "time": "2026-03-23T13:54:34.627000+00:00",
+        "t": 1774274074627,
+        "detail": "[同步] 开空 | 层级:None | 数量=6.0000 均价=2178.76",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3414890734214365184",
+            "cl_ord_id": "v93x1774274072620",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "layer2_short_entry",
+                "posSide": "short",
+                "clOrdId": "v93x1774274072620"
+            }
+        }
+    },
+    {
+        "type": "BUY",
+        "action": "平空",
+        "symbol": "ETH-USDT-SWAP",
+        "price": 2130.1,
+        "size": 0.6000000000000001,
+        "quote_amount": 1278.0600000000002,
+        "pnl": 29.196,
+        "time": "2026-03-23T15:53:53.917000+00:00",
+        "t": 1774281233917,
+        "detail": "[同步] 平空 | 层级:None | 数量=6.0000 均价=2130.10",
+        "reason": "交易所同步",
+        "meta": {
+            "ord_id": "3415130960123838464",
+            "cl_ord_id": "v93x1774281231789",
+            "source": "exchange",
+            "strategy_meta": {
+                "reason": "exit_short_layer1",
+                "posSide": "short",
+                "clOrdId": "v93x1774281231789"
+            }
+        }
+    }
+]

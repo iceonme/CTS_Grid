@@ -1,0 +1,11 @@
+{
+    "initial_anchor_balance": 75413.45792188456,
+    "local_positions": {
+        "BTC-USDT": {
+            "size": 0.48705812359722,
+            "avg_price": 69399.47623392585,
+            "entry_time": "2026-03-23T20:49:21.067908+00:00",
+            "total_cost": 33801.57867312578
+        }
+    }
+}
