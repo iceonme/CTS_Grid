@@ -295,5 +295,25 @@
         "pnl": null,
         "time": "2026-03-23T20:49:21.067908+00:00",
         "detail": "\u82b1\u8d39 8492.37 USDT \u4e70\u5165 0.119755 BTC"
+    },
+    {
+        "type": "SELL",
+        "symbol": "BTC-USDT",
+        "price": 70534.0,
+        "size": 0.097034192676,
+        "quote_amount": 6844.209746208984,
+        "pnl": null,
+        "time": "2026-03-24T02:44:22.696685+00:00",
+        "detail": "\u5356\u51fa 0.097034 BTC \u83b7\u5f97 6844.21 USDT"
+    },
+    {
+        "type": "BUY",
+        "symbol": "BTC-USDT",
+        "price": 71028.9,
+        "size": 0.11075393116395277,
+        "quote_amount": 7866.729901251284,
+        "pnl": null,
+        "time": "2026-03-24T07:55:15.926930+00:00",
+        "detail": "\u82b1\u8d39 7866.73 USDT \u4e70\u5165 0.110754 BTC"
     }
 ]

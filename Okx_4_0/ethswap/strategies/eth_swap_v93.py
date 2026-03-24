@@ -14,6 +14,7 @@ V9.3-Innovation - ETH永续合约动态网格策略
 - 双向交易: 做多(中层下半部) + 做空(低层上半部)
 """
 
+import os
 import json
 import time
 import hmac
@@ -254,9 +255,8 @@ class V93Strategy(BaseStrategy):
         self.daily_reset_count = 0
         self.breakout_reset_count = 0
         
-        # 栅格刷新控制 (Innovation v1.1+)
+        # 网格计算记录（仅记录最近一次计算时间，不做定时强制重置）
         self.last_grid_calc_time: Optional[datetime] = None
-        self.grid_reset_interval_hours = self.config.get('grid_reset_interval_hours', 4)  # 默认4小时强制刷新
         
         # 稳定性增强
         self.last_candle_ts: Optional[datetime] = None
@@ -265,6 +265,9 @@ class V93Strategy(BaseStrategy):
         
         # 状态数据，用于 get_status
         self.status_data: Dict[str, Any] = {}
+        
+        # 尝试加载历史网格状态
+        self._load_grid_state()
         
         logger.info(f"V9.3-Innovation 初始化完成 | 端口: {self.config.get('port', 5090)}")
 
@@ -319,11 +322,14 @@ class V93Strategy(BaseStrategy):
         self.calculate_dynamic_leverage_for_engine(atr, current_price, context)
         
         # 5. 初始化或重置网格
-        if not self.entity_grids or self.check_reset_conditions(current_price, current_time):
-            # 网格归并检查：顺势保留，逆势平仓
+        reset_needed, reset_window = self.check_reset_conditions(current_price, current_time)
+        if not self.entity_grids or reset_needed:
+            # 用户要求重置时持仓保留原样，此处原有的 _handle_grid_merge 逻辑跳过或仅做记录
             if context.positions:
-                signals.extend(self._handle_grid_merge(context, current_price, trend))
-            self.calculate_grids(self.df_history)
+                logger.info(f"网格重置触发 | 当前持仓数量: {len(context.positions)} | 状态: 保留原样")
+            
+            # 执行网格计算 (自适应 6h 或 4h 窗口)
+            self.calculate_grids(self.df_history, window_hours=reset_window)
             
         # 5.1 交易冷却检查
         time_now = time.time()
@@ -626,24 +632,106 @@ class V93Strategy(BaseStrategy):
             'breakout_reset': int(self.breakout_reset_count),
             'trade_count': int(self.trade_count)
         }
+
+    def _save_grid_state(self):
+        """保存当前网格状态至文件 (最新值 + 增量历史)"""
+        try:
+            # 确保目录存在
+            if not os.path.exists('ethswap'):
+                os.makedirs('ethswap')
+                
+            state = {
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'grid_top': float(self.grid_top),
+                'grid_bottom': float(self.grid_bottom),
+                'entity_grids': [float(p) for p in self.entity_grids],
+                'virtual_grids': [float(p) for p in self.virtual_grids],
+                'daily_reset_count': int(self.daily_reset_count)
+            }
+            
+            # 1. 保存最新状态 (覆盖)
+            with open('ethswap/v93_state.json', 'w', encoding='utf-8') as f:
+                json.dump(state, f, indent=4)
+            
+            # 2. 保存增量历史 (追加)
+            history_file = 'ethswap/v93_grid_history.json'
+            history = []
+            if os.path.exists(history_file):
+                try:
+                    with open(history_file, 'r', encoding='utf-8') as f:
+                        history = json.load(f)
+                except:
+                    history = []
+            
+            history.append(state)
+            # 保持历史记录不要无限大 (保留最近 150 条，约能覆盖 1-2 天的高频变动)
+            if len(history) > 150:
+                history = history[-150:]
+                
+            with open(history_file, 'w', encoding='utf-8') as f:
+                json.dump(history, f, indent=4)
+                
+            logger.info("网格状态已持久化保存 (最新状态 + 增量历史)")
+        except Exception as e:
+            logger.error(f"保存网格状态失败: {e}")
+
+    def _load_grid_state(self):
+        """从文件加载历史网格状态"""
+        state_file = 'ethswap/v93_state.json'
+        if os.path.exists(state_file):
+            try:
+                with open(state_file, 'r', encoding='utf-8') as f:
+                    state = json.load(f)
+                
+                self.grid_top = float(state.get('grid_top', 0.0))
+                self.grid_bottom = float(state.get('grid_bottom', 0.0))
+                self.entity_grids = state.get('entity_grids', [])
+                self.virtual_grids = state.get('virtual_grids', [])
+                
+                if self.entity_grids and self.virtual_grids:
+                    logger.info(f"成功从文件恢复网格状态 | 区间: [{self.grid_bottom:.2f} ↔ {self.grid_top:.2f}]")
+            except Exception as e:
+                logger.error(f"加载网格状态失败: {e}")
         
-    def calculate_grids(self, df: pd.DataFrame):
-        """计算3层网格架构: 实体3层 + 虚拟2层 (共6个价格点)"""
-        lookback = 6 * 60  # 6小时 = 360个1分钟K线
+    def calculate_grids(self, df: pd.DataFrame, window_hours: int = 6):
+        """计算3层网格架构: 实体3层 + 虚拟2层 (分 5 段采样去极值)"""
+        lookback = window_hours * 60  # 6小时=360, 4小时=240
         if len(df) < lookback:
             lookback = len(df)
         
         recent = df.tail(lookback)
+        if recent.empty:
+            return
+            
+        # --- 分 5 段截取每段最高最低点 ---
+        seg_size = len(recent) // 5
+        highs = []
+        lows = []
         
-        # 5高5低去极值
-        highs = recent['high'].nlargest(5).values
-        lows = recent['low'].nsmallest(5).values
+        for i in range(5):
+            # 确保最后一段包含所有剩余数据
+            start_idx = i * seg_size
+            end_idx = (i + 1) * seg_size if i < 4 else len(recent)
+            segment = recent.iloc[start_idx:end_idx]
+            
+            if not segment.empty:
+                highs.append(segment['high'].max())
+                lows.append(segment['low'].min())
         
-        # 网格顶部与底部 (去极值平均: 过滤真正的最高一根针和最低一根针)
-        self.grid_top = np.mean(np.sort(highs)[:-1])
-        self.grid_bottom = np.mean(np.sort(lows)[1:])
+        # --- 去极值算法 (5高去最大，5低去最小) ---
+        if len(highs) >= 2:
+            # 排序后去掉最高的一个，取剩余平均
+            self.grid_top = np.mean(np.sort(highs)[:-1])
+        else:
+            self.grid_top = recent['high'].max()
+            
+        if len(lows) >= 2:
+            # 排序后去掉最低的一个，取剩余平均
+            self.grid_bottom = np.mean(np.sort(lows)[1:])
+        else:
+            self.grid_bottom = recent['low'].min()
         
-        # 3个实体层需要 4 条线
+        # --- 五层空间布局 (3实体 + 2虚拟) ---
         step = (self.grid_top - self.grid_bottom) / 3
         self.entity_grids = [
             self.grid_bottom,              # P0
@@ -652,18 +740,19 @@ class V93Strategy(BaseStrategy):
             self.grid_top                  # P3
         ]
         
-        # 虚拟辅助层 (上下各扩展一层)
+        # 虚拟缓冲层
         self.virtual_grids = [
             self.grid_bottom - step,       # P_low_virtual
             self.grid_top + step           # P_high_virtual
         ]
         
-        # 记录计算时间
         self.last_grid_calc_time = df.index[-1]
         
-        logger.info(f"3层实体网格计算 | 区间: [{self.grid_bottom:.2f} ↔ {self.grid_top:.2f}] | 步长: {step:.2f} | 时间: {self.last_grid_calc_time}")
-        logger.info(f"网格线: {[round(x, 2) for x in self.entity_grids]}")
-        logger.info(f"虚拟边界: [{self.virtual_grids[0]:.2f}, {self.virtual_grids[1]:.2f}]")
+        logger.info(f"网格计算完成 | 窗口: {window_hours}h | 区间: [{self.grid_bottom:.2f} ↔ {self.grid_top:.2f}] | 步长: {step:.2f}")
+        logger.info(f"实体层: {[round(x, 2) for x in self.entity_grids]} | 虚拟层: {[round(x, 2) for x in self.virtual_grids]}")
+        
+        # 持久化保存
+        self._save_grid_state()
     
     def calculate_rsi(self, prices: List[float], period: int = 14) -> float:
         """计算标准 Wilder's RSI (平滑移动平均)"""
@@ -742,62 +831,59 @@ class V93Strategy(BaseStrategy):
             return -1
         return 0
     
-    def check_reset_conditions(self, current_price: float, current_time: datetime) -> bool:
-        """检查重置条件 - 3层架构 (包含每日、周期、突破三种模式)"""
-        current_day = current_time.date()
+    def check_reset_conditions(self, current_price: float, current_time: datetime) -> Tuple[bool, int]:
+        """检查重置条件 (返回: 是否重置, 采样窗口)
+        逻辑：
+        1. 不做任何定时强制重置。
+        2. 每日 00:00 (北京时间) 恢复当日 2 次重置配额，不触发数据重扫。
+        3. 价格突破虚拟层 (VH/VL) 后开启 2 小时观察期。
+        4. 2 小时后仍未回归且配额充足 -> 触发一次重置，并使用 4h 窗口重算网格。
+        """
+        # --- 1. 北京时间 00:00 恢复配额 ---
+        # 假设服务器时间/K线时间为 UTC，转换为北京时间 (UTC+8)
+        cst_time = current_time + timedelta(hours=8)
+        current_day = cst_time.date()
         
-        # 1. 跨天重置 - 确保新的一天至少重新计算一次
         if self.last_reset_day != current_day:
             self.last_reset_day = current_day
-            self.daily_reset_count = 0
+            self.daily_reset_count = 0  # 恢复 2 次机会
             self.breakout_triggered = False
-            logger.info(f"新的一天: {current_day} | 触发网格定时刷新")
-            return True
+            logger.info(f"北京时间跨天: {current_day} | 重置配额已恢复 (2次) | 当前网格维持不变")
+            # 注意：此处不返回 True，因为 00:00 仅恢复次数，不再强制重置网格
         
-        # 2. 周期性重置 - 防止在波动率剧降时网格变死
-        if self.last_grid_calc_time:
-            # 获取时区感知的时间差
-            last_calc_time = self.last_grid_calc_time
-            if last_calc_time.tzinfo is None:
-                last_calc_time = last_calc_time.replace(tzinfo=timezone.utc)
-            
-            check_time = current_time
-            if check_time.tzinfo is None:
-                check_time = check_time.replace(tzinfo=timezone.utc)
-                
-            elapsed_hours = (check_time - last_calc_time).total_seconds() / 3600
-            if elapsed_hours >= self.grid_reset_interval_hours:
-                logger.info(f"周期性重置 | 距离上次计算已过 {elapsed_hours:.2f} 小时 | 触发刷新")
-                return True
-        
-        # 3. 突破重置 - 超出虚拟层 2 小时
-        if self.daily_reset_count >= 1:
-            return False # 每日仅限一次突破重置
+        # --- 2. 突破重置检查 ---
+        if self.daily_reset_count >= 2:
+            return False, 6
             
         if len(self.virtual_grids) >= 2:
             lower_bound = self.virtual_grids[0]
             upper_bound = self.virtual_grids[1]
             
+            # 检测是否突破
+            is_outside = current_price < lower_bound or current_price > upper_bound
+            
             if not self.breakout_triggered:
-                if current_price < lower_bound or current_price > upper_bound:
+                if is_outside:
                     self.breakout_triggered = True
                     self.breakout_time = current_time
-                    logger.info(f"突破触发 | 价格: {current_price:.2f} | 观察期开始")
-                    return False
+                    logger.info(f"警告：价格突破虚拟层 | 价格: {current_price:.2f} | 观察期开始 (2h)")
             else:
-                elapsed = (current_time - self.breakout_time).total_seconds()
-                if elapsed >= 2 * 3600:
+                # 已在观察期内
+                if not is_outside:
+                    # 价格回归，取消观察
                     self.breakout_triggered = False
-                    self.breakout_reset_count += 1
-                    self.daily_reset_count += 1
-                    logger.info(f"突破重置确认 | 观察期: {elapsed/3600:.1f}小时 | 今日已重置: {self.daily_reset_count}次")
-                    return True
-                
-                if lower_bound <= current_price <= upper_bound:
-                    self.breakout_triggered = False
-                    logger.info("价格回归，取消观察期")
+                    logger.info(f"价格回归网格内 | 价格: {current_price:.2f} | 观察期取消")
+                else:
+                    # 价格持续在外面，检查是否满 2 小时
+                    elapsed = (current_time - self.breakout_time).total_seconds()
+                    if elapsed >= 2 * 3600:
+                        self.breakout_triggered = False
+                        self.daily_reset_count += 1
+                        self.breakout_reset_count += 1
+                        logger.info(f"观察期满 2 小时未回归 | 触发紧急重置 | 第 {self.daily_reset_count} 次")
+                        return True, 4  # 触发重置，且使用 4 小时窗口
         
-        return False
+        return False, 6
     
     def execute_trade(self, side: str, size: float, price: float, reason: str):
         """执行交易"""
