@@ -1,10 +1,10 @@
-﻿
+
 import sys
 import os
 import numpy as np
 from pathlib import Path
 
-# 娣诲姞绛栫暐鐩綍鍒拌矾寰?
+# 添加策略目录到路寰?
 sys.path.append(r'c:\CS\grid_multi')
 
 from cartridges.strategies.grid_rsi_5_2 import GridEngine, StrategyState
@@ -25,21 +25,21 @@ def test_pivot_fix():
     engine = GridEngine(params)
     state = StrategyState()
     
-    # 妯℃嫙鏁版嵁锛?20 鏍圭嚎
-    # 鏀剧疆 5 涓綆鐐瑰拰 5 涓珮鐐?
+    # 模拟数据锛?20 根线
+    # 放置 5 个低点和 5 个高鐐?
     highs = np.ones(120) * 110
     lows = np.ones(120) * 100
     
-    # 鏀剧疆 5 涓笉鍚屾繁搴︾殑浣庣偣
+    # 放置 5 个不同深度的低点
     low_indices = [25, 45, 65, 85, 105]
-    low_prices = [80, 85, 90, 92, 95] # 80, 85, 90 鏄渶鏄捐憲鐨?3 涓?
+    low_prices = [80, 85, 90, 92, 95] # 80, 85, 90 是最显著鐨?3 涓?
     for idx, prc in zip(low_indices, low_prices):
         lows[idx] = prc
         highs[idx] = prc + 5
         
-    # 鏀剧疆 5 涓笉鍚岄珮搴︾殑楂樼偣
+    # 放置 5 个不同高度的高点
     high_indices = [20, 40, 60, 80, 100]
-    high_prices = [120, 118, 115, 112, 111] # 120, 118, 115 鏄渶鏄捐憲鐨?3 涓?
+    high_prices = [120, 118, 115, 112, 111] # 120, 118, 115 是最显著鐨?3 涓?
     for idx, prc in zip(high_indices, high_prices):
         highs[idx] = prc
         lows[idx] = prc - 5
@@ -57,13 +57,13 @@ def test_pivot_fix():
     print(f"Found Pivot Highs: {ph_count}")
     print(f"Found Pivot Lows: {pl_count}")
     
-    # 楠岃瘉閫昏緫锛氱偣鏁颁笉鑳借秴杩?3
+    # 验证逻辑：点数不能超杩?3
     if ph_count <= 3 and pl_count <= 3:
         print("SUCCESS: Pivot count limited to 3.")
     else:
         print(f"FAILURE: Too many pivots (H:{ph_count}, L:{pl_count}).")
         
-    # 楠岃瘉鏄捐憲鎬э細Lower 搴旇鍖呭惈 80 杩欎釜鍏ㄥ眬鏈€浣庣偣
+    # 验证显著性：Lower 应该包含 80 这个全局鏈€低点
     expected_low = min(low_prices)
     actual_low_pivot = min(p['price'] for p in meta['pivots_low'])
     if actual_low_pivot == expected_low:

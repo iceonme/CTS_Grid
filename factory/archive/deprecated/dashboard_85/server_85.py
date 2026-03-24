@@ -1,4 +1,4 @@
-﻿
+
 import threading
 import json
 from datetime import datetime
@@ -10,11 +10,11 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 
 class DashboardServer85:
     """
-    Dashboard 鏈嶅姟鍣?(V8.5 涓撶敤)
+    Dashboard 服务鍣?(V8.5 专用)
     
-    鍔熻兘锛?
-    1. 涓撲负 8.5 绛栫暐璁捐鐨勭嫭绔嬫湇鍔?
-    2. 榛樿绔彛 5085
+    功能锛?
+    1. 专为 8.5 策略设计的独立服鍔?
+    2. 默认端口 5085
     """
 
     _EMPTY_STRATEGY_DATA = lambda: {
@@ -36,7 +36,7 @@ class DashboardServer85:
         self.host = '0.0.0.0'
         self.port = port
         
-        # 閽堝 V8.5 瀹氬埗鐨勭嫭绔嬫枃浠跺瓨鍌?
+        # 针对 V8.5 定制的独立文件存鍌?
         self.state_file: str = "trading_state_grid_v85.json"
         self.trades_file: str = "trading_trades_grid_v85.json"
         self.version: str = "v8.5-Grid-Dashboard"
@@ -178,12 +178,12 @@ class DashboardServer85:
             if 'history_candles' in data:
                 self.socketio.emit('history_update', clean, to=strategy_id, namespace='/')
         except Exception as e:
-            print(f'[Dashboard85] [{strategy_id}] 鏇存柊澶辫触: {e}')
+            print(f'[Dashboard85] [{strategy_id}] 更新失败: {e}')
 
     def start(self, debug=False):
         print(f"\n{'='*60}")
-        print(f"Dashboard 鍚姩 (V8.5 鐗?{self.version})")
-        print(f"璁块棶鍦板潃: http://localhost:{self.port}")
+        print(f"Dashboard 启动 (V8.5 鐗?{self.version})")
+        print(f"访问地址: http://localhost:{self.port}")
         print(f"{'='*60}\n")
         self.socketio.run(self.app, host=self.host, port=self.port, debug=debug, allow_unsafe_werkzeug=True)
 

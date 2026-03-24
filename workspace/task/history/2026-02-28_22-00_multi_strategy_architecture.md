@@ -1,42 +1,42 @@
-﻿# 澶氱瓥鐣ュ苟鍙戞灦鏋勯噸鏋?Walkthrough
-**鏃ユ湡**: 2026-02-28 21:57
-**浠诲姟**: 澶氱瓥鐣ュ苟鍙戣繍琛?+ 鍓嶇鍚姩/鏆傚仠/閲嶇疆鎺у埗
+# 多策略并发架构重鏋?Walkthrough
+**日期**: 2026-02-28 21:57
+**任务**: 多策略并发运琛?+ 前端启动/暂停/重置控制
 
-## 鍙樻洿鎽樿
+## 变更摘要
 
-### 鏂板鏂囦欢
-| 鏂囦欢 | 璇存槑 |
+### 新增文件
+| 文件 | 说明 |
 |------|------|
-| `runner/__init__.py` | runner 鍖呭垵濮嬪寲 |
-| `runner/multi_strategy_runner.py` | 澶氱瓥鐣ョ鐞嗘牳蹇冿細`StrategySlot` + `MultiStrategyRunner` |
-| `run_cts1.py` | 鏂扮殑 CTS1 涓诲叆鍙ｏ紝鍏变韩鏁版嵁娴佸箍鎾紝鍓嶇鍙帶 |
+| `runner/__init__.py` | runner 包初始化 |
+| `runner/multi_strategy_runner.py` | 多策略管理核心：`StrategySlot` + `MultiStrategyRunner` |
+| `run_cts1.py` | 新的 CTS1 主入口，共享数据流广播，前端可控 |
 
-### 淇敼鏂囦欢
-| 鏂囦欢 | 璇存槑 |
+### 修改文件
+| 文件 | 说明 |
 |------|------|
-| `dashboard/server.py` | 鏂板 `start_strategy`/`pause_strategy` SocketIO 浜嬩欢鍙?`on_control_callback` 鎺ュ彛 |
-| `dashboard/templates/dashboard.html` | 鏂板鍚姩(鈻?/鏆傚仠(鈴?鎸夐挳銆乣updateControlButtons()` 鐘舵€佽仈鍔ㄥ嚱鏁般€乣strategy_status_changed` 浜嬩欢澶勭悊 |
+| `dashboard/server.py` | 新增 `start_strategy`/`pause_strategy` SocketIO 事件鍙?`on_control_callback` 接口 |
+| `dashboard/templates/dashboard.html` | 新增启动(鈻?/暂停(鈴?按钮、`updateControlButtons()` 鐘舵€佽仈动函鏁般€乣strategy_status_changed` 事件处理 |
 
-## 鏋舵瀯璁捐
+## 架构设计
 ```
 run_cts1.py
-  鈹斺攢 MultiStrategyRunner
-       鈹溾攢 OKXDataFeed (鍗曚竴杩炴帴, 骞挎挱)
-       鈹溾攢 StrategySlot grid_v40 (Grid RSI V4.0, PaperExecutor)
-       鈹斺攢 StrategySlot grid_v51 (Grid RSI V5.1, PaperExecutor)
+  └─ MultiStrategyRunner
+       ├─ OKXDataFeed (单一连接, 广播)
+       ├─ StrategySlot grid_v40 (Grid RSI V4.0, PaperExecutor)
+       └─ StrategySlot grid_v51 (Grid RSI V5.1, PaperExecutor)
                 鈫?dashboard.update(data, strategy_id=xxx)
-          DashboardServer (鍓嶇鎸夋埧闂存帴鏀跺悇绛栫暐鏁版嵁)
+          DashboardServer (前端按房间接收各策略数据)
                 鈫?emit: start_strategy / pause_strategy / reset_strategy
 ```
 
-## 杩愯鏂规硶
+## 运行方法
 ```powershell
 python run_cts1.py
 ```
-娴忚鍣ㄦ墦寮€ `http://localhost:5000`锛岄€夋嫨绛栫暐鍚庣偣鍑汇€屸柖 鍚姩銆嶃€?
+浏览器打寮€ `http://localhost:5000`锛岄€夋嫨策略后点鍑汇€屸柖 启动銆嶃€?
 
-## 鍏抽敭璁捐鍐崇瓥
-- **鍏变韩鏁版嵁婧?*: 鍗曚釜 `OKXDataFeed` 骞挎挱锛岄伩鍏嶉噸澶?API 璋冪敤
-- **寮傚父闅旂**: 姣忎釜 slot 鐨?`on_bar` 鐢ㄧ嫭绔?try/except 鍖呰９
-- **鏆傚仠鏈哄埗**: `threading.Event` 鏍囧織锛屼笉寮哄埗鍋滄绾跨▼锛宼ick 绾ф鏌?
-- **鎸佷箙鍖栭殧绂?*: 鐘舵€佹枃浠跺懡鍚嶄负 `trading_state_{slot_id}.json`
+## 关键设计决策
+- **共享数据婧?*: 单个 `OKXDataFeed` 广播，避免重澶?API 调用
+- **异常隔离**: 每个 slot 鐨?`on_bar` 用独绔?try/except 包裹
+- **暂停机制**: `threading.Event` 标志，不强制停止线程，tick 级检鏌?
+- **持久化隔绂?*: 鐘舵€佹枃件命名为 `trading_state_{slot_id}.json`

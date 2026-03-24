@@ -1,8 +1,8 @@
-﻿"""
-鍔ㄦ€佺綉鏍间氦鏄撶瓥鐣?V4.0 - RSI澧炲己鐗?
+"""
+鍔ㄦ€佺綉格交易策鐣?V4.0 - RSI增强鐗?
 浣滆€? AI Assistant
-鏃ユ湡: 2024
-鍔熻兘: 鍩轰簬RSI鎸囨爣鐨勫姩鎬佺綉鏍间氦鏄撶郴缁燂紝鏀寔鍥炴祴鍜屾ā鎷熶氦鏄?
+日期: 2024
+功能: 基于RSI指标的动态网格交易系统，支持回测和模拟交鏄?
 """
 
 import pandas as pd
@@ -17,7 +17,7 @@ import logging
 import warnings
 warnings.filterwarnings('ignore')
 
-# 璁剧疆鏃ュ織
+# 设置日志
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -26,16 +26,16 @@ logger = logging.getLogger(__name__)
 
 
 class MarketRegime(Enum):
-    """甯傚満鐘舵€佹灇涓?""
-    TRENDING_UP = "涓婃定瓒嬪娍"
-    TRENDING_DOWN = "涓嬭穼瓒嬪娍"
-    RANGING = "闇囪崱鍖洪棿"
-    UNKNOWN = "鏈煡"
+    """市场鐘舵€佹灇涓?""
+    TRENDING_UP = "上涨趋势"
+    TRENDING_DOWN = "下跌趋势"
+    RANGING = "震荡区间"
+    UNKNOWN = "未知"
 
 
 @dataclass
 class Trade:
-    """浜ゆ槗璁板綍鏁版嵁绫?""
+    """交易记录数据绫?""
     timestamp: datetime
     type: str  # 'buy', 'sell', 'stop_loss'
     price: float
@@ -48,7 +48,7 @@ class Trade:
 
 @dataclass
 class Position:
-    """鎸佷粨鏁版嵁绫?""
+    """持仓数据绫?""
     entry_price: float
     size: float
     grid_level: float
@@ -58,97 +58,97 @@ class Position:
 
 class DynamicGridStrategyV4:
     """
-    V4.0 鍔ㄦ€佺綉鏍肩瓥鐣?- RSI澧炲己鐗?
+    V4.0 鍔ㄦ€佺綉格策鐣?- RSI增强鐗?
     
-    鏍稿績鐗规€?
-    1. 鑷€傚簲RSI鍙傛暟 (鏍规嵁娉㈠姩鐜囧姩鎬佽皟鏁撮槇鍊?
-    2. 澶氭椂闂存鏋惰秼鍔胯瘑鍒?(ADX + 鍧囩嚎)
-    3. 鍑埄鍏紡鍔ㄦ€佷粨浣嶇鐞?
-    4. 鏅鸿兘缃戞牸鍋忕Щ (RSI淇″彿鍔犳潈)
-    5. 鍒嗗眰姝㈡崯鏈哄埗
-    6. 甯傚満鐘舵€佽瘑鍒笌绛栫暐鍒囨崲
+    核心鐗规€?
+    1. 鑷€傚簲RSI参数 (根据波动率动态调整阈鍊?
+    2. 多ʱ间框架趋势识鍒?(ADX + 均线)
+    3. 凯利公式鍔ㄦ€佷粨位管鐞?
+    4. 智能网格偏移 (RSI信号加权)
+    5. 分层止损机制
+    6. 市场鐘舵€佽瘑别与策略切换
     """
     
     def __init__(self, 
-                 # 鍩虹鍙傛暟
+                 # 基础参数
                  initial_capital: float = 10000.0,
                  symbol: str = "BTCUSDT",
                  
-                 # 缃戞牸鍙傛暟
+                 # 网格参数
                  grid_levels: int = 10,
-                 grid_refresh_period: int = 100,  # 澶氬皯鏍筀绾垮埛鏂扮綉鏍?
-                 grid_buffer_pct: float = 0.1,    # 缃戞牸缂撳啿甯︽瘮渚?
+                 grid_refresh_period: int = 100,  # 多少根K线刷新网鏍?
+                 grid_buffer_pct: float = 0.1,    # 网格缓冲带比渚?
                  
-                 # RSI鍙傛暟
+                 # RSI参数
                  rsi_period: int = 14,
-                 rsi_weight: float = 0.4,         # RSI瀵圭綉鏍艰皟鏁寸殑褰卞搷鏉冮噸
-                 rsi_oversold: float = 35,        # 瓒呭崠闃堝€?
-                 rsi_overbought: float = 65,      # 瓒呬拱闃堝€?
-                 rsi_extreme_buy: float = 80,     # 鏋佺瓒呬拱鏆傚仠涔板叆
-                 rsi_extreme_sell: float = 20,    # 鏋佺瓒呭崠鏆傚仠鍗栧嚭
-                 adaptive_rsi: bool = True,       # 鏄惁鍚敤鑷€傚簲RSI闃堝€?
+                 rsi_weight: float = 0.4,         # RSI对网格调整的影响权重
+                 rsi_oversold: float = 35,        # 超卖闃堝€?
+                 rsi_overbought: float = 65,      # 超买闃堝€?
+                 rsi_extreme_buy: float = 80,     # 极端超买暂停买入
+                 rsi_extreme_sell: float = 20,    # 极端超卖暂停卖出
+                 adaptive_rsi: bool = True,       # 是否启用鑷€傚簲RSI闃堝€?
                  
-                 # 瓒嬪娍杩囨护鍙傛暟
+                 # 趋势过滤参数
                  use_trend_filter: bool = True,
                  adx_period: int = 14,
-                 adx_threshold: float = 25,       # ADX > 25 璁や负鏈夎秼鍔?
-                 ma_period: int = 50,             # 鍧囩嚎鍛ㄦ湡
+                 adx_threshold: float = 25,       # ADX > 25 认为有趋鍔?
+                 ma_period: int = 50,             # 均线周期
                  
-                 # 浠撲綅绠＄悊鍙傛暟
-                 base_position_pct: float = 0.1,  # 鍩虹浠撲綅姣斾緥 (1/N)
-                 max_positions: int = 5,          # 鏈€澶ф寔浠撳眰鏁?
-                 use_kelly_sizing: bool = True,   # 鏄惁浣跨敤鍑埄鍏紡
-                 kelly_fraction: float = 0.3,     # 鍑埄鍏紡淇濆畧绯绘暟 (鍗婂嚡鍒?
-                 max_position_multiplier: float = 2.0,  # 鏈€澶т粨浣嶅€嶆暟
-                 min_position_multiplier: float = 0.5,  # 鏈€灏忎粨浣嶅€嶆暟
+                 # 仓位管理参数
+                 base_position_pct: float = 0.1,  # 基础仓位比例 (1/N)
+                 max_positions: int = 5,          # 鏈€大持仓层鏁?
+                 use_kelly_sizing: bool = True,   # 是否使用凯利公式
+                 kelly_fraction: float = 0.3,     # 凯利公式保守系数 (半凯鍒?
+                 max_position_multiplier: float = 2.0,  # 鏈€大仓浣嶅€嶆暟
+                 min_position_multiplier: float = 0.5,  # 鏈€小仓浣嶅€嶆暟
                  
-                 # 姝㈡崯鍙傛暟
-                 stop_loss_pct: float = 0.05,     # 鍩虹姝㈡崯姣斾緥
-                 trailing_stop: bool = True,      # 鏄惁鍚敤绉诲姩姝㈡崯
-                 trailing_stop_pct: float = 0.03, # 绉诲姩姝㈡崯姣斾緥
+                 # 止损参数
+                 stop_loss_pct: float = 0.05,     # 基础止损比例
+                 trailing_stop: bool = True,      # 是否启用移动止损
+                 trailing_stop_pct: float = 0.03, # 移动止损比例
                  
-                 # 鍛ㄦ湡绠＄悊鍙傛暟
-                 cycle_reset_period: int = 5000,  # 寮哄埗閲嶇疆鍛ㄦ湡 (K绾挎暟)
-                 max_drawdown_reset: float = 0.30, # 鏈€澶у洖鎾よЕ鍙戦噸缃?
+                 # 周期管理参数
+                 cycle_reset_period: int = 5000,  # 强制重置周期 (K线数)
+                 max_drawdown_reset: float = 0.30, # 鏈€大回撤触发重缃?
                  
-                 # 浜ゆ槗璐圭敤
-                 maker_fee: float = 0.001,        # 鎸傚崟鎵嬬画璐?0.1%
-                 taker_fee: float = 0.001,        # 鍚冨崟鎵嬬画璐?0.1%
+                 # 交易费用
+                 maker_fee: float = 0.001,        # 挂单手续璐?0.1%
+                 taker_fee: float = 0.001,        # 吃单手续璐?0.1%
                  ):
         
-        # 淇濆瓨鍙傛暟
+        # 保存参数
         self.params = {k: v for k, v in locals().items() if k != 'self'}
         
-        # 璐︽埛鐘舵€?
+        # 账户鐘舵€?
         self.initial_capital = initial_capital
         self.current_capital = initial_capital
         self.symbol = symbol
         
-        # 缃戞牸鐘舵€?
+        # 网格鐘舵€?
         self.grid_upper = None
         self.grid_lower = None
         self.grid_prices = []
         self.last_grid_update = 0
         
-        # 鎸佷粨鍜屼氦鏄撹褰?
+        # 持仓和交易记褰?
         self.positions: List[Position] = []
         self.trades: List[Trade] = []
         self.equity_curve = []
         
-        # 缁熻鎸囨爣
+        # 统计指标
         self.win_count = 0
         self.loss_count = 0
         self.total_pnl = 0.0
         
-        # 甯傚満鐘舵€?
+        # 市场鐘舵€?
         self.current_regime = MarketRegime.UNKNOWN
         self.current_rsi = 50.0
         self.current_adx = 0.0
         
-        logger.info(f"绛栫暐V4.0鍒濆鍖栧畬鎴?- 浜ゆ槗瀵? {symbol}, 鍒濆璧勯噾: ${initial_capital:,.2f}")
+        logger.info(f"策略V4.0初始化完鎴?- 交易瀵? {symbol}, 初始资金: ${initial_capital:,.2f}")
     
     def calculate_rsi(self, prices: pd.Series, period: int = None) -> float:
-        """璁＄畻RSI鎸囨爣"""
+        """计算RSI指标"""
         period = period or self.params['rsi_period']
         if len(prices) < period + 1:
             return 50.0
@@ -157,14 +157,14 @@ class DynamicGridStrategyV4:
         gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
         
-        # 澶勭悊闄ら浂
+        # 处理除零
         rs = gain / loss.replace(0, np.nan)
         rsi = 100 - (100 / (1 + rs))
         
         return rsi.iloc[-1] if not pd.isna(rsi.iloc[-1]) else 50.0
     
     def calculate_adx(self, high: pd.Series, low: pd.Series, close: pd.Series) -> float:
-        """璁＄畻ADX瓒嬪娍寮哄害鎸囨爣"""
+        """计算ADX趋势强度指标"""
         period = self.params['adx_period']
         if len(close) < period * 2:
             return 0.0
@@ -192,40 +192,40 @@ class DynamicGridStrategyV4:
         return adx.iloc[-1] if not pd.isna(adx.iloc[-1]) else 0.0
     
     def detect_market_regime(self, df: pd.DataFrame) -> MarketRegime:
-        """璇嗗埆甯傚満鐘舵€?""
+        """识别市场鐘舵€?""
         if not self.params['use_trend_filter'] or len(df) < self.params['ma_period']:
             return MarketRegime.RANGING
         
-        # 璁＄畻ADX
+        # 计算ADX
         self.current_adx = self.calculate_adx(df['high'], df['low'], df['close'])
         
-        # 璁＄畻鍧囩嚎
+        # 计算均线
         ma = df['close'].rolling(window=self.params['ma_period']).mean().iloc[-1]
         current_price = df['close'].iloc[-1]
         
-        # 鍒ゆ柇瓒嬪娍
+        # 判断趋势
         if self.current_adx > self.params['adx_threshold']:
-            if current_price > ma * 1.02:  # 浠锋牸鏄捐憲楂樹簬鍧囩嚎
+            if current_price > ma * 1.02:  # 价格显著高于均线
                 return MarketRegime.TRENDING_UP
-            elif current_price < ma * 0.98:  # 浠锋牸鏄捐憲浣庝簬鍧囩嚎
+            elif current_price < ma * 0.98:  # 价格显著低于均线
                 return MarketRegime.TRENDING_DOWN
         
         return MarketRegime.RANGING
     
     def get_adaptive_rsi_thresholds(self, df: pd.DataFrame) -> Tuple[float, float]:
-        """鑾峰彇鑷€傚簲RSI闃堝€?""
+        """获取鑷€傚簲RSI闃堝€?""
         if not self.params['adaptive_rsi']:
             return self.params['rsi_oversold'], self.params['rsi_overbought']
         
-        # 鍩轰簬杩戞湡娉㈠姩鐜囪皟鏁撮槇鍊?
+        # 基于近期波动率调整阈鍊?
         returns = df['close'].pct_change().dropna()
-        volatility = returns.std() * np.sqrt(1440)  # 骞村寲娉㈠姩鐜?(鍋囪1鍒嗛挓绾?
+        volatility = returns.std() * np.sqrt(1440)  # 年化波动鐜?(假设1分钟绾?
         
-        # 楂樻尝鍔ㄦ椂鏀惧闃堝€硷紝浣庢尝鍔ㄦ椂鏀剁揣
+        # 高波动ʱ放宽闃堝€硷紝低波动时收紧
         base_oversold = self.params['rsi_oversold']
         base_overbought = self.params['rsi_overbought']
         
-        # 娉㈠姩鐜囪皟鏁村洜瀛?(鍋囪姝ｅ父娉㈠姩鐜?50%)
+        # 波动率调整因瀛?(假设正常波动鐜?50%)
         vol_factor = min(max(volatility / 0.5, 0.5), 2.0)
         
         adjusted_oversold = max(20, min(40, base_oversold / vol_factor))
@@ -235,9 +235,9 @@ class DynamicGridStrategyV4:
     
     def get_rsi_signal(self, rsi: float, oversold: float, overbought: float) -> float:
         """
-        灏哛SI杞崲涓?[-1, 1] 淇″彿
-        -1: 寮虹儓鐪嬬┖ (瓒呬拱)
-        +1: 寮虹儓鐪嬪 (瓒呭崠)
+        将RSI转换涓?[-1, 1] 信号
+        -1: 强烈看空 (超买)
+        +1: 强烈看多 (超卖)
         """
         if rsi <= oversold:
             return 1.0
@@ -252,26 +252,26 @@ class DynamicGridStrategyV4:
                 return (mid - rsi) / (overbought - mid) * 0.5
     
     def calculate_dynamic_grid(self, df: pd.DataFrame) -> Tuple[float, float]:
-        """璁＄畻鍔ㄦ€佺綉鏍煎尯闂?""
+        """计算鍔ㄦ€佺綉格区闂?""
         lookback = min(self.params['grid_refresh_period'], len(df))
         recent_data = df.iloc[-lookback:]
         
         recent_high = recent_data['high'].max()
         recent_low = recent_data['low'].min()
         
-        # 娣诲姞缂撳啿甯?
+        # 添加缓冲甯?
         range_size = recent_high - recent_low
         buffer = range_size * self.params['grid_buffer_pct']
         
         upper = recent_high + buffer
         lower = recent_low - buffer
         
-        # 鏍规嵁RSI璋冩暣缃戞牸浣嶇疆
+        # 根据RSI调整网格位置
         if self.params['rsi_weight'] > 0:
             oversold, overbought = self.get_adaptive_rsi_thresholds(df)
             rsi_signal = self.get_rsi_signal(self.current_rsi, oversold, overbought)
             
-            # 缃戞牸鍋忕Щ
+            # 网格偏移
             shift = range_size * rsi_signal * self.params['rsi_weight'] * 0.2
             upper += shift
             lower += shift
@@ -279,39 +279,39 @@ class DynamicGridStrategyV4:
         return upper, lower
     
     def calculate_position_size(self, rsi_signal: float, is_buy: bool) -> float:
-        """璁＄畻鍔ㄦ€佷粨浣嶅ぇ灏?""
+        """计算鍔ㄦ€佷粨位大灏?""
         base_size = self.current_capital * self.params['base_position_pct']
         
-        # 鏍规嵁甯傚満鐘舵€佽皟鏁?
+        # 根据市场鐘舵€佽皟鏁?
         regime_multiplier = 1.0
         if self.current_regime == MarketRegime.TRENDING_UP and is_buy:
-            regime_multiplier = 0.7  # 涓婃定瓒嬪娍鍑忓皯涔板叆
+            regime_multiplier = 0.7  # 上涨趋势减少买入
         elif self.current_regime == MarketRegime.TRENDING_DOWN and not is_buy:
-            regime_multiplier = 0.7  # 涓嬭穼瓒嬪娍鍑忓皯鍗栧嚭(鍗冲噺灏戦€嗗娍鎿嶄綔)
+            regime_multiplier = 0.7  # 下跌趋势减少卖出(即减灏戦€嗗娍操作)
         
-        # RSI淇″彿璋冩暣
+        # RSI信号调整
         if self.params['use_kelly_sizing']:
-            # 绠€鍖栧嚡鍒╁叕寮? f = (p*b - q)/b
-            # 鍋囪鑳滅巼涓嶳SI鏋佺绋嬪害鐩稿叧
+            # 箢㻯凯利公寮? f = (p*b - q)/b
+            # 假设胜率与RSI极端程度相关
             if is_buy:
-                win_prob = 0.5 + rsi_signal * 0.2  # 瓒呭崠鏃惰儨鐜囨洿楂?
+                win_prob = 0.5 + rsi_signal * 0.2  # 超卖时胜率更楂?
             else:
-                win_prob = 0.5 - rsi_signal * 0.2  # 瓒呬拱鏃惰儨鐜囨洿楂?
+                win_prob = 0.5 - rsi_signal * 0.2  # 超买时胜率更楂?
             
             win_prob = np.clip(win_prob, 0.3, 0.8)
             loss_prob = 1 - win_prob
-            avg_win = avg_loss = 1.0  # 绠€鍖栧亣璁?
+            avg_win = avg_loss = 1.0  # 箢㻯假璁?
             
             kelly_pct = (win_prob * avg_win - loss_prob * avg_loss) / avg_win
             kelly_pct = max(0, kelly_pct) * self.params['kelly_fraction']
             
             rsi_multiplier = 1 + kelly_pct
         else:
-            # 绠€鍗曠嚎鎬ц皟鏁?
+            # 箢㵥线性调鏁?
             if is_buy:
-                rsi_multiplier = 1 + rsi_signal * 0.5  # 瓒呭崠鏃跺姞浠?
+                rsi_multiplier = 1 + rsi_signal * 0.5  # 超卖时加浠?
             else:
-                rsi_multiplier = 1 - rsi_signal * 0.5  # 瓒呬拱鏃跺姞浠撳崠鍑?
+                rsi_multiplier = 1 - rsi_signal * 0.5  # 超买时加仓卖鍑?
             
             rsi_multiplier = np.clip(
                 rsi_multiplier, 
@@ -320,26 +320,26 @@ class DynamicGridStrategyV4:
             )
         
         final_size = base_size * regime_multiplier * rsi_multiplier
-        return min(final_size, self.current_capital * 0.95)  # 淇濈暀5%鐜伴噾
+        return min(final_size, self.current_capital * 0.95)  # 保留5%现金
     
     def check_stop_loss(self, current_price: float, current_time: datetime) -> List[Trade]:
-        """妫€鏌ュ苟鎵ц姝㈡崯"""
+        """妫€查并执行ֹ损"""
         executed_stops = []
         
         for pos in self.positions[:]:
-            # 璁＄畻姝㈡崯浠锋牸
+            # 计算止损价格
             if self.params['trailing_stop']:
-                # 绉诲姩姝㈡崯: 浠庢渶楂樼偣鍥炴挙trailing_stop_pct
-                highest_price = max(pos.entry_price, current_price)  # 绠€鍖栧鐞?
+                # 移动止损: 从最高点回撤trailing_stop_pct
+                highest_price = max(pos.entry_price, current_price)  # 箢㻯处鐞?
                 stop_price = highest_price * (1 - self.params['trailing_stop_pct'])
                 effective_stop = max(pos.stop_loss_price, stop_price)
             else:
                 effective_stop = pos.stop_loss_price
             
             if current_price <= effective_stop:
-                # 鎵ц姝㈡崯
+                # 执行止损
                 pnl = (current_price - pos.entry_price) / pos.entry_price * pos.size
-                pnl -= pos.size * self.params['taker_fee']  # 鎵ｉ櫎鎵嬬画璐?
+                pnl -= pos.size * self.params['taker_fee']  # 扣除手续璐?
                 
                 self.current_capital += pos.size + pnl
                 
@@ -351,7 +351,7 @@ class DynamicGridStrategyV4:
                     pnl=pnl,
                     rsi=self.current_rsi,
                     grid_level=pos.grid_level,
-                    reason=f"姝㈡崯瑙﹀彂 (姝㈡崯浠? ${effective_stop:.2f})"
+                    reason=f"止损触发 (止损浠? ${effective_stop:.2f})"
                 )
                 
                 self.trades.append(trade)
@@ -368,17 +368,17 @@ class DynamicGridStrategyV4:
     
     def execute_buy(self, price: float, size: float, grid_level: float, 
                     current_time: datetime, reason: str = "") -> Optional[Trade]:
-        """鎵ц涔板叆"""
+        """执行买入"""
         if size > self.current_capital * 0.95:
             return None
         
-        # 鎵ｉ櫎鎵嬬画璐?
+        # 扣除手续璐?
         fee = size * self.params['taker_fee']
         actual_size = size - fee
         
         self.current_capital -= size
         
-        # 鍒涘缓鎸佷粨
+        # 创建持仓
         position = Position(
             entry_price=price,
             size=actual_size,
@@ -403,9 +403,9 @@ class DynamicGridStrategyV4:
     
     def execute_sell(self, position: Position, price: float, 
                      current_time: datetime, reason: str = "") -> Trade:
-        """鎵ц鍗栧嚭"""
+        """执行卖出"""
         pnl = (price - position.entry_price) / position.entry_price * position.size
-        pnl -= position.size * self.params['taker_fee']  # 鎵ｉ櫎鎵嬬画璐?
+        pnl -= position.size * self.params['taker_fee']  # 扣除手续璐?
         
         self.current_capital += position.size + pnl
         
@@ -432,12 +432,12 @@ class DynamicGridStrategyV4:
         return trade
     
     def should_reset_cycle(self, current_idx: int) -> Tuple[bool, str]:
-        """鍒ゆ柇鏄惁搴旈噸缃懆鏈?""
-        # 妫€鏌ュ己鍒堕噸缃懆鏈?
+        """判断是否Ӧ重置周鏈?""
+        # 妫€查强制重置周鏈?
         if current_idx - self.last_grid_update >= self.params['cycle_reset_period']:
-            return True, "杈惧埌寮哄埗閲嶇疆鍛ㄦ湡"
+            return True, "达到强制重置周期"
         
-        # 妫€鏌ユ渶澶у洖鎾?
+        # 妫€查最大回鎾?
         if len(self.equity_curve) > 0:
             recent_equity = [e['equity'] for e in self.equity_curve[-1000:]]
             peak = max(recent_equity)
@@ -445,52 +445,52 @@ class DynamicGridStrategyV4:
             drawdown = (current - peak) / peak
             
             if drawdown <= -self.params['max_drawdown_reset']:
-                return True, f"瑙﹀彂鏈€澶у洖鎾ら檺鍒?({drawdown:.2%})"
+                return True, f"触发鏈€大回撤限鍒?({drawdown:.2%})"
         
         return False, ""
     
     def reset_cycle(self, df: pd.DataFrame, current_idx: int):
-        """閲嶇疆浜ゆ槗鍛ㄦ湡"""
-        logger.info(f"鍛ㄦ湡閲嶇疆 - 鍘熷洜: {self.should_reset_cycle(current_idx)[1]}")
+        """重置交易周期"""
+        logger.info(f"周期重置 - 原因: {self.should_reset_cycle(current_idx)[1]}")
         
-        # 骞虫帀鎵€鏈夋寔浠?
+        # 平掉鎵€有持浠?
         current_price = df['close'].iloc[current_idx]
         current_time = df.index[current_idx]
         
         for pos in self.positions[:]:
-            self.execute_sell(pos, current_price, current_time, "鍛ㄦ湡閲嶇疆骞充粨")
+            self.execute_sell(pos, current_price, current_time, "周期重置平仓")
         
-        # 閲嶇疆缃戞牸
+        # 重置网格
         self.grid_upper = None
         self.grid_lower = None
         self.last_grid_update = current_idx
         
-        logger.info(f"閲嶇疆瀹屾垚 - 褰撳墠璧勯噾: ${self.current_capital:,.2f}")
+        logger.info(f"重置完成 - 当前资金: ${self.current_capital:,.2f}")
     
     def run_backtest(self, df: pd.DataFrame, verbose: bool = True) -> Dict:
         """
-        杩愯鍥炴祴
+        运行回测
         
         Parameters:
         -----------
         df : pd.DataFrame
-            鍖呭惈鍒? open, high, low, close, volume (鍙€?
+            包含鍒? open, high, low, close, volume (鍙€?
         verbose : bool
-            鏄惁鎵撳嵃杩涘害
+            是否打印进度
             
         Returns:
         --------
-        Dict : 鍥炴祴缁撴灉缁熻
+        Dict : 回测结果统计
         """
-        logger.info(f"寮€濮嬪洖娴?- 鏁版嵁閲? {len(df)} 鏍筀绾?)
+        logger.info(f"寮€始回娴?- 数据閲? {len(df)} 根K绾?)
         
-        # 纭繚鏁版嵁鍖呭惈蹇呰鍒?
+        # 确保数据包含必要鍒?
         required_cols = ['open', 'high', 'low', 'close']
         for col in required_cols:
             if col not in df.columns:
-                raise ValueError(f"缂哄皯蹇呰鍒? {col}")
+                raise ValueError(f"缺少必要鍒? {col}")
         
-        # 璁＄畻鎶€鏈寚鏍?
+        # 计算鎶€术指鏍?
         df['rsi'] = df['close'].rolling(window=self.params['rsi_period']).apply(
             lambda x: self.calculate_rsi(x, self.params['rsi_period'])
         )
@@ -504,54 +504,54 @@ class DynamicGridStrategyV4:
             current_time = df.index[i]
             self.current_rsi = df['rsi'].iloc[i] if 'rsi' in df.columns else 50.0
             
-            # 鏇存柊甯傚満鐘舵€?
+            # 更新市场鐘舵€?
             self.current_regime = self.detect_market_regime(df.iloc[:i])
             
-            # 妫€鏌ュ懆鏈熼噸缃?
+            # 妫€查周期重缃?
             should_reset, reset_reason = self.should_reset_cycle(i)
             if should_reset:
                 self.reset_cycle(df, i)
             
-            # 鏇存柊缃戞牸
+            # 更新网格
             if i - self.last_grid_update >= self.params['grid_refresh_period'] or self.grid_upper is None:
                 self.grid_upper, self.grid_lower = self.calculate_dynamic_grid(df.iloc[:i])
                 self.grid_prices = np.linspace(self.grid_lower, self.grid_upper, self.params['grid_levels'])
                 self.last_grid_update = i
             
-            # 妫€鏌ユ鎹?
+            # 妫€查止鎹?
             self.check_stop_loss(current_price, current_time)
             
-            # 鑾峰彇鑷€傚簲闃堝€?
+            # 获取鑷€傚簲闃堝€?
             oversold, overbought = self.get_adaptive_rsi_thresholds(df.iloc[:i])
             rsi_signal = self.get_rsi_signal(self.current_rsi, oversold, overbought)
             
-            # 鎵ц缃戞牸浜ゆ槗
+            # 执行网格交易
             for grid_price in self.grid_prices:
-                # 涔板叆鏉′欢: 浠锋牸涓嬬┛缃戞牸绾?
+                # 买入条件: 价格下穿网格绾?
                 if (df['low'].iloc[i-1] > grid_price and current_low <= grid_price):
                     if len(self.positions) < self.params['max_positions']:
-                        # RSI杩囨护: 鏋佺瓒呬拱鏃舵殏鍋滀拱鍏?
+                        # RSI过滤: 极端超买时暂停买鍏?
                         if self.current_rsi < self.params['rsi_extreme_buy']:
                             size = self.calculate_position_size(rsi_signal, is_buy=True)
-                            if size > 100:  # 鏈€灏忎氦鏄撻噾棰?
+                            if size > 100:  # 鏈€小交易金棰?
                                 self.execute_buy(
                                     current_price, size, grid_price, current_time,
-                                    f"缃戞牸涔板叆 (RSI: {self.current_rsi:.1f})"
+                                    f"网格买入 (RSI: {self.current_rsi:.1f})"
                                 )
                 
-                # 鍗栧嚭鏉′欢: 浠锋牸涓婄┛缃戞牸绾夸笖鏈夌泩鍒╂寔浠?
+                # 卖出条件: 价格上穿网格线且有盈利持浠?
                 if (df['high'].iloc[i-1] < grid_price and current_high >= grid_price):
                     for pos in self.positions[:]:
-                        if pos.entry_price < current_price * 0.995:  # 鑷冲皯0.5%鐩堝埄
-                            # RSI杩囨护: 鏋佺瓒呭崠鏃舵殏鍋滃崠鍑?鍙兘鍙嶅脊)
+                        if pos.entry_price < current_price * 0.995:  # 至少0.5%盈利
+                            # RSI过滤: 极端超卖时暂停卖鍑?可能反弹)
                             if self.current_rsi > self.params['rsi_extreme_sell']:
                                 self.execute_sell(
                                     pos, current_price, current_time,
-                                    f"缃戞牸鍗栧嚭 (RSI: {self.current_rsi:.1f})"
+                                    f"网格卖出 (RSI: {self.current_rsi:.1f})"
                                 )
-                                break  # 鍙崠鍑轰竴灞?
+                                break  # 只卖出一灞?
             
-            # 璁板綍鏉冪泭
+            # 记录权益
             unrealized = sum([
                 (current_price - p.entry_price) / p.entry_price * p.size 
                 for p in self.positions
@@ -568,33 +568,33 @@ class DynamicGridStrategyV4:
                 'positions': len(self.positions)
             })
             
-            # 鎵撳嵃杩涘害
+            # 打印进度
             if verbose and i % 5000 == 0:
                 progress = (i - start_idx) / (len(df) - start_idx) * 100
-                logger.info(f"鍥炴祴杩涘害: {progress:.1f}% - 褰撳墠鏉冪泭: ${total_equity:,.2f}")
+                logger.info(f"回测进度: {progress:.1f}% - 当前权益: ${total_equity:,.2f}")
         
         return self.get_results()
     
     def get_results(self) -> Dict:
-        """鑾峰彇鍥炴祴缁撴灉缁熻"""
+        """获取回测结果统计"""
         if len(self.equity_curve) == 0:
             return {}
         
         equity_df = pd.DataFrame(self.equity_curve)
         
-        # 鍩虹鎸囨爣
+        # 基础指标
         total_return = (equity_df['equity'].iloc[-1] - self.initial_capital) / self.initial_capital
         
-        # 鏈€澶у洖鎾?
+        # 鏈€大回鎾?
         equity_df['peak'] = equity_df['equity'].cummax()
         equity_df['drawdown'] = (equity_df['equity'] - equity_df['peak']) / equity_df['peak']
         max_drawdown = equity_df['drawdown'].min()
         
-        # 澶忔櫘姣旂巼 (绠€鍖栫増锛屽亣璁炬棤椋庨櫓鍒╃巼涓?)
+        # 夏普比率 (箢㻯版，假设无风险利率涓?)
         returns = equity_df['equity'].pct_change().dropna()
         sharpe_ratio = returns.mean() / returns.std() * np.sqrt(525600) if returns.std() != 0 else 0
         
-        # 浜ゆ槗缁熻
+        # 交易统计
         buy_trades = [t for t in self.trades if t.type == 'buy']
         sell_trades = [t for t in self.trades if t.type == 'sell']
         stop_trades = [t for t in self.trades if t.type == 'stop_loss']
@@ -606,7 +606,7 @@ class DynamicGridStrategyV4:
         losing_sells = [t for t in sell_trades if t.pnl <= 0]
         avg_loss = np.mean([t.pnl for t in losing_sells]) if losing_sells else 0
         
-        # 鐩堜簭姣?
+        # 盈亏姣?
         profit_factor = abs(avg_win / avg_loss) if avg_loss != 0 else float('inf')
         
         results = {
@@ -632,83 +632,83 @@ class DynamicGridStrategyV4:
         return results
     
     def print_report(self, results: Dict = None):
-        """鎵撳嵃鍥炴祴鎶ュ憡"""
+        """打印回测报告"""
         if results is None:
             results = self.get_results()
         
         print("\n" + "=" * 80)
-        print("鍔ㄦ€佺綉鏍肩瓥鐣?V4.0 - 鍥炴祴鎶ュ憡")
+        print("鍔ㄦ€佺綉格策鐣?V4.0 - 回测报告")
         print("=" * 80)
         
-        print(f"\n銆愬熀纭€淇℃伅銆?)
-        print(f"浜ゆ槗瀵? {self.symbol}")
-        print(f"鍥炴祴鍛ㄦ湡: {len(self.equity_curve)} 鏍筀绾?)
-        print(f"鍒濆璧勯噾: ${results['initial_capital']:,.2f}")
-        print(f"鏈€缁堟潈鐩? ${results['final_equity']:,.2f}")
+        print(f"\n【基纭€信息銆?)
+        print(f"交易瀵? {self.symbol}")
+        print(f"回测周期: {len(self.equity_curve)} 根K绾?)
+        print(f"初始资金: ${results['initial_capital']:,.2f}")
+        print(f"鏈€终权鐩? ${results['final_equity']:,.2f}")
         
-        print(f"\n銆愭敹鐩婃寚鏍囥€?)
-        print(f"鎬绘敹鐩婄巼: {results['total_return']:.2%}")
-        print(f"鏈€澶у洖鎾? {results['max_drawdown']:.2%}")
-        print(f"澶忔櫘姣旂巼: {results['sharpe_ratio']:.2f}")
+        print(f"\n【收益指鏍囥€?)
+        print(f"总收益率: {results['total_return']:.2%}")
+        print(f"鏈€大回鎾? {results['max_drawdown']:.2%}")
+        print(f"夏普比率: {results['sharpe_ratio']:.2f}")
         
-        print(f"\n銆愪氦鏄撶粺璁°€?)
-        print(f"鎬讳氦鏄撴鏁? {results['total_trades']}")
-        print(f"涔板叆娆℃暟: {results['buy_count']}")
-        print(f"鍗栧嚭娆℃暟: {results['sell_count']}")
-        print(f"姝㈡崯娆℃暟: {results['stop_loss_count']}")
-        print(f"鑳滅巼: {results['win_rate']:.2%}")
-        print(f"鐩堜簭姣? {results['profit_factor']:.2f}")
-        print(f"骞冲潎鐩堝埄: ${results['avg_win']:,.2f}")
-        print(f"骞冲潎浜忔崯: ${results['avg_loss']:,.2f}")
+        print(f"\n【交易统璁°€?)
+        print(f"总交易次鏁? {results['total_trades']}")
+        print(f"买入次数: {results['buy_count']}")
+        print(f"卖出次数: {results['sell_count']}")
+        print(f"止损次数: {results['stop_loss_count']}")
+        print(f"胜率: {results['win_rate']:.2%}")
+        print(f"盈亏姣? {results['profit_factor']:.2f}")
+        print(f"平均盈利: ${results['avg_win']:,.2f}")
+        print(f"平均亏损: ${results['avg_loss']:,.2f}")
         
-        print(f"\n銆愮瓥鐣ュ弬鏁般€?)
+        print(f"\n【策略参鏁般€?)
         for key, value in list(results['params'].items())[:10]:
             print(f"  {key}: {value}")
         
         print("=" * 80)
     
     def plot_results(self, save_path: str = None):
-        """缁樺埗鍥炴祴缁撴灉鍥捐〃"""
+        """绘制回测结果图表"""
         if len(self.equity_curve) == 0:
-            logger.warning("娌℃湁鏁版嵁鍙粯鍒?)
+            logger.warning("没有数据可绘鍒?)
             return
         
         equity_df = pd.DataFrame(self.equity_curve)
         
         fig, axes = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
         
-        # 1. 鏉冪泭鏇茬嚎鍜屼环鏍?
+        # 1. 权益曲线和价鏍?
         ax1 = axes[0]
         ax1_twin = ax1.twinx()
         
         ax1.plot(equity_df['timestamp'], equity_df['equity'], 
-                label='璐︽埛鏉冪泭', color='blue', linewidth=1.5)
+                label='账户权益', color='blue', linewidth=1.5)
         ax1.axhline(y=self.initial_capital, color='gray', linestyle='--', alpha=0.5)
-        ax1.set_ylabel('鏉冪泭 (USDT)', color='blue')
+        ax1.set_ylabel('权益 (USDT)', color='blue')
         ax1.tick_params(axis='y', labelcolor='blue')
         
-        # 閲囨牱鏄剧ず浠锋牸閬垮厤杩囦簬瀵嗛泦
+        # 采样显示价格避免过于密集
         sample_idx = range(0, len(equity_df), max(1, len(equity_df)//1000))
         ax1_twin.plot(equity_df['timestamp'].iloc[sample_idx], 
                      equity_df['price'].iloc[sample_idx],
-                     label='浠锋牸', color='gray', alpha=0.3, linewidth=0.5)
-        ax1_twin.set_ylabel('浠锋牸', color='gray')
+                     label='价格', color='gray', alpha=0.3, linewidth=0.5)
+        ax1_twin.set_ylabel('价格', color='gray')
         ax1_twin.tick_params(axis='y', labelcolor='gray')
         
-        ax1.set_title('鍔ㄦ€佺綉鏍肩瓥鐣?V4.0 - 鍥炴祴缁撴灉', fontsize=14, fontweight='bold')
+        ax1.set_title('鍔ㄦ€佺綉格策鐣?V4.0 - 回测结果', fontsize=14, fontweight='bold')
         ax1.legend(loc='upper left')
         ax1.grid(True, alpha=0.3)
         
-        # 2. 鍥炴挙
+        # 2. 回撤
         ax2 = axes[1]
         equity_df['drawdown'] = (equity_df['equity'] - equity_df['equity'].cummax()) / equity_df['equity'].cummax()
         ax2.fill_between(equity_df['timestamp'], equity_df['drawdown'], 0, 
-                        alpha=0.5, color='red', label='鍥炴挙')
-        ax2.set_ylabel('鍥炴挙姣斾緥')
+                        alpha=0.5, color='red', label='回撤')
+        ax2.set_ylabel('回撤比例')
         ax2.legend(loc='lower left')
         ax2.grid(True, alpha=0.3)
         
-        # 3. RSI鍜屾寔浠?
+        # 3. RSI和持浠?
         ax3 = axes[2]
         ax3_twin = ax3.twinx()
         
@@ -721,8 +721,8 @@ class DynamicGridStrategyV4:
         ax3.set_ylim(0, 100)
         
         ax3_twin.plot(equity_df['timestamp'], equity_df['positions'], 
-                     label='鎸佷粨灞傛暟', color='orange', alpha=0.7)
-        ax3_twin.set_ylabel('鎸佷粨灞傛暟', color='orange')
+                     label='持仓层数', color='orange', alpha=0.7)
+        ax3_twin.set_ylabel('持仓层数', color='orange')
         
         ax3.legend(loc='upper left')
         ax3_twin.legend(loc='upper right')
@@ -732,27 +732,27 @@ class DynamicGridStrategyV4:
         
         if save_path:
             plt.savefig(save_path, dpi=150, bbox_inches='tight')
-            logger.info(f"鍥捐〃宸蹭繚瀛? {save_path}")
+            logger.info(f"图表已保瀛? {save_path}")
         
         plt.show()
 
 
 # ============================================
-# 浣跨敤绀轰緥鍜屾祴璇?
+# 使用示例和测璇?
 # ============================================
 
 def generate_test_data(periods: int = 10000, volatility: float = 0.02) -> pd.DataFrame:
-    """鐢熸垚娴嬭瘯鏁版嵁"""
+    """生成测试数据"""
     np.random.seed(42)
     dates = pd.date_range(start='2024-01-01', periods=periods, freq='1min')
     
-    # 鐢熸垚浠锋牸璺緞 (闅忔満娓歌蛋 + 鍧囧€煎洖褰?
+    # 生成价格路径 (随机游走 + 鍧囧€煎洖褰?
     returns = np.random.normal(0, volatility, periods)
-    # 娣诲姞鍧囧€煎洖褰掓垚鍒?
+    # 添加鍧囧€煎洖归成鍒?
     for i in range(1, periods):
-        if i % 1000 < 500:  # 鍓嶅崐娈佃秼鍔?
+        if i % 1000 < 500:  # 前半段趋鍔?
             returns[i] += 0.0001
-        else:  # 鍚庡崐娈甸渿鑽?
+        else:  # 后半段震鑽?
             returns[i] -= 0.00005
     
     prices = 40000 * np.exp(np.cumsum(returns))
@@ -769,12 +769,12 @@ def generate_test_data(periods: int = 10000, volatility: float = 0.02) -> pd.Dat
 
 
 def main():
-    """涓诲嚱鏁?- 绀轰緥杩愯"""
-    # 鐢熸垚娴嬭瘯鏁版嵁
-    print("鐢熸垚娴嬭瘯鏁版嵁...")
+    """主函鏁?- 示例运行"""
+    # 生成测试数据
+    print("生成测试数据...")
     df = generate_test_data(periods=20000, volatility=0.015)
     
-    # 鍒濆鍖栫瓥鐣?
+    # 初始化策鐣?
     strategy = DynamicGridStrategyV4(
         initial_capital=10000,
         symbol="BTCUSDT",
@@ -788,13 +788,13 @@ def main():
         trailing_stop=True
     )
     
-    # 杩愯鍥炴祴
+    # 运行回测
     results = strategy.run_backtest(df, verbose=True)
     
-    # 鎵撳嵃鎶ュ憡
+    # 打印报告
     strategy.print_report(results)
     
-    # 缁樺埗鍥捐〃
+    # 绘制图表
     strategy.plot_results(save_path='/mnt/kimi/output/strategy_v4_results.png')
     
     return strategy, results

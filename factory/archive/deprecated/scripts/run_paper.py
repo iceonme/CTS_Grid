@@ -1,7 +1,7 @@
-﻿"""
-妯℃嫙鐩樺叆鍙ｈ剼鏈?
+"""
+模拟盘入口脚鏈?
 
-浣跨敤绀轰緥:
+使用示例:
     python run_paper.py --data btc_1m.csv --speed 10
 """
 
@@ -17,34 +17,34 @@ from console.engines import LiveEngine
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Grid RSI 绛栫暐妯℃嫙鐩?)
+    parser = argparse.ArgumentParser(description='Grid RSI 策略模拟鐩?)
     parser.add_argument('--data', type=str, default='btc_1m.csv',
-                        help='鍘嗗彶鏁版嵁鏂囦欢璺緞')
+                        help='历史数据文件路径')
     parser.add_argument('--symbol', type=str, default='BTC-USDT',
-                        help='浜ゆ槗瀵?)
+                        help='交易瀵?)
     parser.add_argument('--capital', type=float, default=10000.0,
-                        help='鍒濆璧勯噾')
+                        help='初始资金')
     parser.add_argument('--speed', type=float, default=1.0,
-                        help='鍥炴斁閫熷害鍊嶇巼 (1.0=姝ｅ父閫熷害)')
+                        help='回放速度倍率 (1.0=正常速度)')
     
     args = parser.parse_args()
     
     print(f"\n{'='*60}")
-    print(f"Grid RSI 绛栫暐妯℃嫙鐩?)
+    print(f"Grid RSI 策略模拟鐩?)
     print(f"{'='*60}")
-    print(f"鏁版嵁鏂囦欢: {args.data}")
-    print(f"浜ゆ槗瀵? {args.symbol}")
-    print(f"鍒濆璧勯噾: ${args.capital:,.2f}")
-    print(f"鍥炴斁閫熷害: {args.speed}x")
+    print(f"数据文件: {args.data}")
+    print(f"交易瀵? {args.symbol}")
+    print(f"初始资金: ${args.capital:,.2f}")
+    print(f"回放速度: {args.speed}x")
     print(f"{'='*60}\n")
     
-    # 1. 鍒涘缓鏁版嵁娴?
+    # 1. 创建数据娴?
     data_feed = CSVDataFeed(
         filepath=args.data,
         symbol=args.symbol
     )
     
-    # 2. 鍒涘缓绛栫暐
+    # 2. 创建策略
     strategy = GridRSIStrategy(
         symbol=args.symbol,
         grid_levels=10,
@@ -52,7 +52,7 @@ def main():
         trailing_stop=True
     )
     
-    # 3. 鍒涘缓鎵ц鍣紙妯℃嫙鎵ц锛?
+    # 3. 创建执行器（模拟执行锛?
     executor = PaperExecutor(
         initial_capital=args.capital,
         fee_rate=0.001,
@@ -60,7 +60,7 @@ def main():
         latency_ms=200
     )
     
-    # 4. 鍒涘缓寮曟搸
+    # 4. 创建引擎
     engine = LiveEngine(
         strategy=strategy,
         executor=executor,
@@ -68,11 +68,11 @@ def main():
         warmup_bars=100
     )
     
-    # 5. 鍚姩
+    # 5. 启动
     try:
         engine.run()
     except KeyboardInterrupt:
-        print("\n鐢ㄦ埛涓柇")
+        print("\n用户中断")
     
     return 0
 

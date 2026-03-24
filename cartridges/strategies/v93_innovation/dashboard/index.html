@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V9.3 Innovation | 实时监控中心 {{ app_version }}</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    
+    <!-- 依赖库 -->
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    
+    <!-- 样式 -->
+    <link rel="stylesheet" href="style.css?v={{ cache_buster }}">
+    
+    <script>
+        window.STRATEGY_ID = "{{ strategy_id }}";
+        window.APP_VERSION = "{{ app_version }}";
+    </script>
+</head>
+
+<body>
+    <header>
+        <div class="logo-area">
+            <div class="logo-icon">V93</div>
+            <div class="brand">
+                <div class="brand-name">V9.3 Innovation <span class="version-tag">{{ app_version }}</span></div>
+                <div class="brand-sub">ETH 永续合约动态网格策略</div>
+            </div>
+        </div>
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">连接中...</span>
+            </div>
+            <div class="status-item">
+                <span style="color: var(--primary)">OKX</span>
+                <span>实盘模拟</span>
+            </div>
+        </div>
+        <div class="header-actions">
+            <button type="button" class="header-btn btn-danger" id="resetBtn">重置测试</button>
+            <button type="button" class="header-btn" id="openStrategyDocBtn">策略说明</button>
+        </div>
+    </header>
+
+    <main>
+        <!-- 左侧面板: 资产与指标 -->
+        <section class="panel">
+            <div class="panel-header">资产与指标</div>
+            <div class="asset-panel">
+                <div class="asset-card highlight">
+                    <div class="asset-label" id="priceLabel">ETH-USDT-SWAP</div>
+                    <div class="asset-value price" id="ethPrice">--</div>
+                    <div class="asset-change">USDT</div>
+                </div>
+
+                <div class="asset-card">
+                    <div class="asset-label">账户权益 (USDT)</div>
+                    <div class="asset-value" id="totalValue">--</div>
+                    <div class="pnl-container">
+                        <div class="asset-label">收益率 (PNL)</div>
+                        <div id="pnlRate" class="pnl-value">--</div>
+                    </div>
+                </div>
+
+                <div class="data-grid">
+                    <div class="data-item">
+                        <span class="data-label">可用资金</span>
+                        <span class="data-value" id="cashValue">--</span>
+                    </div>
+                    <div class="data-item position-box">
+                        <div class="pos-row">
+                            <span>多头持仓</span>
+                            <span id="longPosSize" class="text-profit">--</span>
+                        </div>
+                        <div class="pos-row">
+                            <span>空头持仓</span>
+                            <span id="shortPosSize" class="text-loss">--</span>
+                        </div>
+                        <div class="pos-row border-top">
+                            <span>持仓均价</span>
+                            <span id="positionAvgPrice">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="asset-card indicator-card">
+                    <div class="indicator-header">
+                        <span class="asset-label">RSI (14)</span>
+                        <span id="rsiStatus" class="indicator-tag">等待...</span>
+                    </div>
+                    <div class="asset-value" id="rsiVal">--</div>
+                    <div class="rsi-thresholds" id="rsiThresholds">
+                        <span class="text-profit">--</span> / <span class="text-loss">--</span>
+                    </div>
+                </div>
+
+                <div class="asset-card strategy-status">
+                    <div class="asset-label" style="color: var(--primary);">策略运行状态</div>
+                    <div class="status-row">
+                        <span class="status-label">当前层级</span>
+                        <span id="currentLayer" class="status-value">--</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-label">动量趋势</span>
+                        <span id="trendText" class="status-value">--</span>
+                    </div>
+                    <div class="status-row">
+                        <span class="status-label">当前杠杆</span>
+                        <span id="leverageVal" class="status-value">--</span>
+                    </div>
+                    <div id="tradeSignal" class="signal-box">
+                        <div class="signal-label">最新信号</div>
+                        <div class="signal-text">等待中...</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 中间面板: K线图表 -->
+        <section class="panel chart-panel">
+            <div class="panel-header">
+                <span>实时行情监控</span>
+                <div class="chart-legend">
+                    <span class="legend-item"><i class="dot buy"></i>买入</span>
+                    <span class="legend-item"><i class="dot sell"></i>卖出</span>
+                </div>
+            </div>
+            <div class="chart-container">
+                <div id="tv-chart-main"></div>
+                <div id="tv-chart-rsi"></div>
+                <div id="tv-chart-equity"></div>
+            </div>
+        </section>
+
+        <!-- 右侧面板: 交易记录 -->
+        <section class="panel">
+            <div class="panel-header">
+                <span>交易历史</span>
+                <span id="tradeCount" class="badge">0</span>
+            </div>
+            <div class="stats-bar">
+                <div class="stat-item">
+                    <div class="stat-label">胜率</div>
+                    <div id="statWinRate" class="stat-value">--</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">盈亏比</div>
+                    <div id="statProfitLossRatio" class="stat-value">--</div>
+                </div>
+            </div>
+            <div class="trade-list" id="tradeList">
+                <div class="empty-state">暂无成交记录</div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 弹窗 -->
+    <div id="resetConfirmModal" class="modal-mask">
+        <div class="modal-content">
+            <div class="modal-title">⚠️ 确认重置</div>
+            <div class="modal-body">
+                确定要重置测试进度和资金吗？<br><br>
+                这将平掉所有持仓并恢复初始状态。
+            </div>
+            <div class="modal-footer">
+                <button id="cancelReset" class="modal-btn">取消</button>
+                <button id="confirmResetAction" class="modal-btn btn-danger">确认重置</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js?v={{ cache_buster }}"></script>
+</body>
+
+</html>

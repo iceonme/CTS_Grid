@@ -1,4 +1,4 @@
-﻿
+
 import threading
 import json
 from datetime import datetime
@@ -10,11 +10,11 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 
 class DashboardServer70:
     """
-    Dashboard 鏈嶅姟鍣?(V7.0-Razor 涓撶敤)
+    Dashboard 服务鍣?(V7.0-Razor 专用)
 
-    鍔熻兘锛?
-    1. 涓撲负 7.0 绛栫暐璁捐鐨勭嫭绔嬫湇鍔?
-    2. 榛樿绔彛 5070
+    功能锛?
+    1. 专为 7.0 策略设计的独立服鍔?
+    2. 默认端口 5070
     """
 
     _EMPTY_STRATEGY_DATA = lambda: {
@@ -64,8 +64,8 @@ class DashboardServer70:
 
         @self.app.route('/')
         def index():
-            # 6.0 榛樿浣跨敤涓撶敤鐨勬ā鏉匡紙濡傛灉浠ュ悗鏈夌壒娈婇渶姹傚彲浠ュ畾鍒讹級
-            # 鐩墠鍏堝鐢?5.2 鐨勬ā鏉匡紙鍥犱负 Runner 2.0 淇濊瘉浜嗘暟鎹粨鏋勫吋瀹癸級
+            # 6.0 默认使用专用的模板（如果以后有特殊需求可以定制）
+            # 目前先复鐢?5.2 的模板（因为 Runner 2.0 保证了数据结构兼容）
             timestamp = datetime.now().strftime('%Y%m%d%H%M%S%f')
             res = make_response(render_template(
                 'dashboard_v70.html',
@@ -178,12 +178,12 @@ class DashboardServer70:
             if 'history_candles' in data:
                 self.socketio.emit('history_update', clean, to=strategy_id, namespace='/')
         except Exception as e:
-            print(f'[Dashboard70] [{strategy_id}] 鏇存柊澶辫触: {e}')
+            print(f'[Dashboard70] [{strategy_id}] 更新失败: {e}')
 
     def start(self, debug=False):
         print(f"\n{'='*60}")
-        print(f"Dashboard 鍚姩 (V7.0 鐗?{self.version})")
-        print(f"璁块棶鍦板潃: http://localhost:{self.port}")
+        print(f"Dashboard 启动 (V7.0 鐗?{self.version})")
+        print(f"访问地址: http://localhost:{self.port}")
         print(f"{'='*60}\n")
         self.socketio.run(self.app, host=self.host, port=self.port, debug=debug, allow_unsafe_werkzeug=True)
 

@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 import numpy as np
 from pathlib import Path
@@ -14,16 +14,16 @@ from cartridges.strategies.base import BaseStrategy
 from cartridges.strategies.grid_mtf_6_0 import IncrementalIndicatorsV6, StrategyState
 
 # ============================================================
-# V7.0 榫欒鍒掞細鍏ㄨ嚜閫傚簲瓒嬪娍缃戞牸 (Dragon Plan: Adaptive Trend-Grid)
+# V7.0 龙计划：全自适应趋势网格 (Dragon Plan: Adaptive Trend-Grid)
 # ============================================================
 
 class GridMTFStrategyV7_0(BaseStrategy):
     """
-    V7.0-Dragon 榫欒鍒掓渶缁堢増
-    涓撲负 2025 骞粹€滃ぇ鐗涜浆娣辩唺鈥濊璁＄殑鍙屾€佸垏鎹㈢瓥鐣ワ細
-    1. 瓒嬪娍杩涙敾鎬?(Trend-Bull): 褰撲环鏍煎湪 15m MA200 涔嬩笂锛屾敼涓衡€滆拷娑ㄧ綉鏍尖€濓紝RSI 闄愬埗鏀惧锛岄攣瀹氫富鍗囨氮銆?
-    2. 娣卞害闃插尽鎬?(Trend-Bear): 褰撲环鏍煎湪 15m MA200 涔嬩笅锛屾敼涓衡€滄瀬绐勭綉鏍尖€濓紝浣庝綅鎺ュ崟楂樹綅蹇蛋锛岃閬块槾璺屻€?
-    3. 鏆村姏姝㈡崯 (Crash Shield): 24h 鍐呰嫢鍥炴挙瓒?10%锛屽己鍒剁┖浠撻潤榛樸€?
+    V7.0-Dragon 龙计划最终版
+    专为 2025 骞粹€滃ぇ牛转深熊”设计的鍙屾€佸垏换策略：
+    1. 趋势进攻鎬?(Trend-Bull): 当价格在 15m MA200 之上，改涓衡€滆拷涨网鏍尖€濓紝RSI 限制放宽，锁定主升浪銆?
+    2. 深度防御鎬?(Trend-Bear): 当价格在 15m MA200 之下，改涓衡€滄瀬窄网鏍尖€濓紝低位接单高位快走，规避阴璺屻€?
+    3. 暴力止损 (Crash Shield): 24h 内若回撤瓒?10%，强制空仓静榛樸€?
     """
     def __init__(self, name: str = "Grid_V70_Dragon", **params):
         super().__init__(name, **params)
@@ -77,7 +77,7 @@ class GridMTFStrategyV7_0(BaseStrategy):
         
         self._last_bar_5m = data
         
-        # 缁存姢 24h ATH (鐢ㄤ簬纭鎹?
+        # 维护 24h ATH (用于硬止鎹?
         if not self.last_ath_update or (data.timestamp - self.last_ath_update) > timedelta(hours=24):
             self.ath_24h = data.high
             self.last_ath_update = data.timestamp
@@ -106,8 +106,8 @@ class GridMTFStrategyV7_0(BaseStrategy):
 
     def _manage_grid(self, data: MarketData):
         # 鍔ㄦ€佺綉鏍奸€昏緫
-        # 鍦ㄥ澶磋鎯呬腑锛岀綉鏍间腑蹇冮殢浠锋牸涓婄Щ
-        # 鍦ㄧ┖澶磋鎯呬腑锛岀綉鏍间腑蹇冨仠婊炲湪涓嬫柟
+        # 在多头行情中，网格中心随价格上移
+        # 在空头行情中，网格中心停滞在下方
         is_bull = data.close > self.ma200_15m
         
         now = data.timestamp
@@ -117,12 +117,12 @@ class GridMTFStrategyV7_0(BaseStrategy):
         if self.state.grid_upper == 0:
             need_reset = True
         elif is_bull and abs(data.close - (self.state.grid_upper + self.state.grid_lower)/2) / data.close > 0.03:
-            need_reset = True # 澶氬叧鍖洪殢鍔?
+            need_reset = True # 多关区随鍔?
         elif not is_bull and (now - self.state.last_grid_reset) > timedelta(hours=24):
-            need_reset = True # 绌哄ご鍖洪攣姝?
+            need_reset = True # 空头区锁姝?
 
         if need_reset:
-            # 姝ゅ閫昏緫绠€鍖栵紝瀹為檯鍙紩鍏ユ洿澶氭寚鏍?
+            # 此处逻辑箢㻯，实际可引入更多指鏍?
             buffer = 0.02 if is_bull else 0.05
             self.state.grid_upper = data.close * (1 + buffer)
             self.state.grid_lower = data.close * (1 - buffer)
@@ -130,7 +130,7 @@ class GridMTFStrategyV7_0(BaseStrategy):
             self.state.last_grid_reset = now
 
     def _check_halt(self, data: MarketData) -> bool:
-        # 纭牳姝㈡崯锛氬鏋滀环鏍间粠 24h 鍐呯殑鏈€楂樼偣璺屽幓 10%锛屽己鍒堕潤榛?
+        # 硬核止损：如果价格从 24h 内的鏈€高点跌去 10%，强制静榛?
         if (self.ath_24h - data.close) / self.ath_24h > 0.10:
             self.state.is_halted = True
             self.state.resume_time = data.timestamp + timedelta(hours=12)
@@ -145,17 +145,17 @@ class GridMTFStrategyV7_0(BaseStrategy):
         
         is_bull = data.close > self.ma200_15m
         
-        # 1. 鍗栧嚭閫昏緫 (鍒嗘€佹鐩?
+        # 1. 卖出逻辑 (鍒嗘€佹鐩?
         if pos_size > 0:
-            sell_rsi = 85 if is_bull else 65 # 鐗涘競鎷夸綇锛岀唺甯傚揩璺?
+            sell_rsi = 85 if is_bull else 65 # 牛市拿住，熊市快璺?
             if self.state.current_rsi > sell_rsi:
                 signals.append(Signal(data.timestamp, self.symbol, Side.SELL, pos_size, reason=f"Dragon Sell ({'Bull' if is_bull else 'Bear'})"))
 
-        # 2. 涔板叆閫昏緫 (鍒嗘€佸缓浠?
+        # 2. 买入逻辑 (鍒嗘€佸缓浠?
         if not signals:
-            buy_rsi = 50 if is_bull else 25 # 鐗涘競婵€杩涳紝鐔婂競鏋佸害璋ㄦ厧
+            buy_rsi = 50 if is_bull else 25 # 牛市婵€进，熊市极度谨慎
             if self.state.current_rsi < buy_rsi:
-                # 缁欎竴涓緝澶х殑鏉冮噸
+                # 给一个较大的权重
                 weight = 0.4 if is_bull else 0.1
                 buy_usdt = 10000 * weight
                 if context.cash >= buy_usdt:

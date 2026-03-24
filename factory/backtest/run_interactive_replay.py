@@ -1,9 +1,9 @@
-﻿import os
+import os
 import sys
 import time
 from datetime import datetime
 
-# 鑷姩澶勭悊璺緞 - 鍚戜笂瀵绘壘椤圭洰鏍圭洰褰?
+# 自动处理路径 - 向上寻找项目根目褰?
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
 
@@ -21,13 +21,13 @@ except Exception as e:
     sys.exit(1)
 
 def run_v85_replay():
-    # 1. 璺緞璁剧疆
+    # 1. 路径设置
     data_path = "data/btc_1m_2025_03_16.csv"
     if not os.path.exists(data_path):
         print(f"Error: {data_path} not found. Please run scripts/extract_mar_week_16_22.py first.")
         return
         
-    # 2. 鍚姩 Dashboard
+    # 2. 启动 Dashboard
     print("[REPLAY] Initializing Dashboard...")
     port = 5005
     dashboard = create_dashboard(port=port)
@@ -35,7 +35,7 @@ def run_v85_replay():
     dashboard.start_background()
     print(f"[REPLAY] Dashboard started in background at http://localhost:{port}/v5?strategy_id=v85_replay")
     
-    # 3. 鍒濆鍖栫粍浠?
+    # 3. 初始化组浠?
     print("[REPLAY] Initializing Strategy and Engine...")
     strategy = GridStrategyV85(
         name="V85_Mar_16_22_Replay",
@@ -62,16 +62,16 @@ def run_v85_replay():
     
     print(f"[REPLAY] Initial Cash: {executor.get_cash():.2f}")
 
-    # 4. 娉ㄥ唽鐘舵€佸洖璋?
+    # 4. 注册鐘舵€佸洖璋?
     def on_status_update(status):
         dashboard.update(status, strategy_id='v85_replay')
     
     engine.register_status_callback(on_status_update)
     
-    # 5. 棰勫姞杞?240 鏍瑰巻鍙?K 绾?(婊¤冻 4 灏忔椂璁＄畻闇€姹?
+    # 5. 预加杞?240 根历鍙?K 绾?(满足 4 小时计算闇€姹?
     print("[REPLAY] Pre-loading 240 bars (4 hours) for indicator warmup...")
     warmup_count = 0
-    # 涓轰繚璇佹暟鎹繛缁€э紝鎴戜滑涓存椂浣跨敤鎻愬彇鍑烘潵鐨勫畬鏁存棩绾挎暟鎹?
+    # 为保证数据连缁€э紝我们临时使用提取出来的完整日线数鎹?
     for data in engine.data_feed.stream():
         engine.strategy._data_1m.append(data)
         engine._sync_history_candles(data)
@@ -87,8 +87,8 @@ def run_v85_replay():
     engine.is_running = True
     count = 0
     try:
-        # **閲嶈**: 涓嶈閲嶆柊鎵ц for data in stream锛屾帴鐫€涓婇潰鐨勭敓鎴愬櫒缁х画璺戯紒
-        # 浣嗙洰鍓?CSV 杩唬鍣ㄦ病鏈?reset 鎴?stateful 鏀寔锛屾垜浠渶閲嶅紑娴佸苟蹇繘杩囧幓
+        # **重要**: 不要重新执行 for data in stream，接鐫€上面的生成器继续跑！
+        # 但目鍓?CSV 迭代器没鏈?reset 鎴?stateful 支持，我们需重开流并快进过去
         stream = engine.data_feed.stream()
         for _ in range(240):
             next(stream)
@@ -99,22 +99,22 @@ def run_v85_replay():
             engine._current_time = data.timestamp
             engine._current_prices[data.symbol] = data.close
             
-            # 鏇存柊鎵ц鍣ㄥ苟鍚屾 K 绾?
+            # 更新执行器并同步 K 绾?
             engine.executor.update_market_data(data.timestamp, data.close)
             engine._sync_history_candles(data)
             
-            # 绛栫暐鍐崇瓥
+            # 策略决策
             context = engine._get_context()
             signals = engine.strategy.on_data(data, context)
             
-            # 鎵ц
+            # 执行
             if signals:
                 engine._execute_signals(signals)
             
             # 鎺ㄩ€佺姸鎬?
             status = engine._build_status(data)
             
-            # 娉ㄥ叆缃戞牸淇℃伅
+            # 注入网格信息
             st_raw = engine.strategy.get_status(context)
             status['grid_lines'] = st_raw.get('grid_lines', [])
             status['strategy_state'] = st_raw.get('state', 'Unknown')

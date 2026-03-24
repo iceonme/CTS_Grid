@@ -1,8 +1,8 @@
-﻿"""
-OKX 妯℃嫙鐩?+ Dashboard 鐙珛鍚姩
-锛圖ashboard 鍦ㄤ富绾跨▼锛屽紩鎿庡湪鍚庡彴锛?
+"""
+OKX 模拟鐩?+ Dashboard 独立启动
+（Dashboard 在主线程，引擎在后台锛?
 
-浣跨敤鏂规硶:
+使用方法:
     python run_okx_demo_with_dashboard.py
 """
 
@@ -22,26 +22,26 @@ from console.dashboard import create_dashboard
 
 
 def run_engine(engine):
-    """鍦ㄥ悗鍙扮嚎绋嬭繍琛屽紩鎿?""
+    """在后台线程运行引鎿?""
     try:
         engine.run()
     except Exception as e:
-        print(f"寮曟搸閿欒: {e}")
+        print(f"引擎错误: {e}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description='OKX 妯℃嫙鐩?+ Dashboard (甯﹀弬鏁版敮鎸佺増鏈?')
-    parser.add_argument('--strategy', default='4.0', choices=['4.0', '5.2'], help='绛栫暐鐗堟湰')
+    parser = argparse.ArgumentParser(description='OKX 模拟鐩?+ Dashboard (带参数支持版鏈?')
+    parser.add_argument('--strategy', default='4.0', choices=['4.0', '5.2'], help='策略版本')
     args = parser.parse_args()
 
     print("\n" + "="*60)
-    print(f"CTS1 - OKX 妯℃嫙鐩?(Dashboard 妯″紡) | 绛栫暐鐗堟湰: {args.strategy}")
+    print(f"CTS1 - OKX 模拟鐩?(Dashboard 模式) | 策略版本: {args.strategy}")
     print("="*60)
-    print(f"浜ゆ槗瀵? {DEFAULT_SYMBOL}")
-    print(f"K绾垮懆鏈? {DEFAULT_TIMEFRAME}")
+    print(f"交易瀵? {DEFAULT_SYMBOL}")
+    print(f"K线周鏈? {DEFAULT_TIMEFRAME}")
     print("="*60 + "\n")
     
-    # 鍒涘缓缁勪欢
+    # 创建组件
     if args.strategy == '5.2':
         from cartridges.strategies import GridRSIStrategyV5_2
         strategy = GridRSIStrategyV5_2(
@@ -83,25 +83,25 @@ def main():
         warmup_bars=100
     )
     
-    # 鍏堟樉寮忔墽琛岀儹韬互渚挎嬁鍒扮绾挎寚鏍?
-    print("棰勭儹绛栫暐...")
+    # 先显式执行热身以便拿到离线指鏍?
+    print("预热策略...")
     engine.warmup()
     
-    # Dashboard 鏇存柊鍥炶皟
+    # Dashboard 更新回调
     dashboard = create_dashboard(port=5000)
     
-    # 缁戝畾鏈€鏂扮増鐨勮矾鐢变綋绯?
+    # 绑定鏈€新版的路由体绯?
     if args.strategy == '5.2':
-        dashboard.register_strategy('default', 'Grid RSI V5.2 (妯℃嫙鐩?', route='/v5')
+        dashboard.register_strategy('default', 'Grid RSI V5.2 (模拟鐩?', route='/v5')
     else:
-        dashboard.register_strategy('default', 'Grid RSI V4.0 (妯℃嫙鐩?', route='/')
+        dashboard.register_strategy('default', 'Grid RSI V4.0 (模拟鐩?', route='/')
         
     def on_status_update(status):
         dashboard.update(status)
     
     engine.register_status_callback(on_status_update)
     
-    # 鍥炴斁鍘嗗彶浠ラ濉墠绔浘琛?
+    # 回放历ʷ以预填前端图琛?
     hist_data = {}
     if hasattr(strategy, '_data_buffer') and strategy._data_buffer:
         history_candles = []
@@ -120,21 +120,21 @@ def main():
         if hasattr(engine, '_history_macd'): hist_data['history_macd'] = engine._history_macd
         dashboard.update(hist_data)
         
-    # 鍦ㄥ悗鍙板惎鍔ㄥ紩鎿?
+    # 在后台启动引鎿?
     engine_thread = threading.Thread(target=run_engine, args=(engine,))
     engine_thread.daemon = True
     engine_thread.start()
     
-    # 涓荤嚎绋嬭繍琛?Dashboard
+    # 主线程运琛?Dashboard
     print("Dashboard: http://localhost:5000")
-    print("鎸?Ctrl+C 鍋滄\n")
+    print("鎸?Ctrl+C 停止\n")
     
     try:
         dashboard.start()
     except KeyboardInterrupt:
-        print("\n姝ｅ湪鍋滄...")
+        print("\n正在停止...")
         engine.stop()
-        print("宸插仠姝?)
+        print("已停姝?)
     
     return 0
 

@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 import numpy as np
 import pandas as pd
@@ -17,13 +17,13 @@ class GridStrategyV70Razor(BaseStrategy):
     """
     GridStrategy V7.0-Razor (Kimibigclaw)
     
-    鏍稿績鐗规€э細
-    - 绾?RSI 宸︿晶鍔ㄦ€佺綉鏍硷紙MACD 瀹屽叏鍓旈櫎锛?
-    - RSI 鍒嗗眰鍝嶅簲锛堟瀬绔?鏍囧噯锛?
-    - ATR 鍔ㄦ€佺綉鏍奸棿璺?
-    - 闃舵姝㈢泩 (Ladder Take-Profit)
-    - 榛戝ぉ楣呮姢鐩?(Black Swan Guard)
-    - 甯告€佺綉鏍?(RSI 28-70 V7.1 鎭㈠)
+    核心鐗规€э細
+    - 绾?RSI 左侧鍔ㄦ€佺綉格（MACD 完全剔除锛?
+    - RSI 分层响应（极绔?标准锛?
+    - ATR 鍔ㄦ€佺綉格间璺?
+    - 阶梯止盈 (Ladder Take-Profit)
+    - 黑天鹅护鐩?(Black Swan Guard)
+    - 甯告€佺綉鏍?(RSI 28-70 V7.1 恢复)
     """
 
     def __init__(self, name: str = "Grid_V70_Razor", **params):
@@ -34,16 +34,16 @@ class GridStrategyV70Razor(BaseStrategy):
         self.param_metadata = {}
         self._load_params()
 
-        # 鏁版嵁缂撳瓨
-        self._data_1m = deque(maxlen=400)   # 1m K绾跨敤浜庢瀬绔鎺?(ATR)
-        self._data_5m = deque(maxlen=400)   # 5m K绾跨敤浜庢牳蹇?RSI 淇″彿涓庣綉鏍?
+        # 数据缓存
+        self._data_1m = deque(maxlen=400)   # 1m K线用于极端风鎺?(ATR)
+        self._data_5m = deque(maxlen=400)   # 5m K线用于核蹇?RSI 信号与网鏍?
 
-        # 绛栫暐鍐呴儴鐘舵€?
+        # 策略内部鐘舵€?
         @dataclass
         class StrategyState:
             current_rsi: float = 50.0
             atr: float = 0.0          # 1m ATR
-            atr_ma: float = 0.0       # 1m ATR 杩囧幓 x 灏忔椂鍧囧€?
+            atr_ma: float = 0.0       # 1m ATR 过去 x 小时鍧囧€?
             
             grid_lower: float = 0.0
             grid_upper: float = 0.0
@@ -56,47 +56,47 @@ class GridStrategyV70Razor(BaseStrategy):
             last_grid_reset: Optional[datetime] = None
             last_buy_time: Optional[datetime] = None
             last_buy_price: float = 0.0
-            last_trade_price: float = 0.0 # 鐢ㄤ簬甯告€佺綉鏍肩Щ鍔ㄤ腑鏋?
+            last_trade_price: float = 0.0 # 用于甯告€佺綉格移动中鏋?
 
         self.state = StrategyState()
 
     def _load_params(self):
-        """鍔犺浇杩愯鍙傛暟"""
+        """加载运行参数"""
         if os.path.exists(self.params_path):
             try:
                 with open(self.params_path, 'r', encoding='utf-8') as f:
                     self.params.update(json.load(f))
             except Exception as e:
-                print(f"[V7.0-Razor] 鍔犺浇鍙傛暟澶辫触: {e}")
+                print(f"[V7.0-Razor] 加载参数失败: {e}")
         
         if os.path.exists(self.meta_path):
             try:
                 with open(self.meta_path, 'r', encoding='utf-8') as f:
                     self.param_metadata = json.load(f)
             except Exception as e:
-                print(f"[V7.0-Razor] 鍔犺浇鍏冩暟鎹け璐? {e}")
+                print(f"[V7.0-Razor] 加载元数据失璐? {e}")
 
     def initialize(self):
         super().initialize()
-        print(f"[V7.0-Razor] {self.name} 鍒濆鍖栧畬鎴?)
+        print(f"[V7.0-Razor] {self.name} 初始化完鎴?)
 
     def on_data(self, data: MarketData, context: Optional[StrategyContext]) -> List[Signal]:
         if not self._initialized:
             self.initialize()
 
-        # 1. 鏇存柊鏁版嵁 (1m 涓?5m)
+        # 1. 更新数据 (1m 涓?5m)
         self._update_data(data)
         
-        # 鎸囨爣璁＄畻闇€瑕佽冻澶熸暟鎹?
+        # 指标计算闇€要足够数鎹?
         if len(self._data_5m) < 30 or len(self._data_1m) < 30:
             return []
 
-        # 2. 璁＄畻绾?RSI 鍜?ATR
+        # 2. 计算绾?RSI 鍜?ATR
         self._calculate_indicators()
 
-        # 3. 榛戝ぉ楣呴鎺ф娴?
+        # 3. 黑天鹅风控检娴?
         if self._check_halt(data, context):
-            # 濡傛灉瑙﹀彂鐔旀柇涓旀寔浠擄紝鎶涘嚭娓呬粨淇″彿 (鍏ㄥ钩)
+            # 如果触发熔断且持仓，抛出清仓信号 (全平)
             if self.state.is_halted and context:
                 pos = context.positions.get(self.symbol)
                 if pos and pos.size > 0:
@@ -109,16 +109,16 @@ class GridStrategyV70Razor(BaseStrategy):
                     )]
             return []
 
-        # 4. ATR 鍔ㄦ€佺綉鏍肩鐞?
+        # 4. ATR 鍔ㄦ€佺綉格管鐞?
         self._manage_grid(data)
 
-        # 5. RSI 鍒嗗眰鍝嶅簲鐢熸垚淇″彿
+        # 5. RSI 分层响应生成信号
         if context:
             return self._generate_signals(data, context)
         return []
 
     def _update_data(self, data: MarketData):
-        """鏇存柊 1m 鍜?5m 鏁版嵁"""
+        """更新 1m 鍜?5m 数据"""
         ts = data.timestamp
         # --- 1m K绾?---
         bar_1m_ts = ts.replace(second=0, microsecond=0)
@@ -148,23 +148,23 @@ class GridStrategyV70Razor(BaseStrategy):
             self._data_5m.append(data)
 
     def _calculate_indicators(self):
-        """浠呰绠楁牳蹇?RSI 鍜?鍔ㄦ€佺綉鏍煎繀闇€鐨?ATR"""
+        """仅计算核蹇?RSI 鍜?鍔ㄦ€佺綉格必闇€鐨?ATR"""
         # 5m RSI
         closes_5m = pd.Series([d.close for d in self._data_5m])
         self.state.current_rsi = self._rsi(closes_5m, self.params.get('signals', {}).get('rsi_period', 14))
         
-        # 1m ATR (鐢ㄤ簬椋庢帶)
+        # 1m ATR (用于风控)
         highs_1m = pd.Series([d.high for d in self._data_1m])
         lows_1m = pd.Series([d.low for d in self._data_1m])
         closes_1m = pd.Series([d.close for d in self._data_1m])
-        # 浣跨敤 14 鍛ㄦ湡 ATR
+        # 使用 14 周期 ATR
         atr_1m_val = self._atr(highs_1m, lows_1m, closes_1m, 14)
         self.state.atr = atr_1m_val
         
-        # 缁熻杩囧幓 6 灏忔椂 (360 鍒嗛挓=360鏍?m K绾? ATR鍧囧€?
+        # 统计过去 6 小时 (360 分钟=360鏍?m K绾? ATR鍧囧€?
         lookback = 360
         if len(self._data_1m) >= lookback:
-            # 绠€鍖栵細鐢ㄦ敹鐩樹环鐨勬尝鍔ㄤ唬鐞嗗巻鍙?ATR 鍧囧€间及绠楋紝閬垮厤鍏ㄩ噺璁＄畻鎬ц兘鎹熻€?
+            # 箢㻯：用收盘价的波动代理历鍙?ATR 鍧囧€间及算，避免全量计算性能鎹熻€?
             hist_closes = closes_1m.iloc[-lookback:]
             hist_highs = highs_1m.iloc[-lookback:]
             hist_lows = lows_1m.iloc[-lookback:]
@@ -173,24 +173,24 @@ class GridStrategyV70Razor(BaseStrategy):
             self.state.atr_ma = atr_1m_val
 
     def _manage_grid(self, data: MarketData):
-        """鍔ㄦ€佽绠楃綉鏍艰寖鍥达細鍩轰簬 ATR 涔樻暟"""
+        """鍔ㄦ€佽算网格范围：基于 ATR 乘数"""
         grid_params = self.params.get('grid', {})
         min_spacing = grid_params.get('min_spacing', 0.003)
         atr_mult = grid_params.get('atr_multiplier', 0.15)
         layers = self.params.get('trading', {}).get('grid_layers', 5)
 
-        # 鍔ㄦ€侀棿璺濊绠?Spacing = max(min_spacing, (ATR / Price) * multiplier)
+        # 鍔ㄦ€侀棿距计绠?Spacing = max(min_spacing, (ATR / Price) * multiplier)
         if data.close > 0 and self.state.atr > 0:
             atr_pct = (self.state.atr / data.close) * atr_mult
             spacing_pct = max(min_spacing, atr_pct)
         else:
             spacing_pct = min_spacing
 
-        # 浠ュ綋鍓嶄环鏍间负涓灑锛屼笂涓嬪睍寮€缃戞牸杈圭晫 (绠€鍗曢€昏緫)锛屾垨鑰呬娇鐢ㄨ繎鏈熼珮浣庣偣
-        # 鏀硅繘锛歏7.1 閲囩敤涓婁竴娆′氦鏄撲环鎴栧綋鍓嶄环涓哄熀鍑嗕笅鎺€?
+        # 以当前价格Ϊ中枢，上下展寮€网格边界 (绠€鍗曢€昏緫)，或者使用近期高低点
+        # 改进：V7.1 采用上一次交易价或当前价为基准下鎺€?
         anchor = self.state.last_trade_price if self.state.last_trade_price > 0 else data.close
         
-        # 缃戞牸瑕嗙洊鑼冨洿
+        # 网格覆盖范围
         total_range_pct = spacing_pct * layers
         self.state.grid_upper = anchor * (1 + total_range_pct * 0.5)
         self.state.grid_lower = anchor * (1 - total_range_pct * 0.5)
@@ -198,12 +198,12 @@ class GridStrategyV70Razor(BaseStrategy):
         self.state.grid_lines = np.linspace(self.state.grid_lower, self.state.grid_upper, layers + 1).tolist()
 
     def _check_halt(self, data: MarketData, context: Optional[StrategyContext]) -> bool:
-        """榛戝ぉ楣呴鎺э細ATR寮傚父婵€澧炲垽瀹?""
+        """黑天鹅风控：ATR异常婵€增判瀹?""
         if self.state.is_halted:
             if self.state.resume_time and data.timestamp >= self.state.resume_time:
                 self.state.is_halted = False
                 self.state.halt_reason = ""
-                print(f"[V7.0-Razor] 鎭㈠浜ゆ槗")
+                print(f"[V7.0-Razor] 恢复交易")
             else:
                 return True
         
@@ -213,9 +213,9 @@ class GridStrategyV70Razor(BaseStrategy):
         if self.state.atr_ma > 0 and self.state.atr > self.state.atr_ma * black_swan_mult:
             self.state.is_halted = True
             self.state.halt_reason = "Black Swan (ATR Surge)"
-            # 榛樿鍐峰嵈 15 鍒嗛挓
+            # 默认冷却 15 分钟
             self.state.resume_time = data.timestamp + timedelta(minutes=15)
-            print(f"[V7.0-Razor] 瑙﹀彂鐔旀柇: {self.state.halt_reason}")
+            print(f"[V7.0-Razor] 触发熔断: {self.state.halt_reason}")
             return True
             
         return False
@@ -236,7 +236,7 @@ class GridStrategyV70Razor(BaseStrategy):
 
         current_layers = int(round(pos_size * data.close / layer_value)) if pos_size > 0 else 0
 
-        # --- 闃舵姝㈢泩閫昏緫 (Ladder Take-Profit) ---
+        # --- 阶梯止盈逻辑 (Ladder Take-Profit) ---
         sell_ratio = 0.0
         if pos_size > 0:
             rsi_sell_normal = signal_params.get('rsi_sell_normal', 70)
@@ -245,31 +245,31 @@ class GridStrategyV70Razor(BaseStrategy):
             
             sig_type = ""
             
-            # 鍒ゆ柇鎶涘敭灞傜骇 (鏋佸害璐┆ = 鍗?灞?澶ф瘮渚嬶紝璐┆ = 鍗?灞?鏍囧噯姣斾緥)
+            # 判断抛售层级 (极度贪婪 = 鍗?灞?大比例，贪婪 = 鍗?灞?标准比例)
             if self.state.current_rsi > rsi_sell_extreme:
-                # 鏋佺璐┆锛氬弻鍊嶅崠鍑?(2灞傛垨鍓╀綑鎬婚噺鐨勫緢澶ф瘮渚?
-                sig_type = "EXTREME GREED (鏋佸害璐┆)"
-                # 灏濊瘯鏍规嵁闃舵琛ㄥ崠鍑哄浠斤紝绠€鍗曞鐞嗕负鍗栧嚭 2 浠芥瘮渚?
+                # 极端贪婪：双倍卖鍑?(2层或剩余总量的很大比渚?
+                sig_type = "EXTREME GREED (极度贪婪)"
+                # 尝试根据阶梯表卖出多份，箢㵥处理为卖出 2 份比渚?
                 if len(tp_ladder) >= 2:
                     sell_ratio = tp_ladder[0] + tp_ladder[1]
                 else:
                     sell_ratio = 0.6 # fallback
-                # 涓嶈秴杩?1.0
+                # 不超杩?1.0
                 sell_ratio = min(1.0, sell_ratio) 
-                # 闃叉鏋佸叾缁嗗井娈嬬暀
+                # 防止极其细微残留
                 if pos_size * (1 - sell_ratio) * data.close < 10: 
                     sell_ratio = 1.0
 
             elif self.state.current_rsi > rsi_sell_normal:
-                sig_type = "GREED (璐┆)"
+                sig_type = "GREED (贪婪)"
                 sell_ratio = tp_ladder[0] if tp_ladder else 0.3
-                # 闃叉缁嗗井娈嬬暀
+                # 防止细微残留
                 if pos_size * (1 - sell_ratio) * data.close < 10: 
                     sell_ratio = 1.0
                     
             if sell_ratio > 0:
                 sell_amount = pos_size * sell_ratio
-                reason = f"Razor Sell [{sig_type}]: RSI={self.state.current_rsi:.1f} 闃舵姝㈢泩姣斾緥={sell_ratio*100:.0f}%"
+                reason = f"Razor Sell [{sig_type}]: RSI={self.state.current_rsi:.1f} 阶梯止盈比例={sell_ratio*100:.0f}%"
                 signals.append(Signal(
                     timestamp=data.timestamp,
                     symbol=self.symbol,
@@ -278,9 +278,9 @@ class GridStrategyV70Razor(BaseStrategy):
                     reason=reason
                 ))
                 self.state.last_trade_price = data.close
-                # 鍙戝嚭鍗栧嚭淇″彿鍚庡喎鍗翠竴娈垫椂闂达紙閫氳繃杩囨护鍚屽悜淇″彿瀹炵幇锛夛紝褰撳墠鐢卞紩鎿庨鐜囨帶鍒讹紝姝ゅ涓嶅仛寮洪攣
+                # 发出卖出信号后冷却一段时间（通过过滤同向信号实现），当前由引擎频率控制，此处不做强锁
 
-        # --- 鍒嗗眰涔板叆閫昏緫 ---
+        # --- 分层买入逻辑 ---
         rsi_buy_normal = signal_params.get('rsi_buy_normal', 28)
         rsi_buy_extreme = signal_params.get('rsi_buy_extreme', 20)
         
@@ -288,32 +288,32 @@ class GridStrategyV70Razor(BaseStrategy):
         buy_layers_req = 0
         sig_type = ""
 
-        # 鐗规畩椋庢帶锛欴OGE 鍐峰嵈鎴栨寔浠撲笂闄?(鍦ㄦ墿灞曞瓙绫绘垨閰嶇疆涓綋鐜?
+        # 特殊风控：DOGE 冷却或持仓上闄?(在扩展子类或配置中体鐜?
         max_pos_percent = risk_params.get('max_position_percent', 100) / 100.0
         current_pos_value = pos_size * data.close
         if current_pos_value >= total_capital * max_pos_percent:
-            # 杈惧埌鎸佷粨涓婇檺
+            # 达到持仓上限
             pass
         elif current_layers < max_layers:
             if self.state.current_rsi < rsi_buy_extreme:
-                buy_layers_req = 2  # 鏋佺鎭愭儳锛屽弻鍊嶄拱鍏?
-                sig_type = "EXTREME FEAR (鏋佸害鎭愭儳 涓ゅ€?"
+                buy_layers_req = 2  # 极端恐惧，双倍买鍏?
+                sig_type = "EXTREME FEAR (极度恐惧 涓ゅ€?"
             elif self.state.current_rsi < rsi_buy_normal:
-                buy_layers_req = 1  # 鎭愭儳锛屾爣鍑嗕拱鍏?
-                sig_type = "FEAR (鎭愭儳 涓€鍊?"
+                buy_layers_req = 1  # 恐惧，标准买鍏?
+                sig_type = "FEAR (恐惧 涓€鍊?"
             
-            # 闄愬埗涓嶈兘瓒呰繃鏈€澶у眰鏁伴檺鍒跺拰鍓╀綑鍙敤璧勯噾
+            # 限制不能超过鏈€大层数限制和剩余可用资金
             buy_layers_req = min(buy_layers_req, max_layers - current_layers)
             
             if buy_layers_req > 0:
-                # 浠锋牸缃戞牸妫€鏌ワ細鍗充娇 RSI 婊¤冻锛岃嫢璺濈涓婃涔板叆浠锋牸澶繎鍒欎笉涔?(寮哄埗缃戞牸闂磋窛)
+                # 价格网格妫€查：即使 RSI 满足，若距离上次买入价格太近则不涔?(强制网格间距)
                 grid_params = self.params.get('grid', {})
                 min_spacing = grid_params.get('min_spacing', 0.003)
                 if self.state.last_buy_price > 0:
                     price_drop = (self.state.last_buy_price - data.close) / self.state.last_buy_price
                     if price_drop > min_spacing:
                         can_buy = True
-                    # 鎴栬€呭鏋滄槸绌轰粨锛岀洿鎺ュ彲浠ヤ拱
+                    # 鎴栬€呭果是空仓，直接可以买
                     elif current_layers == 0:
                         can_buy = True
                 else:
@@ -322,7 +322,7 @@ class GridStrategyV70Razor(BaseStrategy):
         if can_buy:
             buy_usdt = layer_value * buy_layers_req
             if context.cash >= buy_usdt * 0.95:  
-                reason = f"Razor Buy [{sig_type}]: RSI={self.state.current_rsi:.1f} 鎶曞叆灞傛暟={buy_layers_req}"
+                reason = f"Razor Buy [{sig_type}]: RSI={self.state.current_rsi:.1f} 投入层数={buy_layers_req}"
                 signals.append(Signal(
                     timestamp=data.timestamp,
                     symbol=self.symbol,
@@ -335,18 +335,18 @@ class GridStrategyV70Razor(BaseStrategy):
                 self.state.last_buy_price = data.close
                 self.state.last_trade_price = data.close
 
-        # --- 甯告€佺綉鏍奸€昏緫 (V7.1 RSI 28-70 涔嬮棿杩愯) ---
+        # --- 甯告€佺綉鏍奸€昏緫 (V7.1 RSI 28-70 之间运行) ---
         if not can_buy and sell_ratio == 0.0:
-            # 鎰忓懗鐫€娌℃湁瑙﹀彂鏋佺 RSI 鐨勪拱鍏ュ拰鍗栧嚭
+            # 意味鐫€没有触发极端 RSI 的买入和卖出
             grid_params = self.params.get('grid', {})
             min_spacing = grid_params.get('min_spacing', 0.003)
             
-            # 浣庡惛 (璺岀牬涓嬭建 涓?鏈夎祫閲戞湁灞傛暟)
+            # 低吸 (跌破下轨 涓?有资金有层数)
             if data.close < self.state.grid_lower:
                 if current_layers < max_layers:
                     buy_usdt = layer_value
                     if context.cash >= buy_usdt * 0.95:
-                        grid_buy_reason = f"Normal Grid Buy: 浠锋牸璺岀牬涓嬭建 ({data.close:.2f} < {self.state.grid_lower:.2f})"
+                        grid_buy_reason = f"Normal Grid Buy: 价格跌破下轨 ({data.close:.2f} < {self.state.grid_lower:.2f})"
                         signals.append(Signal(
                             timestamp=data.timestamp,
                             symbol=self.symbol,
@@ -359,12 +359,12 @@ class GridStrategyV70Razor(BaseStrategy):
                         self.state.last_buy_price = data.close
                         self.state.last_trade_price = data.close
             
-            # 楂樻姏 (绐佺牬涓婅建 涓?鏈夋寔浠?
+            # 高抛 (突破上轨 涓?有持浠?
             elif data.close > self.state.grid_upper:
                 if pos_size > 0:
-                    sell_amount = pos_size / max(1, current_layers) # 鍗栧嚭1灞?
-                    # 褰撳墠浠锋牸璺濈涓婃浜ゆ槗澶繎鍒欎笉鍗栵紝鎴栬€呰繖閲屽己鍒跺崠
-                    grid_sell_reason = f"Normal Grid TP: 浠锋牸绐佺牬涓婅建 ({data.close:.2f} > {self.state.grid_upper:.2f})"
+                    sell_amount = pos_size / max(1, current_layers) # 卖出1灞?
+                    # 当前价格距离上次交易太近则不卖，鎴栬€呰繖里强制卖
+                    grid_sell_reason = f"Normal Grid TP: 价格突破上轨 ({data.close:.2f} > {self.state.grid_upper:.2f})"
                     signals.append(Signal(
                         timestamp=data.timestamp,
                         symbol=self.symbol,
@@ -374,8 +374,8 @@ class GridStrategyV70Razor(BaseStrategy):
                     ))
                     self.state.last_trade_price = data.close
             
-            # 缃戞牸閲嶇疆鏈哄埗锛堝亸绂昏繃澶э級
-            # 渚嬪濡傛灉浠锋牸鑴辩閿氱偣瓒呰繃涓€瀹氳窛绂诲苟涓旀病鏈夋垚浜ゅ彂鐢燂紝涓诲姩璺熼殢
+            # 网格重置机制（偏离过大）
+            # 例如如果价格脱离ê点超过丢㶨距离并且没有成交发生，主动跟随
             if abs(data.close - self.state.last_trade_price) / (self.state.last_trade_price or data.close) > min_spacing * 3:
                 self.state.last_trade_price = data.close
                 self.state.last_grid_reset = data.timestamp
@@ -400,19 +400,19 @@ class GridStrategyV70Razor(BaseStrategy):
         rsi = self.state.current_rsi
         sp = self.params.get('signals', {})
         if self.state.is_halted:
-            signal_text = f"鐔旀柇: {self.state.halt_reason}"
+            signal_text = f"熔断: {self.state.halt_reason}"
             signal_color = "sell"
         elif rsi < sp.get('rsi_buy_extreme', 20):
-            signal_text = "鏋佸害鎭愭儳"
+            signal_text = "极度恐惧"
             signal_color = "buy"
         elif rsi < sp.get('rsi_buy_normal', 28):
-            signal_text = "鎭愭儳"
+            signal_text = "恐惧"
             signal_color = "buy"
         elif rsi > sp.get('rsi_sell_extreme', 80):
-            signal_text = "鏋佸害璐┆"
+            signal_text = "极度贪婪"
             signal_color = "sell"
         elif rsi > sp.get('rsi_sell_normal', 70):
-            signal_text = "璐┆"
+            signal_text = "贪婪"
             signal_color = "sell"
 
         pos_count = 0
@@ -437,8 +437,8 @@ class GridStrategyV70Razor(BaseStrategy):
             'atr': float(np.round(self.state.atr, 2)),
             'atr_ma': float(np.round(self.state.atr_ma, 2)),
             'atrVal': float(np.round(self.state.atr, 2)),
-            'marketRegime': '闇囪崱/鏈煡',
-            'vol_trend': '骞崇ǔ',
+            'marketRegime': '震荡/未知',
+            'vol_trend': '平稳',
             'current_volume': float(self._data_1m[-1].volume) if self._data_1m else 0.0,
             'signal_text': signal_text,
             'signal_color': signal_color,

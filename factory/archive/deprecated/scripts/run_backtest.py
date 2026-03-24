@@ -1,7 +1,7 @@
-﻿"""
-鍥炴祴鍏ュ彛鑴氭湰
+"""
+回测入口脚本
 
-浣跨敤绀轰緥:
+使用示例:
     python run_backtest.py --data btc_1m.csv --capital 10000
 """
 
@@ -16,37 +16,37 @@ from console.engines import BacktestEngine
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Grid RSI 绛栫暐鍥炴祴')
+    parser = argparse.ArgumentParser(description='Grid RSI 策略回测')
     parser.add_argument('--data', type=str, default='btc_1m.csv',
-                        help='鍘嗗彶鏁版嵁鏂囦欢璺緞')
+                        help='历史数据文件路径')
     parser.add_argument('--symbol', type=str, default='BTC-USDT',
-                        help='浜ゆ槗瀵?)
+                        help='交易瀵?)
     parser.add_argument('--capital', type=float, default=10000.0,
-                        help='鍒濆璧勯噾')
+                        help='初始资金')
     parser.add_argument('--grid-levels', type=int, default=10,
-                        help='缃戞牸灞傛暟')
+                        help='网格层数')
     parser.add_argument('--rsi-period', type=int, default=14,
-                        help='RSI鍛ㄦ湡')
+                        help='RSI周期')
     parser.add_argument('--output', type=str, default=None,
-                        help='缁撴灉淇濆瓨璺緞')
+                        help='结果保存路径')
     
     args = parser.parse_args()
     
     print(f"\n{'='*60}")
-    print(f"Grid RSI 绛栫暐鍥炴祴")
+    print(f"Grid RSI 策略回测")
     print(f"{'='*60}")
-    print(f"鏁版嵁鏂囦欢: {args.data}")
-    print(f"浜ゆ槗瀵? {args.symbol}")
-    print(f"鍒濆璧勯噾: ${args.capital:,.2f}")
+    print(f"数据文件: {args.data}")
+    print(f"交易瀵? {args.symbol}")
+    print(f"初始资金: ${args.capital:,.2f}")
     print(f"{'='*60}\n")
     
-    # 1. 鍒涘缓鏁版嵁娴?
+    # 1. 创建数据娴?
     data_feed = CSVDataFeed(
         filepath=args.data,
         symbol=args.symbol
     )
     
-    # 2. 鍒涘缓绛栫暐
+    # 2. 创建策略
     strategy = GridRSIStrategy(
         symbol=args.symbol,
         grid_levels=args.grid_levels,
@@ -55,14 +55,14 @@ def main():
         trailing_stop=True
     )
     
-    # 3. 鍒涘缓鎵ц鍣?
+    # 3. 创建执行鍣?
     executor = PaperExecutor(
         initial_capital=args.capital,
         fee_rate=0.001,
         slippage_model='adaptive'
     )
     
-    # 4. 鍒涘缓寮曟搸骞惰繍琛?
+    # 4. 创建引擎并运琛?
     engine = BacktestEngine(
         strategy=strategy,
         executor=executor,
@@ -71,17 +71,17 @@ def main():
     
     def progress_callback(current, total):
         if current % 1000 == 0:
-            print(f"杩涘害: 宸插鐞?{current} 鏉℃暟鎹?)
+            print(f"进度: 已处鐞?{current} 条数鎹?)
     
     results = engine.run(data_feed, progress_callback)
     
-    # 5. 鎵撳嵃鎶ュ憡
+    # 5. 打印报告
     engine.print_report(results)
     
-    # 6. 淇濆瓨缁撴灉锛堝彲閫夛級
+    # 6. 保存结果（可选）
     if args.output:
         import json
-        # 绠€鍖栫粨鏋滅敤浜庝繚瀛?
+        # 箢㻯结果用于保瀛?
         save_results = {
             'total_return': results['total_return'],
             'max_drawdown': results['max_drawdown'],
@@ -92,7 +92,7 @@ def main():
         }
         with open(args.output, 'w') as f:
             json.dump(save_results, f, indent=2)
-        print(f"\n缁撴灉宸蹭繚瀛樺埌: {args.output}")
+        print(f"\n结果已保存到: {args.output}")
     
     return 0
 

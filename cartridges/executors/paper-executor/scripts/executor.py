@@ -8,7 +8,7 @@ from console.core import (
     Order, FillEvent, Position, OrderStatus, 
     Side, OrderType, MarketData
 )
-from cartridges.bridge.executors.base import BaseExecutor
+from cartridges.executors.base import BaseExecutor
 
 class PaperExecutorSkill(BaseExecutor):
     """

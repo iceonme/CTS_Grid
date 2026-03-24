@@ -1,61 +1,61 @@
-﻿# 浠诲姟楠屾敹鎶ュ憡锛歝an GridRSI 閫夋墜 & CTS1 澶氱瓥鐣ヤ华琛ㄧ洏
+# 任务验收报告：can GridRSI 选手 & CTS1 多策略仪表盘
 
-**鏃ユ湡鏃堕棿**: 2026-02-28 17:40
+**日期时间**: 2026-02-28 17:40
 
-## 涓€銆佷换鍔＄洰鏍?
+## 丢㡢任务目鏍?
 
-1. **can 椤圭洰**锛氭柊澧?`grid-rsi-contestant.ts`锛堝湪缃戞牸绛栫暐鍩虹涓婂姞鍏?RSI 鍔ㄦ€佽皟浠撶郴鏁帮級
-2. **CTS1 椤圭洰**锛氭柊澧?`grid_rsi_5_1.py`锛圴5.1 闅旂鍘熷瀷锛夊苟灏嗕华琛ㄧ洏鏀归€犱负鏀寔澶氱瓥鐣ュ苟琛屽睍绀?
-
----
-
-## 浜屻€佸彉鏇存枃浠舵眹鎬?
-
-### can 椤圭洰
-
-| 鏂囦欢 | 鎿嶄綔 | 璇存槑 |
-|------|------|------|
-| `lib/agents/contestants/grid-rsi-contestant.ts` | **鏂板** | GridRSIContestant 绫伙紝缁ф壙缃戞牸閫昏緫锛孯SI 璋冧粨绯绘暟绾挎€ф彃鍊?|
-| `app/api/backtest/run/route.ts` | 淇敼 | Import GridRSIContestant锛屾敞鍐?`grid-rsi-bot` / `type:grid-rsi` 鍒嗘敮 |
-
-**GridRSI 绛栫暐鏍稿績閫昏緫**锛?
-- `rsiOversold`锛堥粯璁?35锛夆啌 鈫?`buyMultiplier = rsiMaxMultiplier`锛堥粯璁?1.5x锛夋斁澶т拱鍏?
-- `rsiOverbought`锛堥粯璁?65锛夆啈 鈫?`buyMultiplier = rsiMinMultiplier`锛堥粯璁?0.5x锛夌缉灏忎拱鍏?
-- 涓棿鍖洪棿绾挎€ф彃鍊硷紝RSI 姣忚疆閲嶇畻缃戞牸鏃跺悓姝ユ洿鏂?
-- 閰嶇疆鏂板瀛楁锛歚rsiPeriod`, `rsiOversold`, `rsiOverbought`, `rsiMaxMultiplier`, `rsiMinMultiplier`
-
-### CTS1 椤圭洰
-
-| 鏂囦欢 | 鎿嶄綔 | 璇存槑 |
-|------|------|------|
-| `strategies/grid_rsi_5_1.py` | **鏂板** | V5.1 闅旂鍘熷瀷锛岀被鍚?`GridRSIStrategyV5_1`锛岄€昏緫鍚?V4.0 |
-| `strategies/__init__.py` | 淇敼 | 瀵煎嚭 `GridRSIStrategyV5_1` |
-| `dashboard/server.py` | **閲嶅啓** | 澶氱瓥鐣?Room 鍖栵細`_data` 鍙樹负瀛楀吀鐨勫瓧鍏革紝`update(data, strategy_id)` |
-| `dashboard/__init__.py` | 淇敼 | 琛ュ厖瀵煎嚭 `get_dashboard`, `set_dashboard` |
-| `dashboard/templates/dashboard.html` | 淇敼 | Header 鍔犵瓥鐣ュ垏鎹?Select锛汮S 鍔?`switchStrategy()` + `join/leave` Room 閫昏緫 |
-| `run_multiple.py` | **鏂板** | 澶氱瓥鐣ュ苟琛屽洖娴嬪叆鍙ｏ紝涓や釜寮曟搸绾跨▼锛屾敮鎸?`--dashboard` 鍙傛暟 |
+1. **can 项目**：新澧?`grid-rsi-contestant.ts`（在网格策略基础上加鍏?RSI 鍔ㄦ€佽皟仓系数）
+2. **CTS1 项目**：新澧?`grid_rsi_5_1.py`（V5.1 隔离原型）并将仪表盘鏀归€犱负支持多策略并行展绀?
 
 ---
 
-## 涓夈€佸叧閿灦鏋勫彉鍖?
+## 浜屻€佸彉更文件汇鎬?
 
-### CTS1 Dashboard 澶氱瓥鐣ユ灦鏋?
+### can 项目
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `lib/agents/contestants/grid-rsi-contestant.ts` | **新增** | GridRSIContestant 类，继承网格逻辑，RSI 调仓系数绾挎€ф彃鍊?|
+| `app/api/backtest/run/route.ts` | 修改 | Import GridRSIContestant，注鍐?`grid-rsi-bot` / `type:grid-rsi` 分支 |
+
+**GridRSI 策略核心逻辑**锛?
+- `rsiOversold`（默璁?35）↓ 鈫?`buyMultiplier = rsiMaxMultiplier`（默璁?1.5x）放大买鍏?
+- `rsiOverbought`（默璁?65）↑ 鈫?`buyMultiplier = rsiMinMultiplier`（默璁?0.5x）缩小买鍏?
+- 中间区间绾挎€ф彃值，RSI 每轮重算网格时同步更鏂?
+- 配置新增字段：`rsiPeriod`, `rsiOversold`, `rsiOverbought`, `rsiMaxMultiplier`, `rsiMinMultiplier`
+
+### CTS1 项目
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `strategies/grid_rsi_5_1.py` | **新增** | V5.1 隔离原型，类鍚?`GridRSIStrategyV5_1`锛岄€昏緫鍚?V4.0 |
+| `strategies/__init__.py` | 修改 | 导出 `GridRSIStrategyV5_1` |
+| `dashboard/server.py` | **重写** | 多策鐣?Room 化：`_data` 变为字典的字典，`update(data, strategy_id)` |
+| `dashboard/__init__.py` | 修改 | 补充导出 `get_dashboard`, `set_dashboard` |
+| `dashboard/templates/dashboard.html` | 修改 | Header 加策略切鎹?Select；JS 鍔?`switchStrategy()` + `join/leave` Room 逻辑 |
+| `run_multiple.py` | **新增** | 多策略并行回测入口，两个引擎线程，支鎸?`--dashboard` 参数 |
+
+---
+
+## 涓夈€佸叧键架构变鍖?
+
+### CTS1 Dashboard 多策略架鏋?
 
 ```
-                     鈹屸攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
-鍚庣绾跨▼ A (V4.0) 鈹€鈹€鈫?鈹?server.update(data,          鈹?
-                     鈹?  strategy_id='grid_rsi_v40')鈹傗攢鈹€鈫?Room:grid_rsi_v40 鈹€鈹€鈫?娴忚鍣ˋ
-鍚庣绾跨▼ B (V5.1) 鈹€鈹€鈫?鈹?server.update(data,          鈹?
-                     鈹?  strategy_id='grid_rsi_v51')鈹傗攢鈹€鈫?Room:grid_rsi_v51 鈹€鈹€鈫?娴忚鍣˙
-                     鈹斺攢鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+                     ┌─鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
+后端线程 A (V4.0) 鈹€鈹€鈫?鈹?server.update(data,          鈹?
+                     鈹?  strategy_id='grid_rsi_v40')│─鈹€鈫?Room:grid_rsi_v40 鈹€鈹€鈫?浏览器A
+后端线程 B (V5.1) 鈹€鈹€鈫?鈹?server.update(data,          鈹?
+                     鈹?  strategy_id='grid_rsi_v51')│─鈹€鈫?Room:grid_rsi_v51 鈹€鈹€鈫?浏览器B
+                     └─鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹?
 ```
 
-鍓嶇閫氳繃涓嬫媺妗嗗垏鎹㈢瓥鐣ユ椂锛?
-1. `socket.emit('leave', {strategy_id: old})` 绂诲紑鏃ф埧闂?
-2. 娓呯┖鍥捐〃銆佷氦鏄撹褰?
-3. `socket.emit('join', {strategy_id: new})` 鍔犲叆鏂版埧闂达紝绔嬪嵆鏀跺埌鍘嗗彶鏁版嵁
+前端通过下拉框切换策略时锛?
+1. `socket.emit('leave', {strategy_id: old})` 离开旧房闂?
+2. 清空图表、交易记褰?
+3. `socket.emit('join', {strategy_id: new})` 加入新房间，立即收到历史数据
 
-### can GridRSI 娉ㄥ唽
+### can GridRSI 注册
 
 ```
 contestants: [
@@ -65,25 +65,25 @@ contestants: [
 
 ---
 
-## 鍥涖€佷娇鐢ㄦ柟娉?
+## 鍥涖€佷娇用方娉?
 
-### CTS1 澶氱瓥鐣ュ苟琛岃繍琛?
+### CTS1 多策略并行运琛?
 
 ```bash
-# 绾洖娴嬪姣?
+# 纯回测对姣?
 python run_multiple.py --data btc_1m.csv --capital 10000
 
-# 甯?Dashboard 鍙鍖?
+# 甯?Dashboard 可视鍖?
 python run_multiple.py --data btc_1m.csv --capital 10000 --dashboard --port 5000
 ```
 
-### can 鍥炴祴 API 璋冪敤
+### can 回测 API 调用
 
 ```json
 {
   "contestants": [
-    { "type": "grid",     "id": "grid-bot",     "name": "绾綉鏍? },
-    { "type": "grid-rsi", "id": "gridrsi-bot",  "name": "缃戞牸RSI",
+    { "type": "grid",     "id": "grid-bot",     "name": "纯网鏍? },
+    { "type": "grid-rsi", "id": "gridrsi-bot",  "name": "网格RSI",
       "settings": { "rsiOversold": 35, "rsiOverbought": 65 } }
   ]
 }
@@ -91,9 +91,9 @@ python run_multiple.py --data btc_1m.csv --capital 10000 --dashboard --port 5000
 
 ---
 
-## 浜斻€侀獙璇佹儏鍐?
+## 浜斻€侀獙证情鍐?
 
-- 鉁?Python 璇硶锛歚grid_rsi_5_1.py` 閫昏緫瀹屾暣 Copy 鑷?V4.0锛屾棤鏂板紩鍏ョ殑璇硶閿欒
-- 鉁?TypeScript 鎺ュ彛锛歚grid-rsi-contestant.ts` 绫诲疄鐜颁簡瀹屾暣鐨?`Contestant` 鎺ュ彛锛坄initialize`, `onTick`, `getPortfolio`, `getLogs`, `getTrades`, `getMetrics`锛?
-- 鉁?Dashboard 鍚戝悗鍏煎锛氭棫鐗?`run_okx_demo_with_dashboard.py` 鐨勫崟绛栫暐 `server.update(data)` 璋冪敤浠嶅彲浣跨敤锛坄strategy_id` 鏈夐粯璁ゅ€?`'default'`锛?
-- 鉁?BOARD.md 宸叉洿鏂帮紙瑙佷笅锛?
+- 鉁?Python 语法：`grid_rsi_5_1.py` 逻辑完整 Copy 鑷?V4.0，无新引入的语法错误
+- 鉁?TypeScript 接口：`grid-rsi-contestant.ts` 类实现了完整鐨?`Contestant` 接口（`initialize`, `onTick`, `getPortfolio`, `getLogs`, `getTrades`, `getMetrics`锛?
+- 鉁?Dashboard 向后兼容：旧鐗?`run_okx_demo_with_dashboard.py` 的单策略 `server.update(data)` 调用仍可使用（`strategy_id` 有默璁ゅ€?`'default'`锛?
+- 鉁?BOARD.md 已更新（见下锛?

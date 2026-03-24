@@ -1,0 +1,14 @@
+{
+    "symbol": "ETH-USDT-SWAP",
+    "base_position_eth": 0.05,
+    "rsi_period": 14,
+    "leverage_base": 3,
+    "warmup_bars": 360,
+    "params": {
+        "grid_window_hours": 6,
+        "rsi_oversold": 25,
+        "rsi_overbought": 85,
+        "rsi_exit_oversold": 40,
+        "rsi_exit_overbought": 70
+    }
+}

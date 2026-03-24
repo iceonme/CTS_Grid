@@ -63,12 +63,8 @@ class SkillLoader:
 
         # 5. 实例化
         try:
-            if skill_type == "strategy":
-                # 策略类通常需要显式的 name 参数
-                instance = skill_class(name=meta["name"], **params)
-            else:
-                # Bridge 组件 (Feed/Executor) 直接注入参数
-                instance = skill_class(**params)
+            # 所有新一代 Skill (Microservice) 均接受 name 参数
+            instance = skill_class(name=meta["name"], **params)
         except Exception as e:
             import traceback
             traceback.print_exc()

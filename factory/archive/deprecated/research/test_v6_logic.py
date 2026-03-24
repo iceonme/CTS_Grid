@@ -1,18 +1,18 @@
-﻿
+
 import sys
 import os
 from datetime import datetime, timedelta
 
-# 娣诲姞鏍圭洰褰?
+# 添加根目褰?
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from console.core import MarketData, StrategyContext, Side
 from cartridges.strategies import GridMTFStrategyV6_0
 
 def test_v6_strategy():
-    print("=== V6.0 MTF 绛栫暐鍗曞厓娴嬭瘯 ===")
+    print("=== V6.0 MTF 策略单元测试 ===")
     
-    # 1. 鍒濆鍖栫瓥鐣?
+    # 1. 初始化策鐣?
     params = {
         'rsi_buy_threshold': 30,
         'rsi_sell_threshold': 70,
@@ -22,14 +22,14 @@ def test_v6_strategy():
     strat = GridMTFStrategyV6_0(name="Test_V6", **params)
     strat.initialize()
 
-    # 2. 妯℃嫙鏁版嵁鐢熸垚 (浜х敓涓€娈典笅璺岃秼鍔垮悗瑙﹀簳鍙嶅脊)
+    # 2. 模拟数据生成 (产生涓€段下跌趋势后触底反弹)
     base_price = 50000.0
     start_time = datetime(2024, 1, 1, 12, 0)
     
     data_list = []
-    # 鐢熸垚 100 鏍?5m 绾?
+    # 生成 100 鏍?5m 绾?
     for i in range(100):
-        # 涓嬭穼瓒嬪娍
+        # 下跌趋势
         price = base_price - i * 10
         data = MarketData(
             timestamp=start_time + timedelta(minutes=i*5),
@@ -42,8 +42,8 @@ def test_v6_strategy():
         )
         data_list.append(data)
 
-    # 3. 鍠傞鏁版嵁
-    print(f"姝ｅ湪杈撳叆 {len(data_list)} 鏍?K 绾胯繘琛屾祴璇?..")
+    # 3. 喂食数据
+    print(f"正在输入 {len(data_list)} 鏍?K 线进行测璇?..")
     signals_count = 0
     for data in data_list:
         context = StrategyContext(
@@ -55,19 +55,19 @@ def test_v6_strategy():
         signals = strat.on_data(data, context)
         if signals:
             for sig in signals:
-                print(f"[{sig.timestamp}] 淇″彿杈撳嚭: {sig.side.value} | 鏁伴噺: {sig.size} | 鍘熷洜: {sig.reason}")
+                print(f"[{sig.timestamp}] 信号输出: {sig.side.value} | 数量: {sig.size} | 原因: {sig.reason}")
                 signals_count += 1
 
     status = strat.get_status()
-    print("\n绛栫暐鏈€缁堢姸鎬?")
+    print("\n策略鏈€终状鎬?")
     print(f"  RSI: {status['current_rsi']}")
     print(f"  MACD Hist: {status['macdhist']}")
-    print(f"  缃戞牸鑼冨洿: {status['grid_range']}")
+    print(f"  网格范围: {status['grid_range']}")
     
     if signals_count > 0:
-        print("\n[OK] 绛栫暐娴嬭瘯閫氳繃锛岃兘澶熸甯镐骇鍑轰俊鍙枫€?)
+        print("\n[OK] 策略测试通过，能够正常产出信鍙枫€?)
     else:
-        print("\n[WARN] 绛栫暐鏈骇鍑轰俊鍙凤紝鍙兘闇€瑕佹洿闀跨殑鏁版嵁棰勭儹鎴栦笉鍚岀殑琛屾儏妯℃嫙銆?)
+        print("\n[WARN] 策略未产出信号，可能闇€要更长的数据预热或不同的行情模拟銆?)
 
 if __name__ == "__main__":
     test_v6_strategy()

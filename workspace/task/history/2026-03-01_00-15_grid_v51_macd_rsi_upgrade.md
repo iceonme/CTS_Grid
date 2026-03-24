@@ -1,46 +1,46 @@
-﻿# GridRSI V5.1 绛栫暐鍗囩骇 鈥?楠屾敹鏂囨。
-**鏃ユ湡**: 2026-03-01 00:15
+# GridRSI V5.1 策略升级 鈥?验收文档
+**日期**: 2026-03-01 00:15
 
 ---
 
-## 鍙樻洿鎽樿
+## 变更摘要
 
-灏?`strategies/grid_rsi_5_1.py` 浠?V4.0 澶嶅埗鍘熷瀷鍗囩骇涓虹湡姝ｇ殑 V5.1 绛栫暐锛屽疄鐜?`grid_5.1_JeffHuang.md` 绛栫暐璇存槑涓殑鍏ㄩ儴鏍稿績鏀硅繘銆?
+灏?`strategies/grid_rsi_5_1.py` 浠?V4.0 复制原型升级为真正的 V5.1 策略，实鐜?`grid_5.1_JeffHuang.md` 策略说明中的ȫ部核心改进銆?
 
-**鍙慨鏀逛簡 1 涓枃浠?*锛岀被鍚?`GridRSIStrategyV5_1` 鍜屽叕鍏辨帴鍙ｄ笉鍙橈紝鍙棤缂濇帴鍏?`run_cts1.py` 鍜?Dashboard銆?
+**只修改了 1 个文浠?*，类鍚?`GridRSIStrategyV5_1` 和公共接口不变，可无缝接鍏?`run_cts1.py` 鍜?Dashboard銆?
 
 ---
 
-## 鏍稿績鏀瑰姩
+## 核心改动
 
-| 妯″潡 | 鍙樻洿 | 璇存槑 |
+| 模块 | 变更 | 说明 |
 |---|---|---|
-| MACD 璁＄畻 | **鏂板** `_calculate_macd()` | EMA(12,26,9)锛岃繑鍥?macd_line/signal_line/histogram |
-| ATR 璁＄畻 | **鏂板** `_calculate_atr()` | 14 鍛ㄦ湡 ATR锛岄┍鍔ㄧ綉鏍奸棿璺濊嚜閫傚簲 |
-| 瓒嬪娍鍒ゅ埆 | **鏇挎崲** `_detect_market_regime()` | 浠?ADX+MA 鈫?MACD 5 绾у垎绫?(STRONG_BULLISH/BULLISH/NEUTRAL/BEARISH/STRONG_BEARISH) |
-| 鍙屾寚鏍囩‘璁?| **鏂板** `_get_dual_signal()` | 5脳4 鐭╅樀锛氳秼鍔挎柟鍚?脳 RSI 鍖洪棿 鈫?浠撲綅绛夌骇 + 鍔ㄤ綔 |
-| 浠撲綅鍏紡 | **閲嶅啓** `_calculate_position_size()` | 瓒嬪娍寮哄害绯绘暟(+0.3~-0.4) 脳 RSI 鍋忕鎶樻墸 脳 MACD 闆惰酱淇濇姢 |
-| 缃戞牸璁＄畻 | **鏀硅繘** `_calculate_dynamic_grid()` | ATR 鑷€傚簲闂磋窛(0.3%~2.0%) + MACD 瓒嬪娍鍋忕Щ(卤10%~20%) |
-| 椋庢帶瑙勫垯 | **鏂板** 澶氬眰椋庢帶 | RSI>75 绂佷拱 / MACD<0 鍑忎粨50% / 15 鍒嗛挓鍐峰嵈 / 淇濆畧妯″紡 |
-| 绉诲姩姝㈢泩 | **鏀硅繘** `_check_stop_loss()` | 鐩堝埄>5% 涓?MACD 鏌辩姸鍥炬敹缂?鈫?婵€娲伙紱RSI>75 鍑忎粨50% |
-| 寮傚父妫€娴?| **鏂板** `_check_anomaly()` | 杩炵画 3 娆?MACD/RSI 鍐茬獊 鈫?淇濆畧妯″紡(缃戞牸闂磋窛鎵╁ぇ) |
-| 鐘舵€佹姤鍛?| **澧炲己** `get_status()` | 鏂板 macd_line/signal_line/histogram/trend_strength/atr/dual_action 绛夊瓧娈?|
+| MACD 计算 | **新增** `_calculate_macd()` | EMA(12,26,9)，返鍥?macd_line/signal_line/histogram |
+| ATR 计算 | **新增** `_calculate_atr()` | 14 周期 ATR，驱动网格间距自适应 |
+| 趋势判别 | **替换** `_detect_market_regime()` | 浠?ADX+MA 鈫?MACD 5 级分绫?(STRONG_BULLISH/BULLISH/NEUTRAL/BEARISH/STRONG_BEARISH) |
+| 双指标确璁?| **新增** `_get_dual_signal()` | 5×4 矩阵：趋势方鍚?× RSI 区间 鈫?仓位等级 + 动作 |
+| 仓λ公式 | **重写** `_calculate_position_size()` | 趋势强度系数(+0.3~-0.4) × RSI 偏离折扣 × MACD 零轴保护 |
+| 网格计算 | **改进** `_calculate_dynamic_grid()` | ATR 鑷€傚簲间距(0.3%~2.0%) + MACD 趋势偏移(±10%~20%) |
+| 风控规则 | **新增** 多层风控 | RSI>75 禁买 / MACD<0 减仓50% / 15 分钟冷却 / 保守模式 |
+| 移动止盈 | **改进** `_check_stop_loss()` | 盈利>5% 涓?MACD 柱状图收缂?鈫?婵€活；RSI>75 减仓50% |
+| 异常妫€娴?| **新增** `_check_anomaly()` | 连续 3 娆?MACD/RSI 冲突 鈫?保守模式(网格间距扩大) |
+| 鐘舵€佹姤鍛?| **增强** `get_status()` | 新增 macd_line/signal_line/histogram/trend_strength/atr/dual_action 等字娈?|
 
 ---
 
-## 楠岃瘉缁撴灉
+## 验证结果
 
-| 妫€鏌ラ」 | 缁撴灉 |
+| 妫€查项 | 结果 |
 |---|---|
-| 瀵煎叆妫€鏌?`from strategies.grid_rsi_5_1 import GridRSIStrategyV5_1` | 鉁?OK |
-| `get_status()` 杩斿洖 V5.1 鏂板瓧娈?| 鉁?macd_line=0.0, trend=NEUTRAL, atr=0.0, action=hold |
-| 鐜版湁鍗曞厓娴嬭瘯 (5 tests) | 鉁?All passed (0.229s) |
-| 绫诲悕 & 鎺ュ彛绛惧悕鍏煎鎬?| 鉁?涓?`run_cts1.py` / `run_multiple.py` 鏃犵紳琛旀帴 |
+| 导入妫€鏌?`from strategies.grid_rsi_5_1 import GridRSIStrategyV5_1` | 鉁?OK |
+| `get_status()` 返回 V5.1 新字娈?| 鉁?macd_line=0.0, trend=NEUTRAL, atr=0.0, action=hold |
+| 现有单元测试 (5 tests) | 鉁?All passed (0.229s) |
+| 类名 & 接口签名兼容鎬?| 鉁?涓?`run_cts1.py` / `run_multiple.py` 无缝衔接 |
 
 ---
 
-## 淇敼鏂囦欢
+## 修改文件
 
-| 鏂囦欢 | 鎿嶄綔 |
+| 文件 | 操作 |
 |---|---|
-| [grid_rsi_5_1.py](file:///c:/Projects/TradingGarage/CTS1/strategies/grid_rsi_5_1.py) | 閲嶅啓 (588鈫?80 琛? |
+| [grid_rsi_5_1.py](file:///c:/Projects/TradingGarage/CTS1/strategies/grid_rsi_5_1.py) | 重写 (588鈫?80 琛? |

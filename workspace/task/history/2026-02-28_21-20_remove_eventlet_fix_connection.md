@@ -1,20 +1,20 @@
-﻿# 浠诲姟楠屾敹鏂囨。 (Walkthrough)
-**鏃ユ湡**: 2026-02-28
-**浠诲姟**: 绉婚櫎 Eventlet 瑙ｅ喅 OKX 杩炴帴涓嶅彲杈鹃敊璇?
+# 任务验收文档 (Walkthrough)
+**日期**: 2026-02-28
+**任务**: 移除 Eventlet 解决 OKX 连接不可达错璇?
 
-## 璇婃柇涓庝慨澶嶇粨璁?
-1. **鏍规簮纭**: 缁忚繃瀵圭収娴嬭瘯锛岀‘璁?`eventlet.monkey_patch()` 鍦?Windows 鍙婁唬鐞嗙幆澧冧笅浼氬共鎵板師鐢?Socket锛岀洿鎺ュ鑷?`WSAENETUNREACH` 閿欒銆?
-2. **淇鏂规**: 宸蹭粠 `run_okx_demo.py`銆乣dashboard/server.py` 绛夋墍鏈夋牳蹇冨叆鍙ｄ腑绉婚櫎浜?Eventlet 渚濊禆銆?
-3. **楠岃瘉缁撴灉**: 杩愯 `diagnose_network.py` 鏄剧ず鐩存帴杩炴帴 OKX 宸叉仮澶嶆甯革紙HTTP 200 Success锛夛紝涓嶅啀鍑虹幇 ConnectionPool 鎶ラ敊銆?
+## 诊断与修复结璁?
+1. **根Դ确认**: 经过对照测试，确璁?`eventlet.monkey_patch()` 鍦?Windows 及代理环境下会干扰原鐢?Socket，ֱ接导鑷?`WSAENETUNREACH` 错误銆?
+2. **修复方案**: 已从 `run_okx_demo.py`、`dashboard/server.py` 等所有核心入口中移除浜?Eventlet 依赖銆?
+3. **验证结果**: 运行 `diagnose_network.py` 显示直接连接 OKX 已恢复正常（HTTP 200 Success），不再出现 ConnectionPool 报错銆?
 
-## 鍙樻洿鏄庣粏
-- **[绉婚櫎]** 鍏ㄩ」鐩竻鐞嗕簡 `import eventlet` 鍜?`eventlet.monkey_patch()`銆?
-- **[浼樺寲]** `run_okx_demo.py` 澧炲姞浜嗗绌烘暟鎹殑鍋ュ．鎬т繚鎶ゃ€?
-- **[淇]** 鍚屾淇浜嗗绛栫暐 Dashboard 鐨勬暟鎹矾寰勯棶棰樸€?
+## 变更明细
+- **[移除]** 全项目清理了 `import eventlet` 鍜?`eventlet.monkey_patch()`銆?
+- **[优化]** `run_okx_demo.py` 增加了对空数据的健壮性保鎶ゃ€?
+- **[修正]** 同步修正了多策略 Dashboard 的数据路径问棰樸€?
 
-## 杩愯寤鸿
-鎮ㄧ幇鍦ㄥ彲浠ョǔ瀹氳繍琛屼富鑴氭湰浜嗭細
+## 运行建议
+您现在可以稳定运行主脚本了：
 ```powershell
 python run_okx_demo.py
 ```
-鐜板湪鍗充究鍦ㄧ綉缁滄尝鍔ㄦ椂锛岀▼搴忎篃涓嶄細鐢变簬搴曞眰 Socket 鍐茬獊鑰岀洿鎺ユ姤閿欎腑鏂€?
+现在即便在网络波动时，程序也不会由于底层 Socket 冲突而直接报错中鏂€?

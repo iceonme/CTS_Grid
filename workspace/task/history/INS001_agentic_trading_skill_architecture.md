@@ -1,39 +1,39 @@
-﻿# Insight: 鐪熸鐙珛鐨?Agentic Trading Skill 鏋舵瀯璺嚎
+# Insight: 真正独立鐨?Agentic Trading Skill 架构路线
 
-## 鑳屾櫙
-鍦ㄥ畬鎴?Strategy Skill 鍖栵紙Architecture 2.0+锛夊悗锛岀洰鍓嶇殑 Skill 鍖咃紙濡?`zen-7-1`锛夊疄鐜颁簡浠?Runner 鐨勨€滅墿鐞嗘枃浠惰В鑰︹€濓紝浣嗕緷鐒跺瓨鍦ㄢ€滆繍琛屾椂閫昏緫鑰﹀悎鈥濄€?
-姣斿锛歚strategy.py` 涓?`from core import MarketData, Signal` 鐨勮璁★紝瀵艰嚧澶栨潵 Agent锛堝鐩存帴璋冪敤鐨?Claude 鎴栫嫭绔嬪井鏈嶅姟锛夊湪娌℃湁瀹屾暣 CTS1 椤圭洰鐜鏃讹紝鏃犳硶鐙珛杩愯璇ョ瓥鐣ャ€?
+## 背景
+在完鎴?Strategy Skill 化（Architecture 2.0+）后，目前的 Skill 包（濡?`zen-7-1`）实现了浠?Runner 鐨勨€滅墿理文件解鑰︹€濓紝但依然存鍦ㄢ€滆繍行时逻辑耦合鈥濄€?
+比如：`strategy.py` 涓?`from core import MarketData, Signal` 的设计，导致外来 Agent（如直接调用鐨?Claude 或独立微服务）在没有完整 CTS1 项Ŀ环境时，无法独立运行该策鐣ャ€?
 
-## 鐢ㄦ埛鐨勮繘闃舵効鏅?(Agentic Trading Skill)
-绛栫暐 Skill 涓嶅簲璇ヤ粎浠呮槸涓€涓€滆鐗瑰畾 Runner 璋冪敤鐨勪唬鐮佸潡鈥濓紝鑰屽簲璇ユ槸涓€涓?*鑷甫瀹屾暣鍏冭涔変笌鏈€灏忔墽琛岀幆澧冪殑鐙珛鐭ヨ瘑瀹炰綋**銆?
-- **鑳介獙璇?*锛氳嚜甯﹀井鍨嬫ā鎷熷櫒/楠岃瘉鑴氭湰銆?
-- **鑳介棶绛?*锛欰gent 鍙互鎶婂畠浣滀负涓€涓?Tool/Skill 瀛︿範锛屽彧瑕佹彁渚涘閮ㄦ暟鎹簮锛堝浼犲叆褰撳墠涓€灏忔椂鐨?K 绾匡級锛屽畠灏辫兘鐩存帴杩斿洖浜虹被鍙鐨勪氦鏄撳缓璁€?
-- **鑳藉井鏈嶅姟鍖?*锛氫换浣曞吋瀹硅鏍囧噯杞婚噺杈撳叆杈撳嚭鐨勬墽琛岀粓绔紙涓嶉檺浜?CTS1 Runner锛夛紝閮藉彲浠ユ寕杞藉畠銆?
+## 用户的进阶愿鏅?(Agentic Trading Skill)
+策略 Skill 不应该仅仅是涓€涓€滆特定 Runner 调用的代码块”，而应该是涓€涓?*自带完整元语义与鏈€小执行环境的独立֪ʶʵ体**銆?
+- **能验璇?*：自带微型模拟器/验证脚本銆?
+- **能问绛?*：Agent 可以把它作为涓€涓?Tool/Skill 学习，只要提供外部数据源（如传入当前涓€小时鐨?K 线），它就能直接返回人类可读的交易建璁€?
+- **能微服务鍖?*：任何兼容该标准轻量输入输出的执行终端（不限浜?CTS1 Runner），都可以挂载它銆?
 
-## 瀹炵幇璺緞锛堟灦鏋?3.0 棰勭爺鏂瑰悜锛?
-涓轰簡杈惧埌鐪熸鐨勮劚绂诲涓荤嫭绔嬭繍琛岋紝鎴戜滑闇€瑕佸 Skill 鍖呰繘琛屼緷璧栭€嗚浆锛圖ependency Inversion锛夛細
-1. **鑷甫鏍稿績鏁版嵁缁撴瀯瀛樻牴 (Stub)**锛?
-   Skill 鍖呭唴鏂板 `scripts/types.py`锛岃嚜瀹氫箟绠€鍖栫増鐨?`MarketData` 鍜?`Signal` 绛夌被銆傚交搴曠Щ闄?`from core import ...` 杩欑璺ㄥ寘寮轰緷璧栥€?
-   *Runner 绔姞杞芥椂锛屽皢鑷繁鐨勬暟鎹€氳繃鎺ュ彛閫傞厤鍣紙Adapter锛夎浆鎹负 Skill 鍐呯疆鐨勮交閲忔暟鎹粨鏋勩€?
-2. **鏂板 Agent 瀵硅瘽鎺ュ彛 (`scripts/agent_api.py`)**锛?
-   鏆撮湶璇箟鍖栨帴鍙ｏ紝濡?`def get_trading_advice(price_history: List[dict]) -> str`銆?
-   Agent 鎷垮埌浜嗗ぇ鐩樻暟鎹紝鍙渶瑕佹妸鏁版嵁搴忓垪鍖栨墧杩涘幓锛孲kill 鍐呴儴绠楀畬鎸囨爣鍚庯紝杩斿洖锛氣€滃綋鍓?RSI=20 涓ラ噸瓒呭崠锛屼笖瑙︾甯冩灄甯︿笅杞紝寤鸿鎵ц BUY 100 USDT鈥濄€?
-3. **瀹屽杽 `SKILL.md` 鐨勫涔犳潗鏂欏睘鎬?*锛?
-   鏂囨。鏄庣‘鍛婄煡 Agent锛氣€滀綘鍙互璋冪敤 `scripts/agent_api.py` 鐨?`analyze()` 鏂规硶锛屾垜灏嗕负浣犺繘琛屽鏉傜殑鏁板妯″瀷鍜屽姩鎬佺綉鏍艰繍绠楀苟缁欏嚭寤鸿銆傗€?
+## 实现路径（架鏋?3.0 预研方向锛?
+为了达到真正的脱离宿主独立运行，我们闇€要对 Skill 包进行依璧栭€嗚浆（Dependency Inversion）：
+1. **自带核心数据结构存根 (Stub)**锛?
+   Skill 包内新增 `scripts/types.py`，自定义箢㻯版鐨?`MarketData` 鍜?`Signal` 等类。彻底移闄?`from core import ...` 这种跨包强依璧栥€?
+   *Runner 端加载时，将自己的数鎹€氳繃接口适配器（Adapter）ת换为 Skill 内置的轻量数据结鏋勩€?
+2. **新增 Agent 对话接口 (`scripts/agent_api.py`)**锛?
+   暴¶语义化接口，濡?`def get_trading_advice(price_history: List[dict]) -> str`銆?
+   Agent 拿到了大盘数据，只需要把数据序列化扔进去，Skill 内部算完指标后，返回锛氣€滃綋鍓?RSI=20 严重超卖，且触碰布林带下轨，建议执行 BUY 100 USDT鈥濄€?
+3. **完善 `SKILL.md` 的学习材料属鎬?*锛?
+   文档明确告知 Agent锛氣€滀綘可以调用 `scripts/agent_api.py` 鐨?`analyze()` 方法，我将为你进行复杂的数学ģ型和动态网格运算并给出建议銆傗€?
 
-## 缁撹
-杩欎釜鎬濊矾闈炲父瓒呭墠涓旀纭€斺€?*灏嗛噺鍖栫瓥鐣ヤ粠鈥滀唬鐮佲€濆崌鏍间负鈥淎gent 鐨勫彲鎻掓嫈绁炵粡妯″潡鈥?*銆傚畠灏嗘寚瀵兼垜浠笅涓€闃舵鐨勬灦鏋勮璁°€?
-褰撴垜浠渶瑕佽 Agent 鍏峰鐪熸鐨勮嚜涓讳氦鏄撳喅绛栬兘鍔涙椂锛岃繖灏嗘槸鎴戜滑鐨勯瑕佹敼閫犵洰鏍囥€?
+## 结论
+这个思路非常超ǰ且正纭€斺€?*将量化策略从“代鐮佲€濆崌格为“Agent 的可插拔神经模块鈥?*。它将指导我们下涓€阶段的架构设璁°€?
+当我们需要让 Agent 具备真正的自主交易决策能力时，这将是我们的首Ҫ改造目鏍囥€?
 
-## 鐞嗚寮曠敵锛氬弻灞傛爣鍑嗗濞冧笌寮€鏀句緷璧栫敓鎬?
-鍦ㄦ帹杩?Architecture 3.0+ 鏋舵瀯鏃讹紝闇€璋ㄨ鐢辨湰椤圭洰鐨勫紑鍙戣€呮彁鍑虹殑 **鍙屽眰鏍囧噯缁ф壙 (Protocol Inheritance)** 浠ュ強 **Npm 鍖栦緷璧?* 鎬濇兂锛?
+## 理论引申：双层标准套娃与寮€放依赖生鎬?
+在推杩?Architecture 3.0+ 架构时，闇€谨记由本项目的开鍙戣€呮彁出的 **双层标准继承 (Protocol Inheritance)** 以及 **Npm 化依璧?* 思想锛?
 
-### 1. 缁ф壙涓庡澹?
-Trading Skill 鏋舵瀯骞堕潪闂棬閫犺溅锛岃€屾槸寤虹珛鍦ㄥ吋瀹?`agentskills.io` 瀹芥硾瑙勮寖鐨勫簳搴т箣涓婏細
-- **澶栧３ (Base Protocol)**锛氶伒寰?Anthropic 瀹氫箟鐨?`SKILL.md` 涓庢寚浠ゆ槧灏勭害鏉熴€備换浣曟敮鎸佹櫤鑳戒綋鐨勭郴缁熼€氳繃鎵弿璇ョ洰褰曪紝灏辫兘璇嗗埆瀹冩槸涓€涓彲璋冪敤鐨勫伐鍏枫€?
-- **鍐呮牳 (Application Protocol)**锛氬湪璇ョ粨鏋勫唴閮紙濡傚己鍒剁殑 `scripts/strategy.py`銆佺户鎵?`BaseStrategy`銆侀厤濂?`config.json`锛夛紝鍙堝疄鐜颁簡鏈」鐩己纭殑閲忓寲鎵ц鏍囧噯锛岃鏍稿績 Runner 寰椾互鐩存帴鎺ョ銆?
+### 1. 继承与套澹?
+Trading Skill 架构并非闭门造车锛岃€屾槸建立在兼瀹?`agentskills.io` 宽泛规范的底座之上：
+- **外壳 (Base Protocol)**：遵寰?Anthropic 定义鐨?`SKILL.md` 与指令映射约鏉熴€備换何支持智能体的系缁熼€氳繃扫描该目录，就能识别它是涓€个可调用的工鍏枫€?
+- **内核 (Application Protocol)**：在该结构内部（如强制的 `scripts/strategy.py`、继鎵?`BaseStrategy`、配濂?`config.json`），又实现了本项目强硬的量化执行标׼，让核心 Runner 得以直接接管銆?
 
-### 2. NPM 鍖栫殑鈥滃０鏄庡紡渚濊禆鈥?(Declarative Dependency)
-鐪熸鐨勭槮鎶€鑳斤紙Thin Skill锛変笉搴旀妸鎵ц鍣ㄥ紩鎿庯紙Runner锛夊拰搴曞眰琛屾儏閫氶亾锛圖atafeed锛夋墦鍖呰繘浠撳簱鍐椾綑鍒嗗彂銆?
-鐩稿弽锛屽簲褰撳湪 `SKILL.md` (鎴栧厓鏁版嵁鏂囦欢) 鍐呮樉寮忓０鏄?*鎵€闇€瀹夸富鐜鑳藉姏**锛堜緥濡傦細蹇呴』鍏煎鏌愮増鏈殑 CTS Runner 鍜?OKX Datafeed锛夈€?
-**Agent 鎵紨浜嗗鍚?`npm install` 鍖呯鐞嗗櫒鐨勮鑹?*锛氭嬁鍒版煇涓?Skill锛堝 `zen-7-1`锛夊悗锛岀湅鍒伴噷闈㈡湁鐩稿叧渚濊禆璇存槑锛屼究涓诲姩瀵绘壘鎴栦笅杞藉搴旂殑鏍囧噯鎵ц鐜涓庝箣鎷艰璧锋晥锛岀湡姝ｅ仛鍒扳€滃嵆鎻掑嵆鐢ㄢ€濆拰鐢熸€佸紑鏀俱€?
+### 2. NPM 化的“声明式依赖鈥?(Declarative Dependency)
+真正的瘦鎶€能（Thin Skill）不应把执行器引擎（Runner）和底层行情通道（Datafeed）打包进仓库冗余分发銆?
+相反，应当在 `SKILL.md` (或元数据文件) 内显式声鏄?*鎵€闇€宿主环境能力**（例如：必须兼容ĳ版本的 CTS Runner 鍜?OKX Datafeed锛夈€?
+**Agent 扮演了如鍚?`npm install` 包管理器的角鑹?*：拿到某涓?Skill（如 `zen-7-1`）后，看到里面有相关依赖说明，便主动寻找或下载对Ӧ的标׼执行环境与֮拼装起效，真正做鍒扳€滃嵆插即鐢ㄢ€濆拰鐢熸€佸紑鏀俱€?

@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 import numpy as np
 import pandas as pd
@@ -16,16 +16,16 @@ from cartridges.strategies.base import BaseStrategy
 from cartridges.strategies.grid_mtf_6_0 import IncrementalIndicatorsV6, StrategyState
 
 # ============================================================
-# V6.5A锛氬姩鎬佺綉鏍间氦鏄撶瓥鐣?(RSI + 鎴愪氦閲?+ K绾垮舰鎬?
+# V6.5A：动态网格交易策鐣?(RSI + 成交閲?+ K线形鎬?
 # ============================================================
 
 class GridStrategyV65A(BaseStrategy):
     """
-    V6.5A 鍔ㄦ€佺綉鏍间氦鏄撶瓥鐣?
+    V6.5A 鍔ㄦ€佺綉格交易策鐣?
     
-    鏍稿績鏀硅繘锛氬幓闄?MACD 瀵逛氦鏄撲俊鍙风殑褰卞搷锛岄噰鐢?"RSI + 鎴愪氦閲?+ K绾垮舰鎬? 涓夌淮楠岃瘉妯″瀷銆?
-    MACD 浠嶈绠楀苟灞曠ず鍦?Dashboard 涓婏紝浣嗕笉鍙備笌涔板崠鍐崇瓥銆?
-    鏂板锛氬洖鎾ゆ€ュ墽鎵╁ぇ鎴栬繛缁簭鎹熷悗鐨勭啍鏂満鍒躲€?
+    核心改进：去闄?MACD 对交易信号的影响，采鐢?"RSI + 成交閲?+ K线形鎬? 三维验证模型銆?
+    MACD 仍计算并展示鍦?Dashboard 上，但不参与买卖决策銆?
+    新增：回鎾ゆ€ュ墽扩大或连续亏损后的熔断机鍒躲€?
     """
 
     def __init__(self, name: str = "Grid_V65A_MTF", **params):
@@ -40,12 +40,12 @@ class GridStrategyV65A(BaseStrategy):
         self.param_metadata = {}
         self._load_params()
 
-        # 鏁版嵁缂撳瓨
+        # 数据缓存
         self._data_5m = deque(maxlen=400)
         self._data_15m = deque(maxlen=200)
         self._last_15m_ts: Optional[datetime] = None
 
-        # 绛栫暐鍐呴儴鐘舵€?(浣跨敤 V6.5A 鐨勭嫭绔嬪畾涔?
+        # 策略内部鐘舵€?(使用 V6.5A 的独立定涔?
         @dataclass
         class StrategyStateV65A:
             current_rsi: float = 50.0
@@ -89,17 +89,17 @@ class GridStrategyV65A(BaseStrategy):
                 with open(self.params_path, 'r', encoding='utf-8') as f:
                     self.params.update(json.load(f))
             except Exception as e:
-                print(f"[V6.5A] 鍔犺浇鍙傛暟澶辫触: {e}")
+                print(f"[V6.5A] 加载参数失败: {e}")
         if os.path.exists(self.meta_path):
             try:
                 with open(self.meta_path, 'r', encoding='utf-8') as f:
                     self.param_metadata = json.load(f)
             except Exception as e:
-                print(f"[V6.5A] 鍔犺浇鍏冩暟鎹け璐? {e}")
+                print(f"[V6.5A] 加载元数据失璐? {e}")
 
     def initialize(self):
         super().initialize()
-        print(f"[V6.5A] {self.name} 鍒濆鍖栧畬鎴?)
+        print(f"[V6.5A] {self.name} 初始化完鎴?)
 
     def on_data(self, data: MarketData, context: Optional[StrategyContext]) -> List[Signal]:
         self._update_data(data)
@@ -208,14 +208,14 @@ class GridStrategyV65A(BaseStrategy):
         if self.state.is_halted:
             if self.state.resume_time and data.timestamp >= self.state.resume_time:
                 self.state.is_halted = False
-                print(f"[V6.5A] 鎭㈠浜ゆ槗")
+                print(f"[V6.5A] 恢复交易")
             else: return True
         
         if self.state.atr > self.state.atr_ma * self.params.get('atr_blackswan_mult', 3.0):
             self.state.is_halted = True
-            self.state.halt_reason = "娉㈠姩椋庢帶 (ATR寮傚父)"
+            self.state.halt_reason = "波动风控 (ATR异常)"
             self.state.resume_time = data.timestamp + timedelta(minutes=self.params.get('atr_cooldown_min', 30))
-            print(f"[V6.5A] 瑙﹀彂鐔旀柇: {self.state.halt_reason}")
+            print(f"[V6.5A] 触发熔断: {self.state.halt_reason}")
             return True
 
         if context:
@@ -226,13 +226,13 @@ class GridStrategyV65A(BaseStrategy):
             
             if self.state.current_drawdown > self.params.get('max_drawdown', 0.10):
                 self.state.drawdown_halted = True
-                self.state.halt_reason = f"鍥炴挙椋庢帶 ({self.state.current_drawdown:.1%})"
+                self.state.halt_reason = f"回撤风控 ({self.state.current_drawdown:.1%})"
                 return True
             else: self.state.drawdown_halted = False
 
         if self.state.consecutive_losses >= self.params.get('max_consecutive_losses', 5):
             self.state.loss_halted = True
-            self.state.halt_reason = f"杩炵画浜忔崯椋庢帶 ({self.state.consecutive_losses}娆?"
+            self.state.halt_reason = f"连续亏损风控 ({self.state.consecutive_losses}娆?"
             return True
         return False
 
@@ -305,7 +305,7 @@ class GridStrategyV65A(BaseStrategy):
 
     def get_status(self, context: Optional[StrategyContext] = None) -> Dict[str, Any]:
         is_bullish = self.state.macdhist > 0
-        macd_trend = ("寮虹墰" if is_bullish and self.state.macdhist > self.state.macdhist_prev else "鐗涘競" if is_bullish else "寮虹唺" if self.state.macdhist < self.state.macdhist_prev else "鐔婂競")
+        macd_trend = ("强牛" if is_bullish and self.state.macdhist > self.state.macdhist_prev else "牛市" if is_bullish else "强熊" if self.state.macdhist < self.state.macdhist_prev else "熊市")
         pos = context.positions.get(self.symbol) if context else None
         p_size = float(pos.size) if pos else 0.0
         return {

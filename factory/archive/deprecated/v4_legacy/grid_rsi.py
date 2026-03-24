@@ -1,6 +1,6 @@
-﻿"""
-鍔ㄦ€佺綉鏍?RSI 绛栫暐 V4.0
-瀵归綈鍘熷绠楁硶璇箟锛屽苟閫傞厤 OKX 瀹炴椂鎵ц
+"""
+鍔ㄦ€佺綉鏍?RSI 策略 V4.0
+对齐原始算法语义，并适配 OKX ʵʱ执行
 """
 
 from typing import List, Optional, Tuple, Dict, Any
@@ -17,7 +17,7 @@ from cartridges.strategies.base import BaseStrategy
 
 
 # ============================================================
-# 楂樻€ц兘澧為噺鎸囨爣寮曟搸 (閫傞厤 V4.0 閫昏緫)
+# 楂樻€ц兘增量指标引擎 (适配 V4.0 逻辑)
 # ============================================================
 
 class IncrementalIndicatorsV4:
@@ -52,7 +52,7 @@ class IncrementalIndicatorsV4:
         self.ma_sum = 0.0
 
         # Volatility (Std of Pct Returns)
-        # V4.0 鍘熺増鏄绠楀叏閲忕殑 std锛岃繖閲岀敤 100 鏍圭嚎閲囨牱浠ヤ繚璇佹€ц兘
+        # V4.0 原版是计算全量的 std，这里用 100 根线采样以保璇佹€ц兘
         self.ret_deque = deque(maxlen=100)
 
     def update(self, d: MarketData, commit: bool = True):
@@ -63,7 +63,7 @@ class IncrementalIndicatorsV4:
                 self.count += 1
             return 50.0, 0.0, c, 0.0
 
-        # 1. RSI 澧為噺
+        # 1. RSI 增量
         diff = c - self.prev_close
         gain = max(diff, 0); loss = max(-diff, 0)
         
@@ -78,7 +78,7 @@ class IncrementalIndicatorsV4:
         rs = rsi_gain_avg / rsi_loss_avg if rsi_loss_avg > 1e-9 else 100.0
         rsi = 100.0 - (100.0 / (1.0 + rs)) if rsi_loss_avg > 1e-9 else 100.0
 
-        # 2. ADX 澧為噺
+        # 2. ADX 增量
         tr = max(h - l, abs(h - self.prev_close), abs(l - self.prev_close))
         up = h - self.prev_high; dn = self.prev_low - l
         pdm = up if (up > dn and up > 0) else 0
@@ -97,7 +97,7 @@ class IncrementalIndicatorsV4:
         ma = get_sma_preview(self.ma_deque, self.ma_sum, c, self.ma_period)
         
         ret = (c - self.prev_close) / self.prev_close if self.prev_close > 0 else 0
-        # 娉㈠姩鐜囦及绠?
+        # 波动率估绠?
         tmp_rets = list(self.ret_deque) + [ret]
         vol = float(np.std(tmp_rets)) * 37.947 # sqrt(1440) approx
 
@@ -128,7 +128,7 @@ class IncrementalIndicatorsV4:
 
 @dataclass
 class GridState:
-    """绛栫暐杩愯鏃剁姸鎬侊紙涓嶅惈璐︽埛鐪熺浉锛?""
+    """策略运行ʱ״̬（不含账户真相锛?""
     grid_upper: Optional[float] = None
     grid_lower: Optional[float] = None
     grid_prices: List[float] = field(default_factory=list)
@@ -138,20 +138,20 @@ class GridState:
     current_regime: MarketRegime = MarketRegime.UNKNOWN
     last_candle: Optional[Dict[str, float]] = None
 
-    # 缁熻
+    # 统计
     grid_touch_count: int = 0
 
 
 class GridRSIStrategy(BaseStrategy):
-    """鍔ㄦ€佺綉鏍?RSI 绛栫暐 V4.0"""
+    """鍔ㄦ€佺綉鏍?RSI 策略 V4.0"""
 
     def __init__(self,
                  symbol: str = "BTC-USDT",
-                 # 缃戞牸鍙傛暟
+                 # 网格参数
                  grid_levels: int = 10,
                  grid_refresh_period: int = 100,
                  grid_buffer_pct: float = 0.1,
-                 # RSI 鍙傛暟
+                 # RSI 参数
                  rsi_period: int = 14,
                  rsi_weight: float = 0.4,
                  rsi_oversold: float = 35,
@@ -159,26 +159,26 @@ class GridRSIStrategy(BaseStrategy):
                  rsi_extreme_buy: float = 70,
                  rsi_extreme_sell: float = 30,
                  adaptive_rsi: bool = True,
-                 # 瓒嬪娍鍙傛暟
+                 # 趋势参数
                  use_trend_filter: bool = True,
                  adx_period: int = 14,
                  adx_threshold: float = 25,
                  ma_period: int = 50,
-                 # 浠撲綅鍙傛暟
+                 # 仓位参数
                  base_position_pct: float = 0.1,
                  max_positions: int = 5,
                  use_kelly_sizing: bool = True,
                  kelly_fraction: float = 0.3,
                  max_position_multiplier: float = 2.0,
                  min_position_multiplier: float = 0.5,
-                 # 姝㈡崯鍙傛暟
+                 # 止损参数
                  stop_loss_pct: float = 0.05,
                  trailing_stop: bool = True,
                  trailing_stop_pct: float = 0.03,
-                 # 鍛ㄦ湡鍙傛暟
+                 # 周期参数
                  cycle_reset_period: int = 5000,
                  max_drawdown_reset: float = 0.30,
-                 # 鏈€灏忎氦鏄撻噾棰?
+                 # 鏈€小交易金棰?
                  min_order_usdt: float = 100.0,
                  **kwargs):
         super().__init__(name="GridRSI_V4", **kwargs)
@@ -211,14 +211,14 @@ class GridRSIStrategy(BaseStrategy):
             'cycle_reset_period': cycle_reset_period,
             'max_drawdown_reset': max_drawdown_reset,
             'min_order_usdt': min_order_usdt,
-            'min_trade_interval_pct': kwargs.get('min_trade_interval_pct', 0.0025), # 榛樿 0.25%
+            'min_trade_interval_pct': kwargs.get('min_trade_interval_pct', 0.0025), # 默认 0.25%
         }
 
         self.state = GridState()
 
         self.indicators = IncrementalIndicatorsV4(self.params)
         self._data_buffer: List[MarketData] = []
-        self._max_buffer_size = 500 # 鍥哄畾缂撳啿鍖哄ぇ灏?
+        self._max_buffer_size = 500 # 固定缓冲区大灏?
         self._last_bar_ts = None
         self._last_bar_data = None
         
@@ -227,7 +227,7 @@ class GridRSIStrategy(BaseStrategy):
         self._equity_history: List[float] = []
 
     def initialize(self):
-        """绛栫暐鍒濆鍖栵細淇濈暀琛屾儏缂撳啿鍖猴紝浠呴噸缃处鎴风浉鍏崇姸鎬?""
+        """策略初始化：保留行情缓冲区，仅重置账户相关状鎬?""
         super().initialize()
         
         self.state = GridState()
@@ -235,27 +235,27 @@ class GridRSIStrategy(BaseStrategy):
         self._last_bar_ts = None
         self._last_bar_data = None
         
-        # 淇濈暀浠锋牸寮曠敤浠ョ淮鎸?UI 鍝嶅簲
-        # self._peak_prices.clear() # 鑰冭檻鍒版鎹熼€昏緫锛岄噸缃椂搴斿綋娓呯┖宄板€间环鏍?
+        # 保留价格引用以维鎸?UI 响应
+        # self._peak_prices.clear() # 考虑到止鎹熼€昏緫，重置时Ӧ当清空宄板€间环鏍?
         
-        # 娓呯┖鏉冪泭鍘嗗彶锛屽洜涓鸿处鎴峰凡缁忚祫閲戦噸缃?
+        # 清空权益历史，因为账户已经资金重缃?
         self._equity_history.clear()
         
-        print(f"[Strategy:{self.name}] 宸叉墽琛岄€昏緫閲嶇疆 (琛屾儏缂撳啿鍖轰繚鐣? {len(self._data_buffer)} 鏍?")
+        print(f"[Strategy:{self.name}] 已执琛岄€昏緫重置 (行情缓冲区保鐣? {len(self._data_buffer)} 鏍?")
 
     def _update_buffer(self, data: MarketData):
         if self._data_buffer and self._data_buffer[-1].timestamp == data.timestamp:
-            # 鏇存柊褰撳墠鏍?K 绾?(瀹炴椂浠锋牸)
+            # 更新当前鏍?K 绾?(实时价格)
             self._data_buffer[-1] = data
         else:
-            # 鍔犳柊 K 绾?
+            # 加新 K 绾?
             self._data_buffer.append(data)
             if len(self._data_buffer) > self._max_buffer_size:
                 self._data_buffer.pop(0)
             
-            # [Arena 浼樺寲] 楂橀€熸ā寮忎笅澧炲姞绠€鍗曠殑闈為樆濉炶繘搴︿俊鎭?
+            # [Arena 优化] 楂橀€熸ā式下增加箢㵥的非阻塞进度信鎭?
             if len(self._data_buffer) % 5000 == 0:
-                print(f"  > [4.0] 宸插鐞?{len(self._data_buffer)} 鏉℃暟鎹?..", flush=True)
+                print(f"  > [4.0] 已处鐞?{len(self._data_buffer)} 条数鎹?..", flush=True)
 
     def _detect_market_regime(self, adx: float, ma: float, current_price: float) -> MarketRegime:
         if not self.params['use_trend_filter']:
@@ -296,7 +296,7 @@ class GridRSIStrategy(BaseStrategy):
     def _find_pivot_points(self, window: int = 5, n: int = 3,
                            lookback: int = 100) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
-        瀵绘壘鏈€杩?of n 涓尝娈甸珮鐐瑰拰浣庣偣 (浼樺寲鐗? 鐩存帴鎿嶄綔 MarketData 鍒楄〃)
+        寻找鏈€杩?of n 个波段高点和低点 (优化鐗? 直接操作 MarketData 列表)
         """
         if len(self._data_buffer) < window + 2:
             return [], []
@@ -307,15 +307,15 @@ class GridRSIStrategy(BaseStrategy):
         pivot_highs = []
         pivot_lows = []
 
-        # 浠庢渶鏂板線鍥炴壂
+        # 从最新往回扫
         for i in range(curr_idx - 1, max(window, curr_idx - lookback), -1):
-            # 浣庣偣妫€娴?
+            # 低点妫€娴?
             if len(pivot_lows) < n:
                 if all(data[i].low <= data[i-j].low for j in range(1, window+1)) and \
                    all(data[i].low < data[i+j].low for j in range(1, min(window+1, curr_idx - i + 1))):
                     pivot_lows.append({'price': float(data[i].low), 'time': str(data[i].timestamp)})
 
-            # 楂樼偣妫€娴?
+            # 高点妫€娴?
             if len(pivot_highs) < n:
                 if all(data[i].high >= data[i-j].high for j in range(1, window+1)) and \
                    all(data[i].high > data[i+j].high for j in range(1, min(window+1, curr_idx - i + 1))):
@@ -328,13 +328,13 @@ class GridRSIStrategy(BaseStrategy):
 
     def _calculate_dynamic_grid(self) -> Tuple[float, float, Dict[str, Any]]:
         """
-        璁＄畻鍔ㄦ€佺綉鏍煎尯闂?(浼樺寲鐗? 绉婚櫎 DF 渚濊禆)
+        计算鍔ㄦ€佺綉格区闂?(优化鐗? 移除 DF 依赖)
         """
-        # 1. 瀵绘壘娉㈡鐐?(Pivot Points)
+        # 1. 寻找波段鐐?(Pivot Points)
         pivot_highs, pivot_lows = self._find_pivot_points(window=5, n=3)
         
         if not pivot_highs or not pivot_lows:
-            # 鍥為€€鍒板熀鏈瀬鍊奸€昏緫
+            # 鍥為€€到基本极鍊奸€昏緫
             lookback_data = self._data_buffer[-100:]
             upper = max(d.high for d in lookback_data)
             lower = min(d.low for d in lookback_data)
@@ -405,7 +405,7 @@ class GridRSIStrategy(BaseStrategy):
         current_idx = len(self._data_buffer)
 
         if current_idx - self.state.last_grid_update >= self.params['cycle_reset_period']:
-            return True, "杈惧埌寮哄埗閲嶇疆鍛ㄦ湡"
+            return True, "达到强制重置周期"
 
         if len(self._equity_history) > 0:
             recent_equity = self._equity_history[-1000:]
@@ -414,7 +414,7 @@ class GridRSIStrategy(BaseStrategy):
             if peak > 0:
                 drawdown = (current - peak) / peak
                 if drawdown <= -self.params['max_drawdown_reset']:
-                    return True, f"瑙﹀彂鏈€澶у洖鎾ら檺鍒?({drawdown:.2%})"
+                    return True, f"触发鏈€大回撤限鍒?({drawdown:.2%})"
 
         return False, ""
 
@@ -449,7 +449,7 @@ class GridRSIStrategy(BaseStrategy):
                     size=pos.size,
                     price=None,
                     order_type=OrderType.MARKET,
-                    reason=f"姝㈡崯瑙﹀彂 (姝㈡崯浠? ${stop_price:.2f})",
+                    reason=f"止损触发 (止损浠? ${stop_price:.2f})",
                     meta={'size_in_quote': False},
                 ))
                 self._peak_prices.pop(symbol, None)
@@ -457,7 +457,7 @@ class GridRSIStrategy(BaseStrategy):
         return signals
 
     def on_data(self, data: MarketData, context: StrategyContext) -> List[Signal]:
-        # 0. 缂撳啿鍖烘洿鏂颁笌鎸囨爣寮曟搸杩涗綅
+        # 0. 缓冲区更新与指标引擎进位
         is_new_bar = (not self._last_bar_ts) or (data.timestamp > self._last_bar_ts)
         if is_new_bar:
             if self._last_bar_data:
@@ -467,7 +467,7 @@ class GridRSIStrategy(BaseStrategy):
         
         self._last_bar_data = data
         
-        # 1. 姣忎竴鎷嶉兘杩涜鎸囨爣棰勮
+        # 1. 每一拍都进行ָ标预览
         rsi, adx, ma, vol = self.indicators.update(data, commit=False)
         self.state.current_rsi = rsi
         self.state.current_adx = adx
@@ -496,12 +496,12 @@ class GridRSIStrategy(BaseStrategy):
                         size=pos.size,
                         price=None,
                         order_type=OrderType.MARKET,
-                        reason=f"鍛ㄦ湡閲嶇疆: {reset_reason}",
+                        reason=f"周期重置: {reset_reason}",
                         meta={'size_in_quote': False},
                     ))
             self._reset_cycle(context)
 
-        # 2. 璁＄畻鍔ㄦ€佺綉鏍艰竟鐣?
+        # 2. 计算鍔ㄦ€佺綉格边鐣?
         upper, lower, meta = self._calculate_dynamic_grid()
         self.state.grid_upper = upper
         self.state.grid_lower = lower
@@ -513,14 +513,14 @@ class GridRSIStrategy(BaseStrategy):
         self.state.last_grid_update = self.indicators.count
         self.state.meta = meta 
 
-        # 3. 姝㈡崯妫€娴?
+        # 3. 止损妫€娴?
         signals.extend(self._check_stop_loss(data, context))
 
-        # 4. 浠撲綅閫昏緫
+        # 4. 仓位逻辑
         oversold, overbought = self._get_adaptive_rsi_thresholds(vol)
         rsi_signal = self._get_rsi_signal(rsi, oversold, overbought)
 
-        # 缃戞牸闂磋窛淇濇姢
+        # 网格间距保护
         min_interval = self.params.get('min_trade_interval_pct', 0.0025)
         grid_interval_pct = min_interval
         if upper and lower and self.params['grid_levels'] > 1 and current_price > 0:
@@ -533,7 +533,7 @@ class GridRSIStrategy(BaseStrategy):
             last_low = self.state.last_candle['low']
 
             for grid_price in self.state.grid_prices:
-                # 涔板叆閫昏緫
+                # 买入逻辑
                 if last_low > grid_price and current_low <= grid_price:
                     current_layers = self._estimate_position_layers(context, current_price)
                     if current_layers >= self.params['max_positions']:
@@ -554,12 +554,12 @@ class GridRSIStrategy(BaseStrategy):
                             timestamp=data.timestamp, symbol=self.symbol, side=Side.BUY,
                             size=size, price=None, order_type=OrderType.MARKET,
                             confidence=abs(rsi_signal),
-                            reason=f"缃戞牸涔板叆 @ {grid_price:.2f} (RSI: {rsi:.1f})",
+                            reason=f"网格买入 @ {grid_price:.2f} (RSI: {rsi:.1f})",
                             meta={'size_in_quote': True},
                         ))
                     break
 
-                # 鍗栧嚭閫昏緫
+                # 卖出逻辑
                 if last_high < grid_price and current_high >= grid_price:
                     current_pos = context.positions.get(self.symbol)
                     if current_pos and current_pos.size > 0:
@@ -572,7 +572,7 @@ class GridRSIStrategy(BaseStrategy):
                                 timestamp=data.timestamp, symbol=self.symbol, side=Side.SELL,
                                 size=sell_size, price=None, order_type=OrderType.MARKET,
                                 confidence=abs(rsi_signal),
-                                reason=f"缃戞牸鍗栧嚭 @ {grid_price:.2f} (RSI: {rsi:.1f})",
+                                reason=f"网格卖出 @ {grid_price:.2f} (RSI: {rsi:.1f})",
                                 meta={'size_in_quote': False},
                             ))
                             break
@@ -588,33 +588,33 @@ class GridRSIStrategy(BaseStrategy):
 
     def get_status(self, context: Optional[StrategyContext] = None) -> Dict[str, Any]:
         try:
-            # 鑾峰彇褰撳墠棰勮鎸囨爣
+            # 获取当ǰ预览指标
             vol = 0.0 # 绠€鍖?
-            oversold, overbought = self._get_adaptive_rsi_thresholds(0.1) # 榛樿
+            oversold, overbought = self._get_adaptive_rsi_thresholds(0.1) # 默认
             rsi = self.state.current_rsi
             rsi_signal = self._get_rsi_signal(rsi, oversold, overbought)
         except Exception:
             oversold, overbought = self.params['rsi_oversold'], self.params['rsi_overbought']
             rsi_signal = 0.0
 
-        signal_text = "瑙傛湜"
+        signal_text = "观望"
         signal_color = "neutral"
         if rsi_signal > 0.3:
-            signal_text = f"涔板叆淇″彿 ({rsi_signal:+.2f})"
+            signal_text = f"买入信号 ({rsi_signal:+.2f})"
             signal_color = "buy"
         elif rsi_signal < -0.3:
-            signal_text = f"鍗栧嚭淇″彿 ({rsi_signal:+.2f})"
+            signal_text = f"卖出信号 ({rsi_signal:+.2f})"
             signal_color = "sell"
 
         in_grid = ""
         current_price = self._current_prices.get(self.symbol, 0) if hasattr(self, '_current_prices') else 0
         if self.state.grid_lower is not None and self.state.grid_upper is not None and current_price > 0:
             if current_price < self.state.grid_lower:
-                in_grid = "浣庝簬缃戞牸"
+                in_grid = "低于网格"
             elif current_price > self.state.grid_upper:
-                in_grid = "楂樹簬缃戞牸"
+                in_grid = "高于网格"
             else:
-                in_grid = "缃戞牸鍐?
+                in_grid = "网格鍐?
 
         position_count = 0
         if context and self.symbol in context.positions:

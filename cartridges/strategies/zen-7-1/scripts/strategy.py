@@ -1,4 +1,4 @@
-﻿import numpy as np
+import numpy as np
 from collections import deque
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
@@ -333,7 +333,7 @@ class Zen71Strategy(BaseStrategy):
             self.state.highest_rsi_since_entry = self.indicators.rsi
             self.state.highest_close_since_entry = fill.filled_price
             
-            self.log(f"[{fill.timestamp}] 馃殌 缃戞牸涔板叆 ({len(self.state.entry_prices)}灞? | 浠锋牸: {fill.filled_price:.2f} | 鏁伴噺: {fill.filled_size:.4f}")
+            self.log(f"[{fill.timestamp}] 🚀 缃戞牸涔板叆 ({len(self.state.entry_prices)}灞? | 浠锋牸: {fill.filled_price:.2f} | 鏁伴噺: {fill.filled_size:.4f}")
             
         elif fill.side == Side.SELL:
             avg_pop = sum(self.state.entry_prices) / len(self.state.entry_prices) if self.state.entry_prices else 0
@@ -342,7 +342,7 @@ class Zen71Strategy(BaseStrategy):
             # 娓呯┖缃戞牸鐘舵€?
             self.state.entry_prices = []
             
-            emoji = "鉁? if sig_type == "SELL_TP" else "馃洃"
+            emoji = "鉁? if sig_type == "SELL_TP" else "🛑"
             
             if sig_type == "SELL_TP":
                 self.state.stats['sell_tp'] += 1

@@ -1,21 +1,21 @@
-﻿# 浠诲姟楠屾敹锛氫慨澶?Dashboard 瀹炴椂鏁版嵁娴佸崱浣忛棶棰?
+# 任务验收：修澶?Dashboard 实时数据流卡住问棰?
 
-## 闂鍙戠幇
-鍦ㄥ绛栫暐骞跺彂杩愯鏃讹紝Dashboard 鍦ㄩ鐑畬鎴愬悗锛屼笉鍐嶆帴鏀舵柊鐨勫疄鏃禟绾挎暟鎹紝鎺у埗鍙板崱鍦?`鍚姩 OKX 鏁版嵁娴? BTC-USDT 1m` 涔嬪悗銆?
+## 问题发现
+在多策略并发运行ʱ，Dashboard 在预热完成后，不再接收新的实ʱK线数据，控制台卡鍦?`启动 OKX 数据娴? BTC-USDT 1m` 之后銆?
 
-## 鍘熷洜鍒嗘瀽
-杩欐槸鍥犱负 `flask-socketio` 榛樿浼氬湪妫€娴嬪埌绯荤粺涓畨瑁呬簡 `eventlet` 鏃跺垏鎹㈠埌 `eventlet` 杩愯妯″紡銆傜劧鑰岋紝鐢变簬浠ｇ爜灏氭湭鍦ㄩ《閮ㄨ繘琛?`eventlet.monkey_patch()`锛屼富绾跨▼涓殑 `requests.get()`锛坄okx_feed.py` 閲岃皟鐢?OKX API锛変細浣跨敤鍘熺敓 socket 闃诲鏁翠釜 Eventlet 浜嬩欢寰幆锛屽鑷存閿侊紝浣?K 绾胯疆璇㈡案杩滄棤娉曠户缁€?
+## 原因分析
+这是因为 `flask-socketio` 默认会在妫€测到ϵͳ中安װ了 `eventlet` 时切换到 `eventlet` 运行模式。然而，由于代码尚未在顶部进琛?`eventlet.monkey_patch()`，主线程中的 `requests.get()`（`okx_feed.py` 里调鐢?OKX API）会使用原生 socket 阻塞整个 Eventlet 事件循环，导致死锁，浣?K 线轮询永远无法继缁€?
 
-## 瑙ｅ喅鍔炴硶
-鍦?`CTS1/dashboard/server.py` 涓垵濮嬪寲 `SocketIO` 鏃讹紝寮哄埗鎸囧畾 `async_mode='threading'`锛岃瀹冧娇鐢?Werkzeug 鐨勫绾跨▼鍘熺敓鎬佹ā寮忥紝鏀惧純 Eventlet銆傝繖褰诲簳瑙ｅ喅浜嗗洜涓?Socket 闃诲寮曞彂鐨勬閿侀棶棰樸€?
+## 解决办法
+鍦?`CTS1/dashboard/server.py` 中初始化 `SocketIO` 时，强制指定 `async_mode='threading'`，让它使鐢?Werkzeug 的多线程原生态模式，放弃 Eventlet。这彻底解决了因涓?Socket 阻塞引发的死锁问棰樸€?
 
 ```diff
 -        self.socketio = SocketIO(self.app, cors_allowed_origins="*")
 +        self.socketio = SocketIO(self.app, cors_allowed_origins="*", async_mode='threading')
 ```
 
-## 楠岃瘉缁撴灉
-1. 宸插姞鍏?debug 鏃ュ織鎺掓煡锛岀‘璁ゆ墽琛屽埌 `get_candles` 鏃跺彂鐢熶簡鏃犻檺闃诲銆?
-2. 寮哄埗鎸囧畾 `threading` 妯″紡鍚庯紝鍐嶆鍚姩 `run_cts1.py` 鏈嶅姟锛屾帶鍒跺彴椤哄埄杈撳嚭浜嗘瘡鍒嗛挓鐨勫疄鏃惰疆璇㈡洿鏂般€?
-3. 娓呯悊浜?debug 鎵撳嵃浠ｇ爜銆?
-4. 鐜板湪 Dashboard 鑳藉婧愭簮涓嶆柇鍦版敹鍒版柊鐨勫疄鏃惰鎯呮暟鎹€?
+## 验证结果
+1. 已加鍏?debug 日志排查，确认执行到 `get_candles` 时发生了无限阻塞銆?
+2. 强制指定 `threading` 模式后，再次启动 `run_cts1.py` 服务，控制台顺利输出了每分钟的实时轮询更鏂般€?
+3. 清理浜?debug 打印代码銆?
+4. 现在 Dashboard 能够源源不断地收到新的ʵ时行情数鎹€?

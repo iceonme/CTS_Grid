@@ -81,18 +81,28 @@ class DashboardServer:
         def index():
             # 优先重定向到第一个注册的 Skill 看板
             if self._strategy_ids:
-                sid = self._strategy_ids[0]
-                if sid in self._skill_dashboards:
-                    return redirect(f'/strategy/{sid}/')
+                for sid in self._strategy_ids:
+                    if sid in self._skill_dashboards:
+                        return redirect(f'/strategy/{sid}/')
             
-            # 如果没有任何策略加载，返回一个基础的欢迎/状态页面
+            # 基础欢迎页面
             return """
             <html>
-                <body style="background:#0f172a; color:#94a3b8; font-family:sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; margin:0;">
-                    <div style="text-align:center; padding:40px; background:#1e293b; border-radius:12px; border:1px solid #334155;">
-                        <h1 style="color:#00d4ff;">ATS 控制台</h1>
-                        <p>目前没有已加载或注册的策略看板。</p>
-                        <p style="font-size:14px;">请确保已通过 <code>ats.py run &lt;skill&gt;</code> 启动系统。</p>
+                <head>
+                    <title>TradeStation Console</title>
+                    <meta charset="utf-8">
+                    <style>
+                        body { background: #0f172a; color: #94a3b8; font-family: -apple-system, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+                        .card { text-align: center; padding: 40px; background: #1e293b; border-radius: 12px; border: 1px solid #334155; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
+                        h1 { color: #38bdf8; margin-top: 0; }
+                        code { background: #0f172a; padding: 2px 6px; border-radius: 4px; color: #f472b6; }
+                    </style>
+                </head>
+                <body>
+                    <div class="card">
+                        <h1>TradeStation 控制台</h1>
+                        <p>目前没有活跃的策略看板。</p>
+                        <p style="font-size: 14px;">请通过命令行启动策略：<br><code>python ats.py run &lt;skill_name&gt;</code></p>
                     </div>
                 </body>
             </html>
@@ -101,25 +111,22 @@ class DashboardServer:
         @self.app.route('/strategy/<sid>/')
         def skill_index(sid):
             if sid not in self._skill_dashboards:
-                return f"Strategy {sid} dashboard not found", 404
+                return f"Strategy '{sid}' dashboard not found", 404
             
             dashboard_dir = self._skill_dashboards[sid]
-            timestamp = datetime.now().strftime('%Y%m%d%H%M%S%f')
-            
-            # 渲染 Skill 目录下的 index.html
-            # 这里的 template_folder 必须动态处理或使用 send_from_directory
-            # 为了简单起见，我们直接读取文件并渲染内容
             index_path = os.path.join(dashboard_dir, 'index.html')
+            
             if not os.path.exists(index_path):
                 return f"index.html not found in {dashboard_dir}", 404
             
             with open(index_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
-            # 简单的模板替换（注入版本号等）
+            # 动态参数注入
             content = content.replace('{{ app_version }}', self.version)
-            content = content.replace('{{ version }}', timestamp)
             content = content.replace('{{ strategy_id }}', sid)
+            # 注入随机数防止缓存
+            content = content.replace('{{ cache_buster }}', datetime.now().strftime('%M%S%f'))
             
             res = make_response(content)
             res.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0, private'
@@ -131,20 +138,14 @@ class DashboardServer:
                 return "Not found", 404
             return send_from_directory(self._skill_dashboards[sid], filename)
 
-        @self.app.route('/v6')
-        @self.app.route('/dashboard_v60')
-        @self.app.route('/dashboard_5_2')
-        def legacy_redirect():
-            # 所有旧路径统一重定向到首页，首页会自动处理 Skill 跳转
-            return redirect(url_for('index'))
-
         @self.app.route('/api/status')
         def get_status():
-            strategy_id = request.args.get('strategy_id', 'default')
-            if strategy_id != 'default' and strategy_id in self._data:
+            strategy_id = request.args.get('strategy_id')
+            if strategy_id and strategy_id in self._data:
                 data = self._data.get(strategy_id, DashboardServer._EMPTY_STRATEGY_DATA())
                 return jsonify(self._clean_data(data))
             return jsonify({sid: self._clean_data(d) for sid, d in self._data.items()})
+
 
         @self.app.route('/api/run_backtest', methods=['POST'])
         def run_backtest():

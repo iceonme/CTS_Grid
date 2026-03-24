@@ -1,4 +1,4 @@
-﻿import os
+import os
 import json
 import numpy as np
 import pandas as pd
@@ -15,7 +15,7 @@ from console.core import (
 from cartridges.strategies.base import BaseStrategy
 
 # ============================================================
-# V6.0-Revival 楂樻€ц兘澧為噺鎸囨爣寮曟搸 (1m / 5m)
+# V6.0-Revival 楂樻€ц兘增量指标引擎 (1m / 5m)
 # ============================================================
 
 class IncrementalIndicatorsV6:
@@ -39,7 +39,7 @@ class IncrementalIndicatorsV6:
         self.ema_f = 0.0
         self.ema_s = 0.0
         self.ema_sig = 0.0
-        self.count_macd = 0  # 杩借釜 MACD 鏇存柊娆℃暟
+        self.count_macd = 0  # 追踪 MACD 更新次数
         self.alpha_f = 2.0 / (self.m_fast + 1)
         self.alpha_s = 2.0 / (self.m_slow + 1)
         self.alpha_sig = 2.0 / (self.m_sig + 1)
@@ -78,7 +78,7 @@ class IncrementalIndicatorsV6:
 
     def update_1m_macd(self, close: float, commit: bool = True):
         """
-        MACD 1m 瀹炴椂鎸囨爣璁＄畻
+        MACD 1m 实时指标计算
         """
         if self.count_macd == 0:
             if commit:
@@ -90,8 +90,8 @@ class IncrementalIndicatorsV6:
         s = close * self.alpha_s + self.ema_s * (1 - self.alpha_s)
         macd = f - s
         
-        # 鏍稿績淇锛氫俊鍙风嚎鍒濆鍖?
-        # 濡傛灉鏄涓€娆¤绠楀嚭 macd (count=1)锛屼俊鍙风嚎搴旂洿鎺ョ瓑浜?macd锛岃€屼笉鏄粠 0 寮€濮嬪钩婊?
+        # 核心修复：信号线初始鍖?
+        # 如果是第涓€次计算出 macd (count=1)，信号线应直接等浜?macd锛岃€屼笉是从 0 寮€始平婊?
         if self.count_macd == 1:
             sig = macd
         else:
@@ -107,19 +107,19 @@ class IncrementalIndicatorsV6:
 
 
 # ============================================================
-# V6.0-Revival 缃戞牸璁＄畻涓庣啍鏂?
+# V6.0-Revival 网格计算与熔鏂?
 # ============================================================
 
 class GridCalculator:
-    """缃戞牸璁＄畻鍣?(V6.0-Revival 鍒嗘鍘绘瀬鍊兼硶)"""
+    """网格计算鍣?(V6.0-Revival 分段去极值法)"""
     
     @staticmethod
     def calculate_grid(price_data: List[MarketData], period_hours: int = 6, vol_threshold: float = 0.012) -> Dict:
         """
-        璁＄畻6灏忔椂锛堟垨4灏忔椂锛夌綉鏍?
-        1. 鍒?娈碉紝鍙栨瘡娈垫渶楂樻渶浣庣偣
-        2. 鍘绘瀬鍊硷紙鍘?鏈€澶?鏈€灏忥級
-        3. 鍓╀綑3楂?浣庡彇骞冲潎
+        计算6小时（或4小时）网鏍?
+        1. 鍒?段，取每段最高最低点
+        2. 去极值（鍘?鏈€澶?鏈€小）
+        3. 剩余3楂?低取平均
         """
         if len(price_data) < 10:
             return None
@@ -138,30 +138,30 @@ class GridCalculator:
         if len(highs) >= 5:
             highs.sort()
             lows.sort()
-            # 鍘绘帀鏈€浣?涓拰鏈€楂?涓紝淇濈暀涓棿3涓?
+            # 去掉鏈€浣?个和鏈€楂?个，保留中间3涓?
             highs = highs[1:4]
             lows = lows[1:4]
             
         base_top = sum(highs) / len(highs)
         base_bottom = sum(lows) / len(lows)
         
-        # 璁＄畻娉㈠姩鐜囧畾灞傛暟 (瑙勮寖: (Top - Bottom) / Bottom)
+        # 计算波动率定层数 (规范: (Top - Bottom) / Bottom)
         volatility = (base_top - base_bottom) / base_bottom if base_bottom > 0 else 0
         n_layers = 7 if volatility > vol_threshold else 5
         
-        # 鐢熸垚瀵圭О缃戞牸
+        # 生成对称网格
         layers = []
         step = (base_top - base_bottom) / n_layers if n_layers > 0 else 0
         mid_price = (base_top + base_bottom) / 2
         
-        # 瀹炰綋鑼冨洿璁惧畾
+        # 实体范围设定
         entity_half = n_layers // 2
-        # 鎬荤储寮曡寖鍥达細铏氭嫙灞備笂涓嬪悇鎵?灞?
+        # 总索引范围：虚拟层上下各鎵?灞?
         idx_min = -(entity_half + 2)
         idx_max = (entity_half + 2)
         
         for idx in range(idx_min, idx_max + 1):
-            # 浠?mid_price 涓轰腑蹇冿紝L(0) 璺ㄨ秺涓績绾?
+            # 浠?mid_price 为中心，L(0) 跨越中心绾?
             l_bottom = mid_price + (idx - 0.5) * step
             l_top = mid_price + (idx + 0.5) * step
             
@@ -189,7 +189,7 @@ class GridCalculator:
         }
 
 class CircuitBreaker:
-    """1灏忔椂鐗╃悊鐔旀柇鍣?(鏀寔涓婁笅鍙屽悜鐮翠綅妫€娴?+ MACD鍏宠仈)"""
+    """1小时物理熔断鍣?(支持上下双向破位妫€娴?+ MACD关联)"""
     def __init__(self, observation_period: int = 3600):
         self.status = "NORMAL"  # NORMAL / OBSERVING_UP / OBSERVING_DOWN
         self.observation_start = None
@@ -216,13 +216,13 @@ class CircuitBreaker:
             
             elapsed = (datetime.now() - self.observation_start).total_seconds()
             
-            # 浠锋牸鍥炲埌瀹夊叏鍖猴紝瑙ｉ櫎璀︽姤
+            # 价格回到安全区，解除警报
             if virtual_grid["bottom_2"] <= price <= virtual_grid["top_2"]:
                 self.status = "NORMAL"
                 self.observation_start = None
                 return "NORMAL"
                 
-            # 瑙傚療鏈熸弧锛岃繑鍥炵壒鍖栫殑閲嶇疆淇″彿渚涗富閫昏緫缁撳悎MACD浣跨敤
+            # 观察期满，返回特化的重置信号供主逻辑结合MACD使用
             if elapsed >= self.observation_period:
                 res = "REBUILD_UP" if self.status == "OBSERVING_UP" else "REBUILD_DOWN"
                 self.status = "NORMAL"
@@ -244,8 +244,8 @@ class StrategyState:
     grid: Optional[Dict] = None
     grid_period: int = 6
     
-    # 妲戒綅绠＄悊: 鍒楄〃涓殑姣忎釜 dict 浠ｈ〃涓€绗旂嫭绔嬬殑涔板叆
-    # 鏍煎紡: {"size": float, "buy_price": float, "layer_idx": int, "is_virtual": bool}
+    # 槽位管理: 列表中的每个 dict 代表涓€笔独立的买入
+    # 格式: {"size": float, "buy_price": float, "layer_idx": int, "is_virtual": bool}
     slots: List[Dict] = field(default_factory=list)
     
     is_halted: bool = False
@@ -254,7 +254,7 @@ class StrategyState:
     last_volume: float = 0.0
     grid_lines: List[float] = field(default_factory=list)
     
-    # 浠锋牸淇濇姢鐘舵€?
+    # 价格保护鐘舵€?
     last_marker_price: float = 0.0
     last_buy_price: float = 0.0
     last_sell_price: float = 0.0
@@ -262,7 +262,7 @@ class StrategyState:
 
 class GridMTFStrategyV6_0(BaseStrategy):
     """
-    V6.0-Revival 鍔ㄦ€佺綉鏍肩瓥鐣?
+    V6.0-Revival 鍔ㄦ€佺綉格策鐣?
     """
     def __init__(self, name: str = "Grid_V60_Revival", **params):
         super().__init__(name, **params)
@@ -330,16 +330,16 @@ class GridMTFStrategyV6_0(BaseStrategy):
         self.state.last_marker_price = 0.0
         self.state.last_buy_price = 0.0
         self.state.last_sell_price = 0.0
-        print(f"[V6.0-Revival] {self.name} 鍒濆鍖栧畬鎴?)
+        print(f"[V6.0-Revival] {self.name} 初始化完鎴?)
 
     def on_data(self, data: MarketData, context: Optional[StrategyContext]) -> List[Signal]:
-        # 0. 1m K绾垮悎骞朵笌鎸囨爣鏇存柊 (RSI & MACD committed history)
+        # 0. 1m K线合并与指标更新 (RSI & MACD committed history)
         is_new_1m_bar = (not self._last_1m_ts) or (data.timestamp > self._last_1m_ts)
         if is_new_1m_bar:
             if self._last_1m_bar:
                 self.indicators.update_1m(self._last_1m_bar, commit=True)
                 _, _, hist_commit = self.indicators.update_1m_macd(self._last_1m_bar.close, commit=True)
-                # 璁板綍涓婁竴鏍瑰凡纭K绾跨殑 MACD hist锛岀敤浜庡姣斿垽鏂綋鍓嶉噾鍙?姝诲弶
+                # 记录上一根已确认K线的 MACD hist，用于对比判断当前金鍙?死叉
                 self.state.macdhist_prev = hist_commit 
                 
             self._last_1m_ts = data.timestamp
@@ -348,7 +348,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
 
         if len(self._data_1m) < 10: return []
 
-        # 1. 鎸囨爣瀹炴椂棰勮
+        # 1. 指标实时预览
         rsi = self.indicators.update_1m(data, commit=False)
         self.state.current_rsi = rsi
         self.state.last_volume = data.volume
@@ -358,7 +358,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
         self.state.macdsignal = sig
         self.state.macdhist = hist
 
-        # 鍒ゆ柇 MACD 浜ゅ弶鐘舵€?(褰撳墠 tick 鐩稿鍓嶄竴鏍圭‘璁?K绾?鐨勭姸鎬?
+        # 判断 MACD 交叉鐘舵€?(当前 tick 相对前一根确璁?K绾?的状鎬?
         macd_golden = False
         macd_dead = False
         if self.state.macdhist > 0 and self.state.macdhist_prev <= 0:
@@ -369,7 +369,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
         self._macd_golden = macd_golden
         self._macd_dead = macd_dead
 
-        # 3. 缃戞牸鏋勫缓涓庣啍鏂鐞?
+        # 3. 网格构建与熔断处鐞?
         self._manage_grid(data)
         
         if not self.state.grid:
@@ -382,14 +382,14 @@ class GridMTFStrategyV6_0(BaseStrategy):
         }
         breaker_status = self.breaker.check(data.close, v_bounds)
         
-        # 鐮翠綅1灏忔椂鍚庤繘琛屾柟鍚戞€ч噸缃垽瀹?
+        # 破位1小时后进行方鍚戞€ч噸置判瀹?
         if breaker_status == "REBUILD_DOWN":
             if not macd_golden:
                 self.state.grid_period = self.params.get('grid_period_rebuild', 4)
                 self._rebuild_grid()
             else:
                 self.state.is_halted = True
-                self.state.halt_reason = "鐮翠綅浣哅ACD閲戝弶锛岀瓑寰呭洖韪?
+                self.state.halt_reason = "破位但MACD金叉，等待回韪?
             return []
             
         if breaker_status == "REBUILD_UP":
@@ -398,25 +398,25 @@ class GridMTFStrategyV6_0(BaseStrategy):
                 self._rebuild_grid()
             else:
                 self.state.is_halted = True
-                self.state.halt_reason = "鐮翠綅浣哅ACD姝诲弶锛岀瓑寰呭洖璋?
+                self.state.halt_reason = "破位但MACD死叉，等待回璋?
             return []
             
         if breaker_status in ["OBSERVING_UP", "OBSERVING_DOWN"]:
             self.state.is_halted = True
-            self.state.halt_reason = f"1灏忔椂瑙傚療鏈?({breaker_status})"
+            self.state.halt_reason = f"1小时观察鏈?({breaker_status})"
             return []
             
         self.state.is_halted = False
         self.state.halt_reason = ""
 
-        # 4. 淇″彿鐢熸垚涓庝粨浣嶇鐞?
+        # 4. 信号生成与仓位管鐞?
         if context:
             return self._generate_signals(data, context)
         return []
 
     def _update_data(self, data: MarketData):
         ts = data.timestamp
-        # 1. 澶勭悊 1鍒嗛挓K绾?
+        # 1. 处理 1分钟K绾?
         bar_1m_ts = ts.replace(second=0, microsecond=0)
         
         if self._data_1m and self._data_1m[-1].timestamp.replace(second=0, microsecond=0) == bar_1m_ts:
@@ -434,7 +434,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
         else:
             self._data_1m.append(data)
         
-        # 2. 5m閲嶉噰鏍?(渚?MACD 浣跨敤)
+        # 2. 5m重采鏍?(渚?MACD 使用)
         period_5m_ts = ts.replace(minute=(ts.minute // 5) * 5, second=0, microsecond=0)
         
         if self._last_5m_ts is None or period_5m_ts > self._last_5m_ts:
@@ -467,7 +467,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
         new_grid = GridCalculator.calculate_grid(history, self.state.grid_period, vol_thr)
         if new_grid:
             self.state.grid = new_grid
-            # 瀵煎嚭鍙鍖栫綉鏍肩嚎
+            # 导出可视化网格线
             lines = []
             layers = new_grid["layers"]
             if layers:
@@ -477,9 +477,9 @@ class GridMTFStrategyV6_0(BaseStrategy):
             self.state.grid_lines = lines
 
     def _manage_grid(self, data: MarketData):
-        # 鍒濆鍖栫綉鏍?
+        # 初始化网鏍?
         if self.state.grid is None:
-            # 蹇呴』鏀掑 6 灏忔椂 (360 鏍?1m K绾? 鎵嶈兘鐢熸垚绗﹀悎 V6.0 瑕佹眰鐨勫垵濮嬬綉鏍?
+            # 必须攒够 6 小时 (360 鏍?1m K绾? 才能生成符合 V6.0 要求的初始网鏍?
             if len(self._data_1m) >= 360:
                 self._rebuild_grid()
 
@@ -494,7 +494,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
         
         rsi = self.state.current_rsi
         
-        # 1. 瀹氫綅褰撳墠浠锋牸鎵€鍦ㄧ殑灞?
+        # 1. 定位当前价格鎵€在的灞?
         current_layer = None
         for layer in grid["layers"]:
             if layer["bottom"] <= price <= layer["top"]:
@@ -505,22 +505,22 @@ class GridMTFStrategyV6_0(BaseStrategy):
             
         layer_idx = current_layer["index"]
         
-        # 2. L(0) 鏍稿績缂撳啿鍖烘嫤鎴?(瑙勮寖: 涓棿灞備笉浜х敓淇″彿)
+        # 2. L(0) 核心缓冲区拦鎴?(规范: 中间层不产生信号)
         if layer_idx == 0:
             return signals
 
-        # 浠锋牸淇濇姢闃堝€?(2 BPS)
+        # 价格保护闃堝€?(2 BPS)
         price_buff = self.params.get('price_buffer_pct', 0.0002)
 
-        # 3. 鍓ユ磱钁卞紡 LIFO 鍗栧嚭閫昏緫 (淇閿佸畾閲嶅叆婕忔礊)
+        # 3. 剥洋葱式 LIFO 卖出逻辑 (修复锁定重入漏洞)
         if pos_size > 0 and self.state.slots:
             target_slot = self.state.slots[-1]
             t_idx = target_slot["layer_idx"]
             
-            # 鎵惧埌鏈€鏂版寔浠撳搴旂殑鐗╃悊灞傜骇
+            # 找到鏈€新持仓对应的物理层级
             t_layer = next((l for l in grid["layers"] if l["index"] == t_idx), None)
             if t_layer:
-                # 鍒ゅ畾鍗栧嚭瑙﹀彂 (瑙勮寖: 钀藉叆璇ュ眰涓婂崐閮ㄥ垎鍗宠Е鍙?
+                # 判定卖出触发 (规范: 落入该层上半部分即触鍙?
                 is_triggered = False
                 if price >= t_layer["mid"]:
                     if t_layer["type"] == "VIRTUAL":
@@ -530,7 +530,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
                         is_triggered = True
                 
                 if is_triggered:
-                    # 鍚屼环浣嶄繚鎶?
+                    # 同价位保鎶?
                     if self.state.last_sell_price > 0 and abs(price - self.state.last_sell_price) / self.state.last_sell_price < price_buff:
                         pass 
                     else:
@@ -546,15 +546,15 @@ class GridMTFStrategyV6_0(BaseStrategy):
                                     "buy_price": target_slot["buy_price"]
                                 }
                             ))
-                            # 绮剧‘瑙ｉ攣璇ュ眰
+                            # 精确解锁该层
                             t_layer['locked'] = False
                             t_layer['position'] = max(0, t_layer['position'] - sell_size)
                             self.state.last_sell_price = price
                             return signals
 
-        # 4. 涔板叆閫昏緫 (瑙勮寖: 涓嬪崐閮ㄥ垎灞傜骇涔板叆)
+        # 4. 买入逻辑 (规范: 下半部分层级买入)
         if layer_idx < 0:
-            # 鍒ゅ畾涔板叆瑙﹀彂 (瑙勮寖: 钀藉叆涓嬪眰灞傜骇涓嬪崐閮?
+            # 判定买入触发 (规范: 落入下层层级下半閮?
             is_triggered = False
             if price <= current_layer["mid"] and not current_layer["locked"]:
                 if current_layer["type"] == "VIRTUAL":
@@ -567,7 +567,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
                 if self.state.last_buy_price > 0 and abs(price - self.state.last_buy_price) / self.state.last_buy_price < price_buff:
                     return signals
                 
-                # 璁＄畻浠介 (瑙勮寖: 铏氭嫙灞?鍊嶆潈閲?
+                # 计算份额 (规范: 虚拟灞?倍权閲?
                 n_layers = grid["n_layers"]
                 base_cash = self.total_capital / n_layers
                 weight = 2.0 if current_layer["type"] == "VIRTUAL" else 1.0
@@ -586,7 +586,7 @@ class GridMTFStrategyV6_0(BaseStrategy):
                     ))
                     
                     self.state.last_buy_price = price
-                    # 璁板綍 Slot (棰勪及鏁伴噺锛孎illed 鍚庡彲瀵归綈)
+                    # 记录 Slot (预估数量，Filled 后可对齐)
                     new_slot = {
                         "size": buy_usdt / price,
                         "buy_price": price,
@@ -603,19 +603,19 @@ class GridMTFStrategyV6_0(BaseStrategy):
 
     def get_status(self, context: Optional[StrategyContext] = None) -> Dict[str, Any]:
         is_bullish = self.state.macdhist > 0
-        macd_trend = "寮虹墰" if is_bullish and self.state.macdhist > self.state.macdhist_prev else "鐗涘競" if is_bullish else "闇囪崱"
+        macd_trend = "强牛" if is_bullish and self.state.macdhist > self.state.macdhist_prev else "牛市" if is_bullish else "震荡"
         if self.state.macdhist < 0:
-            macd_trend = "寮虹唺" if self.state.macdhist < self.state.macdhist_prev else "鐔婂競"
+            macd_trend = "强熊" if self.state.macdhist < self.state.macdhist_prev else "熊市"
         
-        signal_text = "绛夊緟閰嶇疆"
+        signal_text = "等待配置"
         signal_color = "neutral"
         
         if self.state.is_halted:
-            signal_text = f"鐔旀柇: {self.state.halt_reason}"
+            signal_text = f"熔断: {self.state.halt_reason}"
             signal_color = "sell"
         elif is_bullish:
             signal_color = "buy"
-            signal_text = "瓒嬪娍鎸佹湁涓?
+            signal_text = "趋势持有涓?
             
         pos_size = 0.0
         pos_avg_price = 0.0
@@ -658,8 +658,8 @@ class GridMTFStrategyV6_0(BaseStrategy):
             'rsi_oversold': self.params.get('rsi_buy', 25),
             'rsi_overbought': self.params.get('rsi_sell', 75),
             'position_count': self.state.grid["n_layers"] if self.state.grid else 0,
-            'marketRegime': "涓婂崌閫氶亾" if is_bullish else "璋冩暣闃舵",
-            'vol_trend': "鎸佸钩",
+            'marketRegime': "上升通道" if is_bullish else "调整阶段",
+            'vol_trend': "持平",
             'current_volume': round(self.state.last_volume, 2),
             'is_halted': self.state.is_halted,
             'halt_reason': self.state.halt_reason,

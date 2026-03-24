@@ -1,4 +1,4 @@
-﻿import sys
+import sys
 import os
 import time
 import json
@@ -7,7 +7,7 @@ import multiprocessing
 import pandas as pd
 import numpy as np
 
-# 鑷姩澶勭悊璺緞锛氭坊鍔犻」鐩牴鐩綍鍒?sys.path
+# 自动处理路径：添加项目根目录鍒?sys.path
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(BASE_DIR)
 
@@ -15,7 +15,7 @@ from console.engines.backtest import BacktestEngine
 from cartridges.bridge.datafeeds.csv_feed import CSVDataFeed
 from cartridges.bridge.executors.paper import PaperExecutor
 
-# 绛栫暐鏄犲皠
+# 策略映射
 from cartridges.strategies.grid_mtf_6_0 import GridMTFStrategyV6_0
 from cartridges.strategies.grid_mtf_6_1 import GridMTFStrategyV6_1
 from cartridges.strategies.grid_mtf_6_2 import GridMTFStrategyV6_2
@@ -36,7 +36,7 @@ STRATEGY_MAP = {
     "zen_7_1": Zen71Strategy
 }
 
-# 榛樿鎼滅储绌洪棿
+# 默认搜索空间
 SEARCH_SPACE_MTF = {
     'rsi_buy_threshold': (20, 45),
     'rsi_sell_threshold': (60, 85),
@@ -60,10 +60,10 @@ SEARCH_SPACE_ZEN = {
 }
 
 def run_single_backtest(args):
-    """鍗曟牳浠诲姟灏佽"""
+    """单核任务封装"""
     task_id, strategy_key, params, csv_path = args
     try:
-        # 閲嶅畾鍚?stdout 浠ヤ繚鎸佺粓绔暣娲?
+        # 重定鍚?stdout 以保持终端整娲?
         old_stdout = sys.stdout
         sys.stdout = open(os.devnull, 'w')
         
@@ -79,11 +79,11 @@ def run_single_backtest(args):
         
         report = engine.run(feed, fast_mode=True)
         
-        # 杩樺師 stdout
+        # 还原 stdout
         sys.stdout.close()
         sys.stdout = old_stdout
         
-        # 鎻愬彇鍏抽敭鎸囨爣
+        # 提取关键指标
         res = {
             'task_id': task_id,
             'score': 0.0,
@@ -95,7 +95,7 @@ def run_single_backtest(args):
             'params': params
         }
         
-        # 璇勫垎鍑芥暟 (鏀剁泭/椋庨櫓姣?* 澶忔櫘)
+        # 评分函数 (收益/风险姣?* 夏普)
         if res['trades'] < 10:
             res['score'] = -100
         else:
@@ -131,8 +131,8 @@ def main():
     iterations = args.iterations
     
     print("\n" + "="*60)
-    print(f"CTS 骞跺彂璋冧紭寮曟搸 [Zen/MTF 閫傞厤鐗圿")
-    print(f"绛栫暐: {s_key} | 閲囨牱: {iterations} | 鏍稿績: {args.procs}")
+    print(f"CTS 并发调优引擎 [Zen/MTF 适配版]")
+    print(f"策略: {s_key} | 采样: {iterations} | 核心: {args.procs}")
     print("="*60)
     
     start_time = time.time()
@@ -143,7 +143,7 @@ def main():
     
     all_results = []
     
-    # 鍚姩杩涚▼姹?
+    # 启动进程姹?
     with multiprocessing.Pool(processes=args.procs) as pool:
         for res in pool.imap_unordered(run_single_backtest, tasks):
             if 'error' in res:
@@ -152,27 +152,27 @@ def main():
                 
             all_results.append(res)
             
-            # 璁板綍鏃ュ織
+            # 记录日志
             row = {'score': res['score'], 'return': res['return'], 'mdd': res['mdd'], 'sharpe': res['sharpe'], 'trades': res['trades'], 'win_rate': res['win_rate']}
             row.update(res['params'])
             df = pd.DataFrame([row])
             df.to_csv(log_file, mode='a', index=False, header=not os.path.exists(log_file))
             
-            # 鎵撳嵃杩涘害
+            # 打印进度
             best_score = max([r['score'] for r in all_results])
             print(f"  [{len(all_results)}/{iterations}] Score={res['score']:.2f} | Best={best_score:.2f} | Time={time.time()-start_time:.1f}s")
 
     if not all_results:
-        print("鏃犳湁鏁堢粨鏋溿€?)
+        print("无有效结鏋溿€?)
         return
 
     all_results.sort(key=lambda x: x['score'], reverse=True)
     best = all_results[0]
     
     print("\n" + "-"*30)
-    print(f"璋冧紭瀹屾垚锛佹渶浣抽厤缃?({s_key}):")
-    print(f"  鏀剁泭: {best['return']*100:.2f}% | 鍥炴挙: {best['mdd']*100:.2f}% | 澶忔櫘: {best['sharpe']:.2f}")
-    print(f"  鍙傛暟: {json.dumps(best['params'])}")
+    print(f"调优完成！最佳配缃?({s_key}):")
+    print(f"  收益: {best['return']*100:.2f}% | 回撤: {best['mdd']*100:.2f}% | 夏普: {best['sharpe']:.2f}")
+    print(f"  参数: {json.dumps(best['params'])}")
     print(f"鎬昏€楁椂: {time.time() - start_time:.2f}s")
 
     with open(os.path.join(BASE_DIR, "optimizer", f"best_params_{s_key}.json"), 'w') as f:

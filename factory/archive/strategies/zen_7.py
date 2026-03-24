@@ -1,4 +1,4 @@
-﻿import numpy as np
+import numpy as np
 from collections import deque
 from datetime import datetime
 from typing import List, Dict, Any
@@ -230,7 +230,7 @@ class Zen7Strategy(BaseStrategy):
                     sell_reason = f"SL: MACD={ind.macd_hist:.2f}, Close={data.close:.2f}<Mid={ind.boll_mid:.2f}"
                     sig_type = "SELL_SL"
                     
-                # 2. Take Profit: 涔嬪墠瑙﹀強涓婅建涓擱SI鏇?70锛屼笖褰撳墠鏀剁洏鏈牬鍓嶉珮
+                # 2. Take Profit: 涔嬪墠瑙﹀強涓婅建且RSI鏇?70锛屼笖褰撳墠鏀剁洏鏈牬鍓嶉珮
                 elif self.state.touched_upper_band and self.state.highest_rsi_since_entry > 70:
                     if data.close < self.state.highest_close_since_entry:
                         sell_reason = f"TP: Momentum Exhaustion (RSI>{self.state.highest_rsi_since_entry:.1f})"
@@ -285,13 +285,13 @@ class Zen7Strategy(BaseStrategy):
             self.state.touched_upper_band = False
             self.state.highest_rsi_since_entry = self.indicators.rsi
             self.state.highest_close_since_entry = fill.filled_price
-            self.log(f"[{fill.timestamp}] 馃殌 鍏辨尟涔板叆 | 浠锋牸: {fill.filled_price:.2f} | 鏁伴噺: {fill.filled_size:.4f}")
+            self.log(f"[{fill.timestamp}] 🚀 鍏辨尟涔板叆 | 浠锋牸: {fill.filled_price:.2f} | 鏁伴噺: {fill.filled_size:.4f}")
             
         elif fill.side == Side.SELL:
             pnl_pct = (fill.filled_price - self.state.entry_price) / self.state.entry_price * 100 if self.state.entry_price else 0
             self.state.position_size = 0.0
             self.state.entry_price = 0.0
-            emoji = "鉁? if sig_type == "SELL_TP" else "馃洃"
+            emoji = "鉁? if sig_type == "SELL_TP" else "🛑"
             
             if sig_type == "SELL_TP":
                 self.state.stats['sell_tp'] += 1

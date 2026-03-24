@@ -1,4 +1,4 @@
-﻿
+
 import threading
 import json
 from datetime import datetime
@@ -10,15 +10,15 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 
 class DashboardServer:
     """
-    Dashboard 鏈嶅姟鍣紙澶氱瓥鐣ョ増锛?
+    Dashboard 服务器（多策略版锛?
 
-    鍔熻兘锛?
-    1. 鎺ユ敹澶氭潯绛栫暐鐨勭姸鎬佹洿鏂帮紙閫氳繃 strategy_id 鍖哄垎锛?
-    2. WebSocket Room 鍖栵細鍓嶇 join 鐗瑰畾绛栫暐鎴块棿锛屽彧鏀惰绛栫暐鐨勬帹閫?
-    3. 鎻愪緵 REST API锛?api/status?strategy_id=xxx锛?
+    功能锛?
+    1. 接收多条策略的状态更新（通过 strategy_id 区分锛?
+    2. WebSocket Room 化：前端 join 特定策略房间，ֻ收该策略的推閫?
+    3. 提供 REST API锛?api/status?strategy_id=xxx锛?
     """
 
-    # 榛樿绌烘暟鎹ā鏉?
+    # 默认空数据模鏉?
     _EMPTY_STRATEGY_DATA = lambda: {
         'prices':         {},
         'total_value':    0,
@@ -49,25 +49,25 @@ class DashboardServer:
 
         self.socketio = SocketIO(self.app, cors_allowed_origins="*", async_mode='threading')
 
-        # 闈欓粯 Flask/Werkzeug 鐨?HTTP 璇锋眰鏃ュ織锛屽噺灏戠粓绔櫔闊?
+        # 静默 Flask/Werkzeug 鐨?HTTP 请求日志，减少终端噪闊?
         import logging
         log = logging.getLogger('werkzeug')
         log.setLevel(logging.ERROR)
 
-        # 澶氱瓥鐣ユ暟鎹紦瀛橈細{strategy_id: {...}}
+        # 多策略数据缓存：{strategy_id: {...}}
         self._data: Dict[str, Dict[str, Any]] = {}
-        # 宸叉敞鍐岀殑绛栫暐 ID 鍒楄〃锛堜繚鎸侀『搴忥級
+        # 已注册的策略 ID 列表（保持顺序）
         self._strategy_ids: List[str] = []
-        # 鎺у埗鍥炶皟锛堢敱 MultiStrategyRunner 娉ㄥ叆锛?
+        # 控制回调（由 MultiStrategyRunner 注入锛?
         self.on_control_callback: Optional[callable] = None
-        # 閲嶇疆鍥炶皟锛堝吋瀹规棫鐗?run_okx_demo.py锛?
+        # 重置回调（兼容旧鐗?run_okx_demo.py锛?
         self.on_reset_callback: Optional[callable] = None
 
         self._setup_routes()
         self._setup_socketio()
 
     # ------------------------------------------------------------------
-    # 璺敱
+    # 路由
     # ------------------------------------------------------------------
 
     def _setup_routes(self):
@@ -117,12 +117,12 @@ class DashboardServer:
             if strategy_id:
                 data = self._data.get(strategy_id, DashboardServer._EMPTY_STRATEGY_DATA())
                 return jsonify(self._clean_data(data))
-            # 鏃犲弬鏁帮細杩斿洖鎵€鏈夌瓥鐣?
+            # 无参数：返回鎵€有策鐣?
             return jsonify({sid: self._clean_data(d) for sid, d in self._data.items()})
 
         @self.app.route('/api/strategies')
         def api_strategies():
-            """杩斿洖褰撳墠宸叉敞鍐岀殑绛栫暐鍒楄〃"""
+            """返回当前已注册的策略列表"""
             return jsonify({
                 'strategies': [
                     {
@@ -139,15 +139,15 @@ class DashboardServer:
             return '', 204
 
     # ------------------------------------------------------------------
-    # SocketIO 浜嬩欢
+    # SocketIO 事件
     # ------------------------------------------------------------------
 
     def _setup_socketio(self):
 
         @self.socketio.on('connect')
         def handle_connect():
-            print('[SocketIO] 瀹㈡埛绔凡杩炴帴')
-            # 鍙戦€佺瓥鐣ュ垪琛紝璁╁墠绔～鍏呬笅鎷夋
+            print('[SocketIO] 客户端已连接')
+            # 鍙戦€佺瓥略列表，让ǰ端填充下拉框
             emit('strategies_list', {
                 'strategies': [
                     {
@@ -166,13 +166,13 @@ class DashboardServer:
             if not strategy_id:
                 return
             join_room(strategy_id)
-            print(f'[SocketIO] 瀹㈡埛绔姞鍏ョ瓥鐣ユ埧闂? {strategy_id}')
-            # 鎺ㄩ€佸綋鍓嶅凡鏈夋暟鎹?
+            print(f'[SocketIO] 客户端加入策略房闂? {strategy_id}')
+            # 鎺ㄩ€佸綋前已有数鎹?
             existing = self._data.get(strategy_id, DashboardServer._EMPTY_STRATEGY_DATA())
             clean = self._clean_data(existing)
             emit('update', clean)
             
-            # 琛ュ彂鍘嗗彶鏇存柊淇″彿锛岀‘淇濆埛鏂伴〉闈㈢殑鍥捐〃鑳界珛鍒绘覆鏌撳巻鍙茶褰?
+            # 补发历史更新信号，确保刷新页面的图表能立刻渲染历史记褰?
             if existing.get('history_candles'):
                 emit('history_update', clean)
 
@@ -181,15 +181,15 @@ class DashboardServer:
             strategy_id = data.get('strategy_id') if isinstance(data, dict) else str(data)
             if strategy_id:
                 leave_room(strategy_id)
-                print(f'[SocketIO] 瀹㈡埛绔寮€绛栫暐鎴块棿: {strategy_id}')
+                print(f'[SocketIO] 客户端离寮€策略房间: {strategy_id}')
 
         @self.socketio.on('save_strategy_params')
         def handle_save_params(data):
-            """澶勭悊鍓嶇鍙戦€佺殑鍙傛暟淇濆瓨璇锋眰"""
+            """处理前端鍙戦€佺殑参数保存请求"""
             strategy_id = data.get('strategy_id')
             params = data.get('params')
             if strategy_id and params and self.on_control_callback:
-                print(f'[SocketIO] 鏀跺埌鍙傛暟淇濆瓨璇锋眰: {strategy_id}')
+                print(f'[SocketIO] 收到参数保存请求: {strategy_id}')
                 self.on_control_callback('save_params', strategy_id, data=params)
 
         @self.socketio.on('ping')
@@ -199,47 +199,47 @@ class DashboardServer:
         @self.socketio.on('reset_strategy')
         def handle_reset_strategy(data=None):
             strategy_id = (data or {}).get('strategy_id') if isinstance(data, dict) else None
-            print(f'[SocketIO] >>> 鏀跺埌鍓嶇閲嶇疆绛栫暐璇锋眰 strategy_id={strategy_id} <<<')
+            print(f'[SocketIO] >>> 收到前端重置策略请求 strategy_id={strategy_id} <<<')
             if self.on_control_callback:
                 sid = strategy_id or (self._strategy_ids[0] if self._strategy_ids else None)
                 if sid:
                     self.on_control_callback('reset', sid)
-                    self.reset_ui(sid) # 鏄惧紡閫氱煡鍓嶇娓呯┖ UI
+                    self.reset_ui(sid) # 显ʽ֪ͨ前端清空 UI
                     self.socketio.emit('strategy_status_changed',
                                        {'strategy_id': sid, 'status': 'stopped'},
                                        to=sid, namespace='/')
             elif hasattr(self, 'on_reset_callback') and self.on_reset_callback:
                 self.on_reset_callback()
             else:
-                print('[SocketIO] 璀﹀憡: 鏈敞鍐屾帶鍒跺洖璋冨嚱鏁?)
+                print('[SocketIO] 警告: 未注册控制回调函鏁?)
 
         @self.socketio.on('start_strategy')
         def handle_start_strategy(data=None):
             strategy_id = (data or {}).get('strategy_id') if isinstance(data, dict) else None
-            print(f'[SocketIO] >>> 鏀跺埌鍓嶇鍚姩绛栫暐璇锋眰 strategy_id={strategy_id} <<<')
+            print(f'[SocketIO] >>> 收到前端启动策略请求 strategy_id={strategy_id} <<<')
             if self.on_control_callback and strategy_id:
                 self.on_control_callback('start', strategy_id)
-                # 閫氱煡璇ョ瓥鐣ョ殑鎵€鏈夊鎴风鐘舵€佸彉鍖?
+                # 通知该策略的鎵€有客户端鐘舵€佸彉鍖?
                 self.socketio.emit('strategy_status_changed',
                                    {'strategy_id': strategy_id, 'status': 'running'},
                                    to=strategy_id, namespace='/')
             else:
-                print('[SocketIO] start_strategy: 缂哄皯 strategy_id 鎴栨湭娉ㄥ唽鎺у埗鍥炶皟')
+                print('[SocketIO] start_strategy: 缺少 strategy_id 或未注册控制回调')
 
         @self.socketio.on('pause_strategy')
         def handle_pause_strategy(data=None):
             strategy_id = (data or {}).get('strategy_id') if isinstance(data, dict) else None
-            print(f'[SocketIO] >>> 鏀跺埌鍓嶇鏆傚仠绛栫暐璇锋眰 strategy_id={strategy_id} <<<')
+            print(f'[SocketIO] >>> 收到前端暂停策略请求 strategy_id={strategy_id} <<<')
             if self.on_control_callback and strategy_id:
                 self.on_control_callback('pause', strategy_id)
                 self.socketio.emit('strategy_status_changed',
                                    {'strategy_id': strategy_id, 'status': 'paused'},
                                    to=strategy_id, namespace='/')
             else:
-                print('[SocketIO] pause_strategy: 缂哄皯 strategy_id 鎴栨湭娉ㄥ唽鎺у埗鍥炶皟')
+                print('[SocketIO] pause_strategy: 缺少 strategy_id 或未注册控制回调')
 
     # ------------------------------------------------------------------
-    # 鏁版嵁宸ュ叿
+    # 数据工具
     # ------------------------------------------------------------------
 
     def _clean_data(self, data: Any) -> Any:
@@ -261,72 +261,72 @@ class DashboardServer:
         return data
 
     # ------------------------------------------------------------------
-    # 鏍稿績 API
+    # 核心 API
     # ------------------------------------------------------------------
 
     def register_strategy(self, strategy_id: str, display_name: str = None, route: str = '/'):
-        """娉ㄥ唽涓€鏉＄瓥鐣ワ紙鎻愬墠鍗犱綅锛屽彲閫夛級"""
+        """注册涓€条策略（提前占位，可选）"""
         if strategy_id not in self._data:
             self._data[strategy_id] = DashboardServer._EMPTY_STRATEGY_DATA()
             self._data[strategy_id]['route'] = route
             if display_name:
                 self._data[strategy_id]['strategy'] = {'name': display_name}
             self._strategy_ids.append(strategy_id)
-            print(f'[DashboardServer] 娉ㄥ唽绛栫暐: {strategy_id} (璺敱: {route})')
+            print(f'[DashboardServer] 注册策略: {strategy_id} (路由: {route})')
 
     def update(self, data: Dict[str, Any], strategy_id: str = 'default'):
-        """鏇存柊鎸囧畾绛栫暐鐨勬暟鎹苟鎺ㄩ€佸埌瀵瑰簲鎴块棿"""
+        """更新指定策略的数据并鎺ㄩ€佸埌对应房间"""
         try:
             if strategy_id not in self._data:
                 self.register_strategy(strategy_id)
 
             if 'history_candles' in data:
-                print(f'[DashboardServer] [{strategy_id}] 鏀跺埌 {len(data["history_candles"])} 鏍筀绾?)
+                print(f'[DashboardServer] [{strategy_id}] 收到 {len(data["history_candles"])} 根K绾?)
 
-            # 鍚堝苟鏁版嵁
+            # 合并数据
             for key, value in data.items():
                 if isinstance(value, dict) and key in self._data[strategy_id]:
                     self._data[strategy_id][key].update(value)
                 else:
                     self._data[strategy_id][key] = value
 
-            # 闄愬埗鍘嗗彶鏁版嵁闀垮害
+            # 限制历史数据长度
             for key in ['history_candles', 'history_rsi', 'history_equity', 'trades']:
                 if key in self._data[strategy_id] and isinstance(self._data[strategy_id][key], list):
                     self._data[strategy_id][key] = self._data[strategy_id][key][-500:]
 
-            # 鎺ㄩ€佸埌瀵瑰簲鎴块棿
+            # 鎺ㄩ€佸埌对应房间
             clean = self._clean_data(data)
             self.socketio.emit('update', clean, to=strategy_id, namespace='/')
 
-            # 濡傛灉鍖呭惈鍘嗗彶鏁版嵁锛岄澶栧彂閫?history_update 淇″彿渚涘墠绔皟鐢?setData
+            # 如果包含历史数据，额外发閫?history_update 信号供ǰ端调鐢?setData
             if 'history_candles' in data:
                 self.socketio.emit('history_update', clean, to=strategy_id, namespace='/')
 
         except Exception as e:
-            print(f'[Dashboard] [{strategy_id}] 鏇存柊澶辫触: {e}')
+            print(f'[Dashboard] [{strategy_id}] 更新失败: {e}')
             import traceback
             traceback.print_exc()
 
     def reset_ui(self, strategy_id: str = None):
-        """閫氱煡鍓嶇娓呯┖ UI 鏁版嵁锛堜繚鐣欒鎯呭巻鍙诧紝浠呮竻闄よ处鎴锋暟鎹級"""
+        """֪ͨ前端清空 UI 数据（保留行情历史，仅清除账户数据）"""
         try:
-            # 瀹氫箟琛屾儏鐩稿叧鐨勯敭锛岀敤浜庝繚鐣?
+            # 定义行情相关的键，用于保鐣?
             market_keys = ['history_candles', 'history_rsi', 'history_equity_unused', 'history_macd', 'prices', 'candle', 'strategy']
             
             def perform_soft_reset(sid):
                 old_data = self._data.get(sid, {})
-                # 鍒涘缓鏂版暟鎹紝淇濈暀琛屾儏鐩稿叧椤?
+                # 创建新数据，保留行情相关椤?
                 new_data = DashboardServer._EMPTY_STRATEGY_DATA()
                 for key in market_keys:
                     if key in old_data:
                         new_data[key] = old_data[key]
                 
-                # 纭繚鏉冪泭鍘嗗彶琚竻绌?
+                # 确保权益历ʷ被清绌?
                 new_data['history_equity'] = []
                 self._data[sid] = new_data
                 self.socketio.emit('reset_ui', {'soft': True}, to=sid, namespace='/')
-                print(f'[DashboardServer] 鍚?[{sid}] 鍙戦€?Soft Reset 淇″彿 (淇濈暀琛屾儏鍘嗗彶)')
+                print(f'[DashboardServer] 鍚?[{sid}] 鍙戦€?Soft Reset 信号 (保留行情历史)')
 
             if strategy_id:
                 perform_soft_reset(strategy_id)
@@ -334,16 +334,16 @@ class DashboardServer:
                 for sid in self._strategy_ids:
                     perform_soft_reset(sid)
         except Exception as e:
-            print(f'[Dashboard] 鍙戦€?reset_ui 澶辫触: {e}')
+            print(f'[Dashboard] 鍙戦€?reset_ui 失败: {e}')
 
     # ------------------------------------------------------------------
-    # 鏈嶅姟鍣ㄥ惎鍔?
+    # 服务器启鍔?
     # ------------------------------------------------------------------
 
     def start(self, debug=False):
         print(f"\n{'='*60}")
-        print(f"Dashboard 鍚姩锛堝绛栫暐鐗?{self.version}锛?)
-        print(f"璁块棶鍦板潃: http://localhost:{self.port}")
+        print(f"Dashboard 启动（多策略鐗?{self.version}锛?)
+        print(f"访问地址: http://localhost:{self.port}")
         print(f"{'='*60}\n")
 
         self.socketio.run(

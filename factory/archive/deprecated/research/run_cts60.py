@@ -1,11 +1,11 @@
-﻿
+
 import sys
 import os
 import time
 import json
 from pathlib import Path
 
-# 纭繚椤圭洰鏍圭洰褰曞湪 path 涓?
+# 确保项目根目录在 path 涓?
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from cartridges.strategies import GridMTFStrategyV6_0
@@ -16,7 +16,7 @@ from console.runner import MultiStrategyRunner, StrategySlot
 from infra.config.api_config import OKX_DEMO_CONFIG, DEFAULT_SYMBOL, DEFAULT_TIMEFRAME
 
 # 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
-# 绛栫暐閰嶇疆
+# 策略配置
 # 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
 INITIAL_BALANCE = 10000.0
 V60_RUNTIME_PATH = "config/grid_v60_runtime.json"
@@ -34,7 +34,7 @@ STRATEGY_CATALOG = {
 }
 
 def build_history_data(strategy_cls, strategy_params, initial_balance, trades_sorted, data_source):
-    """閲嶅缓 V6.0 MTF 鎸囨爣鍘嗗彶"""
+    """重建 V6.0 MTF 指标历史"""
     history_candles = []
     history_rsi = []
     history_equity = []
@@ -47,15 +47,15 @@ def build_history_data(strategy_cls, strategy_params, initial_balance, trades_so
     sim_pos = 0.0
     trade_idx = 0
 
-    print(f"[V6.0] 閲嶅缓鎸囨爣鍘嗗彶 ({len(data_source)} bars)...")
+    print(f"[V6.0] 重建指标历史 ({len(data_source)} bars)...")
     
     for i, data in enumerate(data_source):
         ts_ms = int(data.timestamp.timestamp() * 1000)
 
-        # 鏇存柊鎸囨爣
+        # 更新指标
         temp_strat.on_data(data, None)
         
-        # 璁板綍 5m K绾?
+        # 记录 5m K绾?
         history_candles.append({
             't': ts_ms, 'o': data.open, 'h': data.high,
             'l': data.low, 'c': data.close, 'v': data.volume
@@ -70,7 +70,7 @@ def build_history_data(strategy_cls, strategy_params, initial_balance, trades_so
             'macdhist': status.get('macdhist')
         })
 
-        # 鏇存柊鏉冪泭 (绠€鍗曟ā鎷?
+        # 更新权益 (箢㵥ģ鎷?
         while trade_idx < len(trades_sorted):
             t = trades_sorted[trade_idx]
             try:
@@ -100,23 +100,23 @@ def build_history_data(strategy_cls, strategy_params, initial_balance, trades_so
 
 def main():
     print("\n" + "="*60)
-    print("CTS 6.0 鈥?绛栫暐杩愯鐜 (V6.0 MTF 涓撶敤)")
+    print("CTS 6.0 鈥?策略运行环境 (V6.0 MTF 专用)")
     print("="*60)
     
-    # 1. 閰嶇疆妫€鏌?
+    # 1. 配置妫€鏌?
     config_path = Path(V60_RUNTIME_PATH)
     if not config_path.exists():
         factory_path = Path(V60_FACTORY_PATH)
         if factory_path.exists():
             import shutil
             shutil.copy(factory_path, config_path)
-            print(f"[绯荤粺] 宸插垵濮嬪寲杩愯閰嶇疆: {config_path}")
+            print(f"[系统] 已初始化运行配置: {config_path}")
 
-    # 2. 鍚姩 Dashboard (Port: 5066)
+    # 2. 启动 Dashboard (Port: 5066)
     dashboard = create_dashboard_60(port=5066)
     dashboard.start_background()
 
-    # 3. 鍒濆鍖?Runner
+    # 3. 初始鍖?Runner
     runner = MultiStrategyRunner(dashboard=dashboard)
     for slot_id, cfg in STRATEGY_CATALOG.items():
         strategy = cfg['cls'](**cfg['params'])
@@ -132,7 +132,7 @@ def main():
         )
         runner.add_slot(slot)
 
-    # 4. 鏁版嵁娴?
+    # 4. 数据娴?
     data_feed = OKXDataFeed(
         symbol=DEFAULT_SYMBOL,
         timeframe='1m',
@@ -143,27 +143,27 @@ def main():
         record_to=f"data/market/{DEFAULT_SYMBOL.replace('-', '_')}_1m.csv"
     )
 
-    # 5. 棰勭儹 (200 bars for 15m MACD and 6h lookback)
-    print("[V6.0] 棰勭儹鏁版嵁涓?..")
+    # 5. 预热 (200 bars for 15m MACD and 6h lookback)
+    print("[V6.0] 预热数据涓?..")
     from console.engines import LiveEngine
     first_slot = next(iter(runner._slots.values()))
     warmup_engine = LiveEngine(first_slot.strategy, first_slot.executor, data_feed, warmup_bars=360)
     
     if warmup_engine.warmup():
         data_source = list(first_slot.strategy._data_1m)
-        print(f"[V6.0] 棰勭儹鎴愬姛锛屽叡鑾峰彇 {len(data_source)} 鏉″巻鍙?1m K绾?)
+        print(f"[V6.0] 预热成功，共获取 {len(data_source)} 条历鍙?1m K绾?)
         trades_sorted = sorted(runner._trades.get(first_slot.slot_id, []), key=lambda x: str(x.get('time', '')))
         hc, hrsi, heq, hmacd = build_history_data(GridMTFStrategyV6_0, STRATEGY_CATALOG['grid_v60']['params'], INITIAL_BALANCE, trades_sorted, data_source)
         runner.push_warmup(first_slot, hc, hrsi, heq, hmacd)
-        print(f"[V6.0] 棰勭儹瀹屾垚: {len(hc)} 鏍瑰巻鍙叉暟鎹?)
+        print(f"[V6.0] 预热完成: {len(hc)} 根历史数鎹?)
     else:
-        print("\n[V6.0 Error] 绛栫暐棰勭儹澶辫触锛佹湭鑳戒粠 OKX 鑾峰彇蹇呰鐨勫巻鍙叉暟鎹€?)
-        print("璇锋鏌ワ細\n1. 缃戠粶杩炴帴鏄惁绋冲畾锛堟捣澶栫嚎璺?VPN锛塡n2. API Key 鏉冮檺鏄惁鍖呭惈 'Read'\n3. 浜ゆ槗瀵?symbol 鍚嶇О鏄惁姝ｇ‘")
+        print("\n[V6.0 Error] 策略预热失败！未能从 OKX 获ȡ必要的历史数鎹€?)
+        print("请检查：\n1. 网络连接是否稳定（海外线璺?VPN）\n2. API Key 权限是否包含 'Read'\n3. 交易瀵?symbol 名称是否正确")
         return 1
 
-    # 6. 鎺у埗鍥炶皟
+    # 6. 控制回调
     def on_control(action: str, str_id: str, **kwargs):
-        print(f"[V6.0 Control] 鎺ユ敹鎺у埗鎸囦护: action={action}, str_id={str_id}, data={kwargs.get('data')}")
+        print(f"[V6.0 Control] 接收控制指令: action={action}, str_id={str_id}, data={kwargs.get('data')}")
         try:
             if action == 'save_params':
                 new_params = kwargs.get('data')
@@ -174,21 +174,21 @@ def main():
                     config.update(new_params)
                     with open(cp, 'w', encoding='utf-8') as f: json.dump(config, f, indent=2)
                     if hasattr(slot.strategy, '_load_params'): slot.strategy._load_params()
-                    print(f"[V6.0] 鍙傛暟宸茬儹鍔犺浇: {str_id}")
+                    print(f"[V6.0] 参数已热加载: {str_id}")
             elif action in ['start', 'pause', 'reset']:
                 func = getattr(runner, action, None)
                 if func:
                     func(str_id)
-                    print(f"[V6.0] 鎸囦护鎵ц鎴愬姛: {action} ({str_id})")
+                    print(f"[V6.0] 指令执行成功: {action} ({str_id})")
                 else:
-                    print(f"[V6.0 Error] MultiStrategyRunner 缂哄皯鏂规硶: {action}")
+                    print(f"[V6.0 Error] MultiStrategyRunner 缺少方法: {action}")
         except Exception as e:
-            print(f"[V6.0 Error] 鎺у埗鍥炶皟鎵ц澶辫触: {e}")
+            print(f"[V6.0 Error] 控制回调执行ʧ败: {e}")
             import traceback; traceback.print_exc()
 
     dashboard.on_control_callback = on_control
 
-    print("\n[V6.0] 椤哄埄鍚姩! 璇疯闂?http://localhost:5066")
+    print("\n[V6.0] 顺利启动! 请访闂?http://localhost:5066")
     
     while True:
         try:
@@ -197,15 +197,15 @@ def main():
                     runner.on_bar(market_data)
         except KeyboardInterrupt:
             runner.save_all()
-            print("\n鎺у埗鍙版崟鑾?KeyboardInterrupt锛岀▼搴忔甯搁€€鍑?)
+            print("\n控制台捕鑾?KeyboardInterrupt，程序正甯搁€€鍑?)
             break
         except Exception as e:
-            print(f"\n[V6.0 Error] 鏁版嵁娴佷腑鏂垨澶勭悊寮傚父: {e}")
+            print(f"\n[V6.0 Error] 数据流中断或处理异常: {e}")
             import traceback
             traceback.print_exc()
-            print("[V6.0] 5绉掑悗灏濊瘯閲嶅惎鏁版嵁娴?..")
+            print("[V6.0] 5秒后尝试重启数据娴?..")
             time.sleep(5)
-            runner.save_all() # 灏濊瘯淇濆瓨褰撳墠鐘舵€佷互闃插啀娆″穿婧?
+            runner.save_all() # 尝试保存当前鐘舵€佷互防再次崩婧?
 
     return 0
 

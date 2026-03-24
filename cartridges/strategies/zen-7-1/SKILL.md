@@ -1,10 +1,10 @@
-﻿---
+---
 name: zen-7-1
 description: |
-  杩欐槸涓€涓€愪氦鏄撳垽鏂妧鑳藉寘銆戯紙Trading Skill锛夈€?
-  鏀寔涓ょ妯″紡锛?1) Agent 鐩存帴鍔犺浇璋冪敤锛岃緟鍔╁喅绛栵紱(2) 鎸傝浇鍒?Runner 鎴愪负寰湇鍔℃寔缁繍琛屻€?
-  鍩轰簬 BOLL 甯﹀鎵╁紶 + MACD + RSI 涓夐噸鍏辨尟淇″彿锛岄噰鐢ㄧ綉鏍煎垎灞傛憡钖勬満鍒跺缓浠擄紝鍚姩鎬佹鐩?鍏ㄥ眬纭鎹熴€?
-  閫傜敤浜?BTC/USDT 1m K绾?+ 60m 閲嶉噰鏍枫€?
+  这是涓€涓€愪氦易判断技能包】（Trading Skill锛夈€?
+  支持两种ģ式锛?1) Agent 直接加载调用，辅助决策；(2) 挂载鍒?Runner 成Ϊ微服务持续运琛屻€?
+  基于 BOLL 带宽扩张 + MACD + RSI 三重共振信号，采用网格分层摊薄机制建仓，含动态止鐩?全局硬止鎹熴€?
+  适用浜?BTC/USDT 1m K绾?+ 60m 重采鏍枫€?
 license: Proprietary
 metadata:
   author: TradingGarage
@@ -15,67 +15,67 @@ metadata:
   min_capital: "5000"
 ---
 
-# Zen 7.1 鈥?Agent 浜ゆ槗鎶€鑳藉寘
+# Zen 7.1 鈥?Agent 交易鎶€能包
 
-鏈?Skill 鍖呬笓渚?AI Agent锛堝 Claude銆丆ursor锛夋垨鍩轰簬 API 鐨勫井鏈嶅姟绯荤粺浣跨敤銆?
-**杩欐槸涓€涓弻妯″紡鎶€鑳藉寘锛圖ual-Mode Skill锛夈€?*
+鏈?Skill 包专渚?AI Agent（如 Claude、Cursor）或基于 API 的微服务系统使用銆?
+**这是涓€个双ģ式鎶€能包（Dual-Mode Skill锛夈€?*
 
 ---
 
-## 妯″紡 A锛欰gent 鐩存帴璋冪敤楠岃瘉
+## 模式 A：Agent 直接调用验证
 
-濡傛灉浣犳槸 AI Agent锛屼綘鍙互鐩存帴璋冪敤姝ょ洰褰曚腑鐨勮剼鏈潵杩涜绛栫暐楠岃瘉鎴栨ā鎷熻绠椼€?
+如果你是 AI Agent，你可以ֱ接调用此目录中的脚本来进行策略验证或ģ拟计绠椼€?
 
-1. **鏌ラ槄鍥炴祴鏁版嵁**
-   Agent 鍙互鍦?`assets/backtest_summary.json` 涓煡闃?2025 骞村洖娴嬬粨鏋滀笌棰勮鏈€浣冲弬鏁般€?
-2. **蹇€熻繍琛屼笌楠岃瘉**
-   鍦ㄩ」鐩牴鐩綍涓嬶紝鎵ц鍐呯疆鐨勫揩閫熼獙璇佽剼鏈細
+1. **查阅回测数据**
+   Agent 可以鍦?`assets/backtest_summary.json` 中查闃?2025 年回测结果与预设鏈€佳参鏁般€?
+2. **蹇€熻繍行与验证**
+   在项目根目录下，执行内置的快速验证脚本：
    ```bash
    python strategies/skills/zen-7-1/scripts/verify.py
    ```
-   璇ヨ剼鏈笉渚濊禆搴炲ぇ鐨勫簳灞?Runner 妗嗘灦锛屽畠鍙槸瀹炰緥鍖栦簡 `strategy.py` 骞剁亴鍏ヤ簡鍑犲崄鏍规ā鎷熺殑 K 绾挎暟鎹紝鐢ㄤ簬楠岃瘉閫昏緫閫氶亾宸茶蛋閫氥€?
-3. **璋冩暣鍙傛暟**
-   鐩存帴淇敼鏈洰褰曠殑 `config.json`锛屾垨鍒涘缓 `config.local.json` 瑕嗙洊鍙傛暟浠ユ敼鍙樿祫閲戣妯″拰椋庨櫓鍋忓ソ銆?
+   该脚本不依赖庞大的底灞?Runner 框架，它只是ʵ例化了 `strategy.py` 并灌入了几十根模拟的 K 线数据，用于验证逻辑通道已走閫氥€?
+3. **调整参数**
+   直接修改本目录的 `config.json`，或创建 `config.local.json` 覆盖参数以改变资金规ģ和风险偏好銆?
 
 ---
 
-## 妯″紡 B锛氭寕杞戒负 Runner 寰湇鍔?
+## 模式 B：挂载为 Runner 微服鍔?
 
-鏈妧鑳藉寘鍙嵆鎻掑嵆鐢紝浣滀负闀块┗鍚庡彴寰湇鍔″伐浣溿€備綘鐨勫涓?Runner 灏嗛€氳繃 `SkillLoader` 鍔犺浇鏈寘锛?
+本技能包可即插即用，作为长驻后̨微服务工浣溿€備綘的宿涓?Runner 灏嗛€氳繃 `SkillLoader` 加载本包锛?
 
 ```python
 from runner.skill_loader import SkillLoader
-# Loader 灏嗚嚜鍔ㄤ粠 scripts/strategy.py 鎻愬彇鍑虹瓥鐣ョ被锛屽苟鐢?config.json 閲岀殑 params 杩涜鍒濆鍖?
+# Loader 将自动从 scripts/strategy.py 提取出策略类，并鐢?config.json 里的 params 进行初始鍖?
 strategy, meta, config = SkillLoader().load("strategies/skills/zen-7-1")
 ```
 
-闅忓悗 Runner 灏嗘妸绛栫暐瑁呭叆 slot锛屽苟涓哄叾鎸佺画鎺ㄩ€?WebSocket 鏁版嵁涓庢墽琛岃鍗曘€?
+随后 Runner 将把策略装入 slot，并为其持续鎺ㄩ€?WebSocket 数据与ִ行订鍗曘€?
 
 ---
 
-## 绛栫暐杩涘嚭鍦烘牳蹇冮€昏緫锛堜緵 Agent 瀛︿範锛?
+## 策略进出场核蹇冮€昏緫（供 Agent 学习锛?
 
-鎵€鏈変笟鍔￠€昏緫鍧囧湪 `scripts/strategy.py` 涓€?
+鎵€有业鍔￠€昏緫均在 `scripts/strategy.py` 涓€?
 
-### 杩涘満锛?H 绾у埆鍏辨尟锛?
+### 进场锛?H 级别共振锛?
 
-**鏉′欢 A锛堟爣鍑嗗ぇ鍓嶇疆锛?*锛屼互涓嬪叏閮ㄦ弧瓒筹細
-- 娉㈠姩鐜囷細`BBW > BBW_MA20`
-- 寮哄娍澶氬ご锛歚close > boll_mid` 涓?`macd_hist > 0`
-- 鏃犺秴涔颁笖鍔ㄨ兘鍚戜笂锛歚35 鈮?RSI 鈮?65` 涓?`RSI > prev_RSI`
+**条件 A（标准大前置锛?*，以下全部满足：
+- 波动率：`BBW > BBW_MA20`
+- 强势多头：`close > boll_mid` 涓?`macd_hist > 0`
+- 无超买且动能向上：`35 鈮?RSI 鈮?65` 涓?`RSI > prev_RSI`
 
-### 鍑哄満锛堟鐩?姝㈡崯锛?
+### 出场（止鐩?止损锛?
 
-**鍔ㄦ€佹鐩堬紙鐩堝埄杈炬爣鍚庯紝娑ㄥ娍鍋滄粸鏃惰窇璺級**锛?
-- `pnl 鈮?tp_min_profit_pct` AND `touched_upper_band` AND `RSI > 65` (涓斿紑濮嬪姩鑳芥敹缂?
+**鍔ㄦ€佹盈（盈利达标后，涨势停滞时跑路）**锛?
+- `pnl 鈮?tp_min_profit_pct` AND `touched_upper_band` AND `RSI > 65` (且开始动能收缂?
 
-**纭鎹燂紙1M 绾у疄鏃堕槻鐖嗭級**锛?
-- 鍙栧喅浜?`config.json` 涓殑 `hard_sl_pct` 鍙傛暟锛屽鏋滆Е鍙婂垯鍏ㄩ儴娓呭钩浠擄紙杩斿洖 SELL 淇″彿闃绘柇鍚庣画鎿嶄綔锛?
+**硬止损（1M 级实时防爆）**锛?
+- 取决浜?`config.json` 中的 `hard_sl_pct` 参数，如果触及则全部清平仓（返回 SELL 信号阻断后续操作锛?
 
 ---
 
-## 淇敼杈圭晫
+## 修改边界
 
-- **濡傞渶璋冩暣椋庨櫓鍋忓ソ**锛氳淇敼 `config.json` 涓殑 `hard_sl_pct` 鍜?`grid_drop_pct` 鍙傛暟
-- **濡傞渶淇敼涔板崠鐐归€昏緫**锛氳缂栬緫 `scripts/strategy.py`
-- **濡傞渶淇敼鏂囨。涓庢帹鑽愬€?*锛氳缂栬緫 `SKILL.md` 鍜?`references/REFERENCE.md`
+- **如需调整风险偏好**：请修改 `config.json` 中的 `hard_sl_pct` 鍜?`grid_drop_pct` 参数
+- **如需修改买卖鐐归€昏緫**：请编辑 `scripts/strategy.py`
+- **如需修改文档与推鑽愬€?*：请编辑 `SKILL.md` 鍜?`references/REFERENCE.md`

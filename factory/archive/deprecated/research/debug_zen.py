@@ -1,4 +1,4 @@
-﻿import sys
+import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -27,7 +27,7 @@ executor = PaperExecutor(initial_capital=10000.0, fast_mode=True)
 feed = CSVDataFeed(filepath=csv_path, symbol="BTCUSDT")
 engine = BacktestEngine(strategy=strategy, executor=executor)
 
-print("寮€濮?Zen 绛栫暐 Debug 鍥炴祴...")
+print("寮€濮?Zen 策略 Debug 回测...")
 report = engine.run(feed, fast_mode=True)
-print(f"鎬荤泩浜?  {report['total_return']}")
-print(f"鎬讳氦鏄撴暟:  {report['total_trades']}")
+print(f"总盈浜?  {report['total_return']}")
+print(f"总交易数:  {report['total_trades']}")

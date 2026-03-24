@@ -1,6 +1,6 @@
-﻿"""
-CTS Arena - 2025 鍏ㄥ勾楂橀€熷洖娴嬪伐鍏?
-鐢ㄦ硶: python run_backtest_arena.py --strategy grid_rsi_5_2 --params "rsi_period=14"
+"""
+CTS Arena - 2025 全年楂橀€熷洖测工鍏?
+用法: python run_backtest_arena.py --strategy grid_rsi_5_2 --params "rsi_period=14"
 """
 
 import sys
@@ -10,7 +10,7 @@ import argparse
 import json
 from datetime import datetime
 
-# 鑷姩澶勭悊璺緞 - 鍚戜笂瀵绘壘椤圭洰鏍圭洰褰?
+# 自动处理路径 - 向上寻找项目根目褰?
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(BASE_DIR)
 
@@ -19,7 +19,7 @@ from cartridges.bridge.datafeeds.csv_feed import CSVDataFeed
 from cartridges.bridge.executors.paper import PaperExecutor
 
 def run_arena(strategy_name: str, params: dict, csv_path: str):
-    # 1. 鍔ㄦ€佸姞杞界瓥鐣?(Skill-based loading)
+    # 1. 鍔ㄦ€佸姞载策鐣?(Skill-based loading)
     try:
         if strategy_name == "grid_rsi_5_2":
             from cartridges.strategies.grid_rsi_5_2 import GridRSIStrategyV5_2 as StrategyClass
@@ -48,21 +48,21 @@ def run_arena(strategy_name: str, params: dict, csv_path: str):
         elif strategy_name == "zen_7_1":
             from cartridges.strategies.zen_7_1 import Zen71Strategy as StrategyClass
         elif strategy_name == "grid_rsi_4_0":
-            # 鍔ㄦ€佹坊鍔犺矾寰勪互鍔犺浇褰掓。绛栫暐
+            # 鍔ㄦ€佹坊加路径以加载归档策略
             sys.path.append(os.path.join(os.path.dirname(__file__), "deprecated", "v4_legacy"))
             from grid_rsi import GridRSIStrategy as StrategyClass
         else:
-            print(f"鏈煡绛栫暐: {strategy_name}")
+            print(f"未知策略: {strategy_name}")
             return
     except ImportError as e:
-        print(f"鍔犺浇绛栫暐澶辫触: {e}")
+        print(f"加载策略失败: {e}")
         return
 
-    # 瀹炰緥鍖栫瓥鐣?
+    # 实例化策鐣?
     if strategy_name == "grid_rsi_5_2":
         strategy = StrategyClass(symbol="BTCUSDT", **params)
     elif strategy_name == "grid_mtf_6_0":
-        # V6.0 鍙兘鍐呴儴浼氬鐞?symbol
+        # V6.0 可能内部会处鐞?symbol
         strategy = StrategyClass(name=f"Arena-{strategy_name}", **params)
     elif strategy_name == "grid_mtf_6_1":
         strategy = StrategyClass(name=f"Arena-{strategy_name}", **params)
@@ -91,56 +91,56 @@ def run_arena(strategy_name: str, params: dict, csv_path: str):
     else:
         strategy = StrategyClass(name=f"Arena-{strategy_name}", **params)
     
-    # 2. 鍒濆鍖栭珮閫熸墽琛屽眰鍜屾暟鎹眰
+    # 2. 初始化高速执行层和数据层
     executor = PaperExecutor(initial_capital=10000.0, fast_mode=True)
     feed = CSVDataFeed(filepath=csv_path, symbol="BTCUSDT")
     
-    # 3. 杩愯鍥炴祴寮曟搸 (Fast Mode)
+    # 3. 运行回测引擎 (Fast Mode)
     engine = BacktestEngine(strategy=strategy, executor=executor)
     
     start_time = time.time()
-    print(f"\n[Arena] 姝ｅ湪鍚姩 2025 鍏ㄥ勾鍥炴祴...")
-    print(f"[Arena] 绛栫暐: {strategy_name} | 鏁版嵁: {os.path.basename(csv_path)}")
+    print(f"\n[Arena] 正在启动 2025 全年回测...")
+    print(f"[Arena] 策略: {strategy_name} | 数据: {os.path.basename(csv_path)}")
     
     report = engine.run(feed, fast_mode=True)
     
     duration = time.time() - start_time
     
-    # 4. 杈撳嚭缁撴灉
+    # 4. 输出结果
     print("\n" + "="*60)
-    print(f"鍥炴祴鎴樻姤 - {strategy_name} (2025)")
+    print(f"回测战报 - {strategy_name} (2025)")
     print("="*60)
-    print(f"澶勭悊鑰楁椂:   {duration:.2f} 绉?)
-    print(f"鎬绘敹鐩婄巼:   {report['total_return']*100:.2f}%")
-    print(f"鏈€澶у洖鎾?   {report['max_drawdown']*100:.2f}%")
-    print(f"澶忔櫘姣旂巼:   {report['sharpe_ratio']:.2f}")
-    print(f"鐩堜簭姣?     {report['profit_factor']:.2f}")
-    print(f"鑳滅巼:       {report['win_rate']*100:.2f}%")
-    print(f"浜ゆ槗鎬绘暟:   {report['total_trades']}")
+    print(f"处理耗时:   {duration:.2f} 绉?)
+    print(f"总收益率:   {report['total_return']*100:.2f}%")
+    print(f"鏈€大回鎾?   {report['max_drawdown']*100:.2f}%")
+    print(f"夏普比率:   {report['sharpe_ratio']:.2f}")
+    print(f"盈亏姣?     {report['profit_factor']:.2f}")
+    print(f"胜率:       {report['win_rate']*100:.2f}%")
+    print(f"交易总数:   {report['total_trades']}")
     print("="*60)
     
-    # 淇濆瓨缁撴灉
+    # 保存结果
     result_file = f"arena_result_{strategy_name}_{datetime.now().strftime('%H%M%S')}.json"
     with open(result_file, 'w') as f:
-        # 鍙繚瀛樻爣閲忔暟鎹紝涓嶄繚瀛樺法澶х殑 equity_curve 鏁扮粍
+        # 只保存标量数据，不保存巨大的 equity_curve 数组
         summary = {k: v for k, v in report.items() if k not in ['equity_curve', 'trades', 'signals']}
         json.dump(summary, f, indent=4)
-    print(f"[Arena] 鎽樿宸蹭繚瀛樿嚦: {result_file}")
+    print(f"[Arena] 摘要已保存至: {result_file}")
 
-    # 5. 鑷姩鍙鍖?
+    # 5. 自动可视鍖?
     try:
         from backtest.utils.plot_arena_results import plot_results
         img_path = plot_results(result_file)
         if img_path:
-            print(f"[Arena] 鍙鍖栨洸绾垮凡鐢熸垚: {img_path}")
+            print(f"[Arena] 可视化曲线已生成: {img_path}")
     except Exception as e:
-        print(f"[Arena] 鍙鍖栧け璐? {e}")
+        print(f"[Arena] 可视化失璐? {e}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="CTS Arena Backtest")
-    parser.add_argument("--strategy", type=str, default="grid_rsi_5_2", help="绛栫暐鍚嶇О")
-    parser.add_argument("--params", type=str, default="{}", help="JSON 鏍煎紡鍙傛暟")
-    parser.add_argument("--data", type=str, default="data/btc_1m_2025.csv", help="鏁版嵁璺緞")
+    parser.add_argument("--strategy", type=str, default="grid_rsi_5_2", help="策略名称")
+    parser.add_argument("--params", type=str, default="{}", help="JSON 格式参数")
+    parser.add_argument("--data", type=str, default="data/btc_1m_2025.csv", help="数据路径")
     
     args = parser.parse_args()
     

@@ -3,8 +3,8 @@ from datetime import datetime
 from typing import Iterator, Optional, List
 
 from console.core import MarketData
-from cartridges.bridge.datafeeds.base import BaseDataFeed
-from cartridges.bridge.utils.okx_api import OKXAPI
+from cartridges.datafeeds.base import BaseDataFeed
+from console.utils.okx_api import OKXAPI
 
 class OKXDataFeedSkill(BaseDataFeed):
     """

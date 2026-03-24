@@ -1,6 +1,6 @@
-﻿"""
-澶氫氦鏄撴墍鏈湴妯℃嫙鐩樼郴缁?
-鏀寔锛氬竵瀹夈€丱KX銆丅ybit绛?
+"""
+多交易所本地ģ拟盘系缁?
+支持：币瀹夈€丱KX、Bybit绛?
 """
 
 import pandas as pd
@@ -14,7 +14,7 @@ warnings.filterwarnings('ignore')
 
 
 class MultiExchangePaperTrading:
-    """澶氫氦鏄撴墍鏈湴妯℃嫙鐩樼郴缁?""
+    """多交易所本地ģ拟盘系缁?""
     
     def __init__(self, initial_capital=10000, base_currency='USDT', 
                  fee_rate=0.001, slippage_model='adaptive'):
@@ -23,47 +23,47 @@ class MultiExchangePaperTrading:
         self.fee_rate = fee_rate
         self.slippage_model = slippage_model
         
-        # 璐︽埛鐘舵€?
+        # 账户鐘舵€?
         self.cash = initial_capital
         self.positions = {}
         self.total_value_history = []
         self.trades = []
         self.signals = []
         
-        # 妯℃嫙鍙傛暟
+        # 模拟参数
         self.latency_ms = 200
         self.slippage_base = 0.0005
         
-        # 绛栫暐宓屽叆
+        # 策略嵌入
         self.strategy = None
         self.is_running = False
         self.current_timestamp = None
         
     def set_strategy(self, strategy_class, **strategy_params):
-        """璁剧疆浜ゆ槗绛栫暐"""
+        """设置交易策略"""
         self.strategy = strategy_class(**strategy_params)
-        print(f"绛栫暐宸茶缃? {strategy_class.__name__}")
+        print(f"策略已设缃? {strategy_class.__name__}")
         
     def set_latency(self, latency_ms):
-        """璁剧疆缃戠粶寤惰繜"""
+        """设置网络延迟"""
         self.latency_ms = latency_ms
-        print(f"缃戠粶寤惰繜璁剧疆涓? {latency_ms}ms")
+        print(f"网络延迟设置涓? {latency_ms}ms")
         
     def set_slippage_model(self, model, base_slippage=0.0005):
-        """璁剧疆婊戠偣妯″瀷"""
+        """设置滑点模型"""
         self.slippage_model = model
         self.slippage_base = base_slippage
-        print(f"婊戠偣妯″瀷: {model}, 鍩虹婊戠偣: {base_slippage*100}%")
+        print(f"滑点模型: {model}, 基础滑点: {base_slippage*100}%")
         
     def calculate_slippage(self, symbol, side, amount, price, orderbook=None):
-        """璁＄畻瀹為檯鎴愪氦婊戠偣"""
+        """计算实际成交滑点"""
         if self.slippage_model == 'none':
             return 0
         
         if self.slippage_model == 'fixed':
             return self.slippage_base
         
-        # 鑷€傚簲妯″瀷
+        # 鑷€傚簲模型
         if orderbook is None:
             depth_factor = 1.0
         else:
@@ -74,19 +74,19 @@ class MultiExchangePaperTrading:
         return slippage
     
     def _calculate_depth_impact(self, orderbook, amount, price):
-        """璁＄畻璁㈠崟绨挎繁搴﹀婊戠偣鐨勫奖鍝?""
+        """计算订单簿深度对滑点的影鍝?""
         simulated_depth = price * 100
         impact = amount / simulated_depth
         return 1 + impact * 10
     
     def simulate_latency(self):
-        """妯℃嫙缃戠粶寤惰繜"""
+        """模拟网络延迟"""
         if self.latency_ms > 0:
             actual_latency = self.latency_ms * (0.8 + np.random.random() * 0.4)
             time.sleep(actual_latency / 1000)
     
     def execute_order(self, symbol, side, amount, price, timestamp, orderbook=None):
-        """鎵ц妯℃嫙璁㈠崟"""
+        """执行模拟订单"""
         self.simulate_latency()
         
         slippage = self.calculate_slippage(symbol, side, amount, price, orderbook)
@@ -102,7 +102,7 @@ class MultiExchangePaperTrading:
         if side == 'BUY':
             total_cost = trade_value + fee
             if total_cost > self.cash:
-                print(f"[璀﹀憡] 璧勯噾涓嶈冻: 闇€瑕?{total_cost:.2f}, 鍙敤${self.cash:.2f}")
+                print(f"[警告] 资金不足: 闇€瑕?{total_cost:.2f}, 可用${self.cash:.2f}")
                 return None
             
             self.cash -= total_cost
@@ -117,7 +117,7 @@ class MultiExchangePaperTrading:
             
         else:
             if symbol not in self.positions or self.positions[symbol]['amount'] < amount:
-                print(f"[璀﹀憡] 鎸佷粨涓嶈冻: 闇€瑕亄amount}, 鍙敤{self.positions.get(symbol, {}).get('amount', 0)}")
+                print(f"[警告] 持仓不足: 闇€Ҫ{amount}, 可用{self.positions.get(symbol, {}).get('amount', 0)}")
                 return None
             
             self.cash += (trade_value - fee)
@@ -141,13 +141,13 @@ class MultiExchangePaperTrading:
         }
         self.trades.append(trade_record)
         
-        print(f"[鎴愪氦] {side} {amount:.6f} {symbol} @ ${executed_price:.2f} "
-              f"(婊戠偣: {slippage*100:.3f}%, 鎵嬬画璐? ${fee:.2f})")
+        print(f"[成交] {side} {amount:.6f} {symbol} @ ${executed_price:.2f} "
+              f"(滑点: {slippage*100:.3f}%, 手续璐? ${fee:.2f})")
         
         return trade_record
     
     def get_total_value(self, current_price):
-        """璁＄畻褰撳墠鎬昏祫浜т环鍊?""
+        """计算当前总资产价鍊?""
         position_value = sum(
             pos['amount'] * current_price 
             for symbol, pos in self.positions.items()
@@ -155,11 +155,11 @@ class MultiExchangePaperTrading:
         return self.cash + position_value
     
     def run_simulation(self, data_feed, symbol='BTC/USDT', verbose=True):
-        """杩愯妯℃嫙鐩?""
+        """运行模拟鐩?""
         self.is_running = True
         print(f"\n{'='*60}")
-        print(f"妯℃嫙鐩樺惎鍔?| 鍒濆璧勯噾: ${self.initial_capital:.2f} {self.base_currency}")
-        print(f"婊戠偣妯″瀷: {self.slippage_model} | 寤惰繜: {self.latency_ms}ms")
+        print(f"模拟盘启鍔?| 初始资金: ${self.initial_capital:.2f} {self.base_currency}")
+        print(f"滑点模型: {self.slippage_model} | 延迟: {self.latency_ms}ms")
         print(f"{'='*60}\n")
         
         for i, tick in enumerate(data_feed):
@@ -214,17 +214,17 @@ class MultiExchangePaperTrading:
             })
             
             if verbose and i % 100 == 0:
-                print(f"[{timestamp}] 浠锋牸: ${close:.2f} | "
-                      f"鎬昏祫浜? ${total_value:.2f} | "
-                      f"鎸佷粨: {self.positions.get(symbol, {}).get('amount', 0):.6f}")
+                print(f"[{timestamp}] 价格: ${close:.2f} | "
+                      f"总资浜? ${total_value:.2f} | "
+                      f"持仓: {self.positions.get(symbol, {}).get('amount', 0):.6f}")
         
         self.is_running = False
         return self.generate_report()
     
     def generate_report(self):
-        """鐢熸垚妯℃嫙鐩樻姤鍛?""
+        """生成模拟盘报鍛?""
         if not self.total_value_history:
-            return "鏃犱氦鏄撹褰?
+            return "无交易记褰?
         
         df = pd.DataFrame(self.total_value_history)
         final_value = df['total_value'].iloc[-1]
@@ -250,42 +250,42 @@ class MultiExchangePaperTrading:
         }
         
         print(f"\n{'='*60}")
-        print("妯℃嫙鐩樻姤鍛?)
+        print("模拟盘报鍛?)
         print(f"{'='*60}")
-        print(f"鍒濆璧勯噾:     ${self.initial_capital:>12,.2f}")
-        print(f"鏈€缁堣祫浜?     ${final_value:>12,.2f}")
-        print(f"鎬绘敹鐩婄巼:     {total_return*100:>11.2f}%")
-        print(f"鏈€澶у洖鎾?     {max_dd*100:>11.2f}%")
-        print(f"澶忔櫘姣旂巼:     {sharpe:>12.2f}")
-        print(f"浜ゆ槗娆℃暟:     {len(self.trades):>12}")
-        print(f"鍓╀綑鐜伴噾:     ${self.cash:>12,.2f}")
-        print(f"褰撳墠鎸佷粨:     {self.positions}")
+        print(f"初始资金:     ${self.initial_capital:>12,.2f}")
+        print(f"鏈€终资浜?     ${final_value:>12,.2f}")
+        print(f"总收益率:     {total_return*100:>11.2f}%")
+        print(f"鏈€大回鎾?     {max_dd*100:>11.2f}%")
+        print(f"夏普比率:     {sharpe:>12.2f}")
+        print(f"交易次数:     {len(self.trades):>12}")
+        print(f"剩余现金:     ${self.cash:>12,.2f}")
+        print(f"当前持仓:     {self.positions}")
         print(f"{'='*60}\n")
         
         return report
     
     def stop(self):
-        """鍋滄妯℃嫙"""
+        """停止模拟"""
         self.is_running = False
-        print("妯℃嫙鐩樺凡鍋滄")
+        print("模拟盘已停止")
     
     def reset(self):
-        """閲嶇疆妯℃嫙鐩?""
+        """重置模拟鐩?""
         self.cash = self.initial_capital
         self.positions = {}
         self.total_value_history = []
         self.trades = []
         self.signals = []
         self.is_running = False
-        print("妯℃嫙鐩樺凡閲嶇疆")
+        print("模拟盘已重置")
 
 
 class DataFeed:
-    """鏁版嵁鎺ュ叆妯″潡"""
+    """数据接入模块"""
     
     @staticmethod
     def from_dataframe(df, symbol='BTC/USDT'):
-        """浠嶥ataFrame鍒涘缓鏁版嵁娴?""
+        """从DataFrame创建数据娴?""
         for timestamp, row in df.iterrows():
             yield {
                 'timestamp': timestamp,
@@ -300,14 +300,14 @@ class DataFeed:
     @staticmethod
     def from_exchange(exchange_name='binance', symbol='BTC/USDT', 
                       timeframe='1m', limit=1000):
-        """浠庝氦鏄撴墍鑾峰彇瀹炴椂鏁版嵁"""
+        """从交易所获取实时数据"""
         try:
             import ccxt
             
             exchange_class = getattr(ccxt, exchange_name)
             exchange = exchange_class({'enableRateLimit': True})
             
-            print(f"杩炴帴鍒?{exchange_name}...")
+            print(f"连接鍒?{exchange_name}...")
             
             while True:
                 try:
@@ -327,16 +327,16 @@ class DataFeed:
                     time.sleep(exchange.rateLimit / 1000)
                     
                 except Exception as e:
-                    print(f"鑾峰彇鏁版嵁閿欒: {e}")
+                    print(f"获取数据错误: {e}")
                     time.sleep(5)
                     
         except ImportError:
-            print("璇峰厛瀹夎ccxt: pip install ccxt")
+            print("请先安装ccxt: pip install ccxt")
             return None
     
     @staticmethod
     def simulate_realtime(df, speed=1.0):
-        """妯℃嫙瀹炴椂鏁版嵁娴?""
+        """模拟实时数据娴?""
         for i in range(len(df)):
             row = df.iloc[i]
             timestamp = df.index[i]

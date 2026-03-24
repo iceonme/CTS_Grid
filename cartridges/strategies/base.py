@@ -4,119 +4,109 @@
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+import asyncio
 
 from console.core import Signal, FillEvent, MarketData, Position, StrategyContext
+from console.runner.base_skill import BaseSkill
+from console.protocol import MarketUpdateEvent, AccountUpdateEvent, SignalRequestEvent
 
 
-class BaseStrategy(ABC):
+class BaseStrategy(BaseSkill, ABC):
     """
-    策略基类 (Architecture 2.0)
+    策略服务 (Microservice)
+    
+    职责：
+    1. 监听总线上的行情和账户更新
+    2. 进行决策并发布交易信号事件
     """
     
     def __init__(self, name: str = "unnamed", **params):
-        """初始化"""
-        self.name = name
+        super().__init__(name=name)
         self.params = params
         self._initialized = False
-        self.logger = None 
-        self.warmup_bars: int = 0  # 声明所需的预热 K 线数量
+        self.warmup_bars: int = 0
         
-    def set_logger(self, logger):
-        """注入日志器"""
-        self.logger = logger
+        # 内部缓存最新状态（由总线更新）
+        self._last_data: Optional[MarketData] = None
+        self._last_account: Optional[AccountUpdateEvent] = None
+
+    def on_init(self):
+        """初始化订阅"""
+        self.subscribe("market_update", self._on_market_event)
+        self.subscribe("account_update", self._on_account_event)
+        self.subscribe("execution_report", self._on_execution_report)
+
+    async def _on_market_event(self, event: MarketUpdateEvent):
+        """响应行情更新"""
+        self._last_data = event.data
+        if not self._initialized:
+            self.initialize()
+            self._initialized = True
         
-    def initialize(self):
-        """
-        策略初始化（子类可重写）
-        在第一次 on_data 调用前执行
-        """
-        self._initialized = True
-    
+        # 构建 context (使用本地缓存的最新账户状态)
+        context = self._build_context()
+        signals = self.on_data(event.data, context)
+        
+        # 发布信号
+        if signals and self.bus:
+            for sig in signals:
+                await self.bus.emit("signal_request", SignalRequestEvent(
+                    signal=sig, strategy_id=self.name
+                ))
+
+    async def _on_account_event(self, event: AccountUpdateEvent):
+        """响应账户更新（同步本地缓存）"""
+        self._last_account = event
+
+    async def _on_execution_report(self, event: Any):
+        """响应执行反馈"""
+        if event.fill:
+            self.on_fill(event.fill)
+
+    def _build_context(self) -> StrategyContext:
+        """从缓存数据构建策略所需的上下文内容"""
+        if not self._last_account:
+            return StrategyContext(datetime.now(), 0.0, {}, {})
+        
+        return StrategyContext(
+            timestamp=self._last_data.timestamp if self._last_data else datetime.now(),
+            cash=self._last_account.cash,
+            positions=self._last_account.positions,
+            current_prices={self._last_data.symbol: self._last_data.close} if self._last_data else {}
+        )
+
     @abstractmethod
     def on_data(self, data: MarketData, context: StrategyContext) -> List[Signal]:
-        """
-        接收市场数据，返回交易信号
-        
-        Args:
-            data: 市场数据（K线或Tick）
-            context: 当前账户状态
-            
-        Returns:
-            List[Signal]: 交易信号列表（可能为空）
-        """
+        """传统的策略计算逻辑"""
         pass
-    
+
     def on_fill(self, fill: FillEvent):
-        """
-        成交回调（可选重写）
-        当订单成交时，引擎调用此方法通知策略
-        """
+        """成交回调"""
         pass
-    
+
+    async def start(self):
+        """策略服务主任务：主要由事件回调驱动，只需维持运行"""
+        print(f"[Strategy:{self.name}] 策略引擎已上线，正在监听总线信号...")
+        self._running = True
+        while self._running:
+            await asyncio.sleep(1)
+
+    def initialize(self):
+        pass
+
     def get_state(self) -> Dict[str, Any]:
-        """
-        [标准接口] 获取策略内部需要持久化的状态数据（如网格槽位、锁定标记等）。
-        返回一个可 JSON 序列化的字典。
-        """
         return {}
 
     def set_state(self, state: Dict[str, Any]):
-        """
-        [标准接口] 恢复策略持久化的状态数据。
-        """
         pass
     
     def on_start(self):
-        """策略开始运行前调用（可选重写）"""
         pass
     
     def on_stop(self):
-        """策略停止时调用（可选重写）"""
         pass
 
-    def warmup(self, data_list: List[MarketData]):
-        """
-        [标准接口] 批量预热数据。
-        引擎在启动前会调用此方法，将历史 K 线批量喂给策略。
-        子类应在此处更新指标、初始化状态，而不应依赖引擎去更新策略私有缓存。
-        """
-        for data in data_list:
-            # 默认调用 initialize() 确保初始化
-            if not self._initialized:
-                self.initialize()
-            # 默认调用上下文为空的 on_data（仅用于更新指标）
-            # 注意：实际策略重写时应优化此处计算开销
-            self.on_data(data, None)
-
-    def get_ui_manifest(self) -> Dict[str, Any]:
-        """
-        [预研接口] 返回策略所需的 UI 组件规格。
-        多策略 Dashboard 将根据此配置动态渲染面板（如：神经网络热力图、特定技术指标）。
-        """
-        return {
-            'charts': [
-                {'type': 'candle_volume', 'name': '主图'},
-                {'type': 'oscillator', 'name': 'RSI'}
-            ]
-        }
-    
     def log(self, message: str, level: str = "info"):
-        """标准日志接口"""
-        if self.logger:
-            if level == "info": self.logger.info(message)
-            elif level == "error": self.logger.error(message)
-            elif level == "warning": self.logger.warning(message)
-        else:
-            # 静默模式
-            pass
-
-    def to_dict(self) -> Dict[str, Any]:
-        """导出配置"""
-        return {
-            "name": self.name,
-            "class": self.__class__.__name__,
-            "params": self.params
-        }
+        print(f"[{level.upper()}] {self.name}: {message}")

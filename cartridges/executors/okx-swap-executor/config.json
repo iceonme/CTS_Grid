@@ -1,0 +1,7 @@
+{
+    "symbol": "ETH-USDT-SWAP",
+    "leverage": 3,
+    "ct_val": 0.1,
+    "is_demo": true,
+    "poll_interval": 2.0
+}
