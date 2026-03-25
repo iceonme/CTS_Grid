@@ -59,9 +59,14 @@ async def async_start_run(args):
     )
     runner.add_slot(slot)
 
-    # 4. 仪表盘处理 (TODO: 将 Dashboard 适配为事件监听器)
+    # 4. 仪表盘处理 (基于 ADR002)
+    dashboard = None
     if not args.no_dashboard:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🌍 Dashboard 暂未完全适配事件总线，跳过 UI 绑定", flush=True)
+        from console.runner.dashboard_skill import DashboardSkill
+        dashboard = DashboardSkill(port=args.port)
+        dashboard.register_strategy(slot_id, skill_path, display_name=display_name)
+        runner.add_skill(dashboard) # 将 Dashboard 作为观察者 Skill 加入引擎
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] 🌍 Dashboard 已挂载于 http://localhost:{args.port}", flush=True)
 
     # 5. 启动运行
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 🚀 全系统供电准备就绪...", flush=True)

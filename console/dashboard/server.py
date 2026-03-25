@@ -266,19 +266,45 @@ class DashboardServer:
                                    to=strategy_id, namespace='/')
 
     def _clean_data(self, data: Any) -> Any:
+        """递归清理数据，确保其可被 JSON 序列化 (支持 Numpy 与自定义对象序列化)"""
         import math
         from enum import Enum
+        from datetime import datetime
+        try:
+            import numpy as np
+        except ImportError:
+            np = None
+
+        if data is None:
+            return None
+            
+        # 1. 处理 Numpy 基础类型
+        if np:
+            if isinstance(data, (np.floating, np.float64, np.float32)):
+                return float(data) if not np.isnan(data) and not np.isinf(data) else None
+            if isinstance(data, (np.integer, np.int64, np.int32)):
+                return int(data)
+            if isinstance(data, np.ndarray):
+                return self._clean_data(data.tolist())
+
+        # 2. 处理容器类型
         if isinstance(data, dict):
-            return {k: self._clean_data(v) for k, v in data.items()}
-        elif isinstance(data, list):
+            return {str(k): self._clean_data(v) for k, v in data.items()}
+        if isinstance(data, (list, tuple, set)):
             return [self._clean_data(v) for v in data]
-        elif isinstance(data, float):
-            if math.isnan(data) or math.isinf(data): return None
-            return data
-        elif isinstance(data, datetime):
+
+        # 3. 处理基础与特殊类型
+        if isinstance(data, float):
+            return data if not math.isnan(data) and not math.isinf(data) else None
+        if isinstance(data, datetime):
             return data.isoformat()
-        elif isinstance(data, Enum):
+        if isinstance(data, Enum):
             return data.value
+        
+        # 4. 处理自定义对象 (如果对象有 __dict__ 属性)
+        if hasattr(data, '__dict__'):
+            return self._clean_data(data.__dict__)
+            
         return data
 
     def register_strategy(self, strategy_id: str, display_name: str = None, route: str = '/'):
@@ -294,7 +320,7 @@ class DashboardServer:
 
     def register_skill_dashboard(self, strategy_id: str, skill_path: str):
         """注册一个 Skill 专属的看板目录"""
-        dashboard_dir = os.path.join(skill_path, 'dashboard')
+        dashboard_dir = os.path.abspath(os.path.join(skill_path, 'dashboard'))
         if not os.path.isdir(dashboard_dir):
             print(f"[DashboardServer] Warning: {dashboard_dir} is not a directory")
             return
@@ -315,25 +341,36 @@ class DashboardServer:
             except Exception as e:
                 print(f"[DashboardServer] Error loading hooks from {hooks_file}: {e}")
 
-    def update(self, data: Dict[str, Any], strategy_id: str = 'default'):
+    def update(self, data: Dict[str, Any], strategy_id: str = 'default', event: str = 'update'):
+        """更新策略状态并推送至对应房间"""
         try:
             if strategy_id not in self._data:
                 self.register_strategy(strategy_id)
+            
+            # 更新内部缓存
             for key, value in data.items():
                 if isinstance(value, dict) and key in self._data[strategy_id]:
-                    self._data[strategy_id][key].update(value)
+                    # 只有当原数据也是字典时才进行 update，否则直接覆盖
+                    if isinstance(self._data[strategy_id][key], dict):
+                        self._data[strategy_id][key].update(value)
+                    else:
+                        self._data[strategy_id][key] = value
                 else:
                     self._data[strategy_id][key] = value
-            for key in ['history_candles', 'history_rsi', 'history_equity', 'history_macd', 'trades']:
-                if key in self._data[strategy_id] and isinstance(self._data[strategy_id][key], list):
-                    # 针对轻量化看板，历史记录保持在 500-1000 左右
-                    self._data[strategy_id][key] = self._data[strategy_id][key][-1000:]
+            
+            # 推送数据包
             clean = self._clean_data(data)
-            self.socketio.emit('update', clean, to=strategy_id, namespace='/')
-            if 'history_candles' in data:
+            print(f"[DashboardServer] 向 {strategy_id} 推送事件 {event}，数据长度: {len(str(clean))}")
+            self.socketio.emit(event, clean, to=strategy_id, namespace='/')
+            
+            # 特殊逻辑：如果包含 history_candles 且当前不是 history_update 事件，则补发一个
+            if 'history_candles' in data and event != 'history_update':
                 self.socketio.emit('history_update', clean, to=strategy_id, namespace='/')
+                
         except Exception as e:
             print(f'[DashboardServer] Update error: {e}')
+            import traceback
+            traceback.print_exc()
 
     def reset_ui(self, strategy_id: str = None):
         market_keys = ['history_candles', 'history_rsi', 'history_equity_unused', 'history_macd', 'prices', 'candle', 'strategy']

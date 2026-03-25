@@ -39,6 +39,7 @@ class ATSEngine:
         self.bus = EventBus()
         self.log_dir = log_dir
         self._slots: Dict[str, StrategySlot] = {}
+        self._skills: List[BaseSkill] = []
         self._tasks: List[asyncio.Task] = []
         self._running = False
         
@@ -52,29 +53,88 @@ class ATSEngine:
 
     def _setup_core_logging(self):
         """核心日志挂接：监听总线上的所有协议事件"""
-        for event_type in ["market_update", "account_update", "signal_request", "execution_report"]:
+        event_types = [
+            "market_update", "account_update", "signal_request", "execution_report", "control_request",
+            "history_request", "market_history_update", "ui_update", "ui_history_update", "ui_snapshot_request"
+        ]
+        for event_type in event_types:
             self.bus.subscribe(event_type, self._record_event)
 
     async def _record_event(self, event: Any):
-        """黑匣子记录逻辑：将事件持久化"""
+        """黑匣子记录逻辑：将事件持久化 (鲁棒型)"""
+        # 提取时间戳
+        ts = getattr(event, 'timestamp', None)
+        event_name = event.__class__.__name__
+        
+        if isinstance(event, dict):
+            ts = event.get('timestamp', ts)
+            event_name = "GenericEvent"
+            
+        if isinstance(ts, str):
+            try:
+                ts = datetime.fromisoformat(ts)
+            except:
+                ts = datetime.now()
+        elif not isinstance(ts, datetime):
+            ts = datetime.now()
+
         entry = {
-            "event": event.__class__.__name__,
-            "time": event.timestamp.isoformat(),
+            "event": event_name,
+            "time": ts.isoformat(),
             "payload": self._serialize(event)
         }
-        with open(self.log_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, default=str) + "\n")
+        
+        try:
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, default=str) + "\n")
+        except Exception as e:
+            print(f"[Engine] 日志录入失败: {e}")
 
-    def _serialize(self, obj):
+    def _serialize(self, obj, seen=None):
+        """增强版序列化，防止循环引用"""
+        if seen is None: seen = set()
+        
+        if id(obj) in seen:
+            return "<Circular Reference>"
+        
+        import math
+        from enum import Enum
+        
+        if isinstance(obj, (int, float, str, bool, type(None))):
+            if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+                return None
+            return obj
+        
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+            
+        if isinstance(obj, Enum):
+            return obj.value
+
+        if isinstance(obj, (list, tuple)):
+            return [self._serialize(v, seen | {id(obj)}) for v in obj]
+            
+        if isinstance(obj, dict):
+            return {str(k): self._serialize(v, seen | {id(obj)}) for k, v in obj.items()}
+
         if hasattr(obj, "__dict__"):
-            return {k: self._serialize(v) for k, v in obj.__dict__.items()}
-        return str(obj) if not isinstance(obj, (int, float, str, bool, type(None))) else obj
+            return {k: self._serialize(v, seen | {id(obj)}) for k, v in obj.__dict__.items() if not k.startswith('_')}
+            
+        return str(obj)
 
     def add_slot(self, slot: StrategySlot):
         """插入一个策略槽"""
         self._slots[slot.slot_id] = slot
+        # 强制对齐策略名称与槽位 ID，确保 UI 协议/Socket 房间一致
+        slot.strategy.name = slot.slot_id
         slot.set_bus(self.bus)
         print(f"[Engine] 已载入策略槽: {slot.display_name} ({slot.slot_id})")
+
+    def add_skill(self, skill: BaseSkill):
+        """插入一个观察者或辅助型 Skill"""
+        self._skills.append(skill)
+        skill.set_bus(self.bus)
+        print(f"[Engine] 已载入观察者 Skill: {skill.name}")
 
     async def run(self):
         """全系统供电启动"""
@@ -89,6 +149,10 @@ class ATSEngine:
             self._tasks.append(asyncio.create_task(slot.executor.start()))
             self._tasks.append(asyncio.create_task(slot.feed.start()))
             self._tasks.append(asyncio.create_task(slot.strategy.start()))
+
+        # 3. 启动所有辅助服务 (如 Dashboard)
+        for skill in self._skills:
+            self._tasks.append(asyncio.create_task(skill.start()))
 
         try:
             await asyncio.gather(*self._tasks)
@@ -105,6 +169,9 @@ class ATSEngine:
             await slot.strategy.stop()
             await slot.feed.stop()
             await slot.executor.stop()
+        
+        for skill in self._skills:
+            await skill.stop()
         
         self.bus.stop()
         for t in self._tasks:

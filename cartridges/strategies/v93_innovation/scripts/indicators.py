@@ -91,12 +91,17 @@ def calculate_grids(df: pd.DataFrame, window_hours: int = 6) -> Dict[str, Any]:
     entity_grids = [grid_bottom, grid_bottom + step, grid_bottom + 2*step, grid_top]
     virtual_grids = [grid_bottom - step, grid_top + step]
     
+    # 处理 Unix 秒级整数索引的格式化
+    last_ts = df.index[-1]
+    import datetime as dt
+    calc_time_str = dt.datetime.fromtimestamp(last_ts).isoformat() if isinstance(last_ts, (int, np.integer)) else last_ts.isoformat()
+    
     return {
         'grid_top': grid_top,
         'grid_bottom': grid_bottom,
         'entity_grids': entity_grids,
         'virtual_grids': virtual_grids,
-        'calc_time': df.index[-1].isoformat()
+        'calc_time': calc_time_str
     }
 
 def get_current_layer(price: float, entity_grids: List[float], virtual_grids: List[float]) -> Optional[int]:
@@ -110,10 +115,13 @@ def get_current_layer(price: float, entity_grids: List[float], virtual_grids: Li
     elif price < entity_grids[3]: return 2
     else: return 3
 
-def check_reset_conditions(state: GridState, current_price: float, current_time: datetime) -> Tuple[bool, int]:
+def check_reset_conditions(state: GridState, current_price: float, current_time: Any) -> Tuple[bool, int]:
     """检查重置条件控制逻辑"""
     # 跨天恢复配额 (北京时间 UTC+8)
-    cst_time = current_time + timedelta(hours=8)
+    if isinstance(current_time, (int, float)):
+        cst_time = datetime.fromtimestamp(current_time + 28800)
+    else:
+        cst_time = current_time + timedelta(hours=8)
     current_day_str = cst_time.strftime('%Y-%m-%d')
     
     if state.last_reset_day != current_day_str:
@@ -134,7 +142,12 @@ def check_reset_conditions(state: GridState, current_price: float, current_time:
         if not is_outside:
             state.breakout_triggered = False
         else:
-            elapsed = (current_time - state.breakout_time).total_seconds()
+            # 鲁棒化时间差计算：处理 datetime 与 int 两种情况
+            if isinstance(current_time, (int, np.integer)) and isinstance(state.breakout_time, (int, np.integer)):
+                elapsed = current_time - state.breakout_time
+            else:
+                elapsed = (current_time - state.breakout_time).total_seconds()
+                
             if elapsed >= 2 * 3600:
                 state.breakout_triggered = False
                 state.daily_reset_count += 1

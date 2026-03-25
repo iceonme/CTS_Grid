@@ -4,7 +4,7 @@ BaseSkill - 微服务化 Skill 组件基类
 
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Optional, Any, Callable
 from console.bus import EventBus
 
 class BaseSkill(ABC):

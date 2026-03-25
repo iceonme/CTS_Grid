@@ -90,8 +90,16 @@ socket.on('update', (data) => {
     // A. 市场数据更新
     if (data.market_data) {
         const d = data.market_data;
+        // 统一为 Unix 秒数
+        let tsValue = d.timestamp;
+        if (typeof tsValue === 'string') {
+            tsValue = Math.floor(new Date(tsValue).getTime() / 1000);
+        } else if (tsValue > 2000000000) { // 可能是毫秒
+            tsValue = Math.floor(tsValue / 1000);
+        }
+        
         const bar = {
-            time: typeof d.timestamp === 'string' ? Math.floor(new Date(d.timestamp).getTime() / 1000) : d.timestamp / 1000,
+            time: tsValue,
             open: d.open, high: d.high, low: d.low, close: d.close
         };
         mainSeries.update(bar);
@@ -128,7 +136,8 @@ socket.on('update', (data) => {
     // C. 账户资金与持仓
     if (data.total_value) {
         document.getElementById('totalValue').innerText = data.total_value.toFixed(2);
-        const pnl = ((data.total_value - 10000) / 10000 * 100).toFixed(2);
+        const baseline = 5000.0; // V93 初始本金
+        const pnl = ((data.total_value - baseline) / baseline * 100).toFixed(2);
         const pnlEl = document.getElementById('pnlRate');
         pnlEl.innerText = pnl + '%';
         pnlEl.className = 'pnl-value ' + (pnl >= 0 ? 'text-profit' : 'text-loss');
@@ -149,12 +158,33 @@ socket.on('update', (data) => {
 });
 
 socket.on('history_update', (data) => {
+    if (!data) return;
+    
+    // A. K 线历史 (Main Chart)
     if (data.history_candles) {
-        const bars = data.history_candles.map(d => ({
-            time: Math.floor(new Date(d.time || d.timestamp).getTime() / 1000),
-            open: d.open, high: d.high, low: d.low, close: d.close
-        }));
+        const bars = data.history_candles.map(d => {
+            let tsValue = d.time || d.timestamp;
+            if (typeof tsValue === 'string') {
+                tsValue = Math.floor(new Date(tsValue).getTime() / 1000);
+            } else if (tsValue > 2000000000) { // 可能是毫秒
+                tsValue = Math.floor(tsValue / 1000);
+            }
+            return {
+                time: tsValue,
+                open: d.open, high: d.high, low: d.low, close: d.close
+            };
+        });
         mainSeries.setData(bars);
+    }
+
+    // B. RSI 历史 (RSI Chart)
+    if (data.history_rsi) {
+        rsiSeries.setData(data.history_rsi);
+    }
+
+    // C. 资产历史 (PNL Chart)
+    if (data.history_equity) {
+        pnlSeries.setData(data.history_equity);
     }
 });
 

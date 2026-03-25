@@ -5,6 +5,7 @@
 from abc import ABC, abstractmethod
 from typing import Iterator, List, Optional, Callable, Dict, Any
 from datetime import datetime
+import asyncio
 
 from console.core import MarketData, Position
 from console.runner.base_skill import BaseSkill
@@ -27,9 +28,9 @@ class BaseDataFeed(BaseSkill, ABC):
         
     @abstractmethod
     async def stream(self, start: Optional[datetime] = None, 
-                     end: Optional[datetime] = None) -> Iterator[MarketData]:
-        """数据流迭代器"""
-        pass
+                     end: Optional[datetime] = None):
+        """异步数据流迭代器 (Async Generator)"""
+        yield None
 
     @abstractmethod
     def get_account_data(self) -> Dict[str, Any]:
@@ -44,16 +45,18 @@ class BaseDataFeed(BaseSkill, ABC):
         self._running = True
         print(f"[DataFeed:{self.name}] 正在启动数据推送服务...")
         
-        # 兼容性：获取流并由总线分发
-        for data in self.stream():
+        # 核心：使用 async for 驱动异步行情流
+        async for data in self.stream():
             if not self._running:
                 break
             
+            if data is None: continue
+
             # 1. 发送行情更新
             if self.bus:
                 await self.bus.emit("market_update", MarketUpdateEvent(data=data))
             
-            # 2. 定期发送账户更新 (每 bar 推送一次，或者按需优化频率)
+            # 2. 定期发送账户更新
             account = self.get_account_data()
             if self.bus:
                 await self.bus.emit("account_update", AccountUpdateEvent(
@@ -62,8 +65,8 @@ class BaseDataFeed(BaseSkill, ABC):
                     total_value=account.get('total_value', 0.0)
                 ))
             
-            # 让出控制权
-            await asyncio.sleep(0.01)
+            # 让出控制权，确保总线能处理其他任务
+            await asyncio.sleep(0.001)
 
-    def stop(self):
+    async def stop(self):
         self._running = False

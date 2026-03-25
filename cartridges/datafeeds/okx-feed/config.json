@@ -1,7 +1,7 @@
 {
   "name": "okx-feed",
   "params": {
-    "symbol": "BTC-USDT",
+    "symbol": "ETH-USDT-SWAP",
     "timeframe": "1m",
     "poll_interval": 2.0,
     "is_demo": true,

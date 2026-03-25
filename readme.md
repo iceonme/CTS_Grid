@@ -1,41 +1,55 @@
-# CTS1 - Grid RSI Trading System (Refactored)
+# CTS1 - ATS Microservices Architecture (Async)
 
-动态网格 + RSI 策略交易系统 - 重构版
+基于 **异步事件驱动** 与 **Skill 微服务化** 的网格策略交易系统。
 
-## 🏗 架构设计
+## 🏗 全新架构设计 (v3.1)
 
-### 分层架构
+系统采用“总线制”解耦，各组件通过内部 `EventBus` 进行非阻塞通信。
 
+```mermaid
+graph LR
+    subgraph "交易核心 (ATSEngine)"
+        Bus((EventBus))
+        Log[BlackBox Logger]
+    end
+
+    DF[DataFeed Skill] -.->|MarketUpdate| Bus
+    Bus -.->|Event Stream| Strat[Strategy Skill]
+    Strat -.->|SignalRequest| Bus
+    Bus -.->|Signal| Exec[Executor Skill]
+    Exec -.->|ExecutionReport| Bus
+    
+    Bus ===> Dash[Dashboard Skill]
 ```
-┌──────────────────────────────────────────────────────────┐
-│ 应用层 (Applications)                                   │
-│ ├── main.py              # 统一入口                     │
-│ ├── run_backtest.py      # 回测入口                     │
-│ ├── run_paper.py         # 模拟盘入口                   │
-│ └── run_live.py          # 实盘入口                     │
-├──────────────────────────────────────────────────────────┤
-│ 引擎层 (Engines)                                        │
-│ ├── backtest.py          # 回测引擎（事件驱动）          │
-│ └── live.py              # 实盘引擎                     │
-├──────────────────────────────────────────────────────────┤
-│ 策略层 (Strategies)  → 纯逻辑，无状态，只输出信号       │
-│ ├── base.py              # 策略基类                     │
-│ └── grid_rsi.py          # 网格RSI策略                  │
-├──────────────────────────────────────────────────────────┤
-│ 执行层 (Execution)                                      │
-│ ├── base.py              # 执行器基类                   │
-│ ├── paper.py             # 模拟执行                     │
-│ └── okx.py               # OKX真实执行                  │
-├──────────────────────────────────────────────────────────┤
-│ 数据层 (Data)                                           │
-│ ├── base.py              # 数据接口                     │
-│ ├── csv_feed.py          # CSV历史数据                  │
-│ └── okx_feed.py          # OKX实时数据                  │
-├──────────────────────────────────────────────────────────┤
-│ 核心层 (Core)                                           │
-│ └── types.py             # 共享数据类型                 │
-└──────────────────────────────────────────────────────────┘
+
+### 核心特性
+*   **微服务化 (Skill-based)**: 所有组件均为独立 Skill，通过 `SkillLoader` 动态加载。
+*   **异步总线 (EventBus)**: 基于 `asyncio.Queue`，实现毫秒级事件流转，各组件完全解耦。
+*   **黑匣子日志 (BlackBox)**: 引擎实时记录总线上所有原始事件，支持回溯分析。
+*   **插件化 UI**: Dashboard 作为独立 Skill，支持自动发现并挂载策略专属的可视化模板。
+
+## 🚀 启动指引
+
+### 1. 运行核心引擎
+```bash
+python ats.py run v93_innovation --mode paper
 ```
+
+### 2. 参数说明
+- `run <skill_name>`: 启动指定的策略。
+- `--mode [paper|live]`: 运行模式（模拟盘/实盘）。
+- `--no-dashboard`: 禁用可视化看板（Headless 模式）。
+
+## 🧩 目录结构 (新版)
+*   `ats.py`: 系统统一启动入口。
+*   `console/`:
+    *   `runner/`: 核心引擎 `ATSEngine`、总线 `EventBus` 及 `SkillLoader`。
+    *   `dashboard/`: 可视化服务器。
+*   `cartridges/`:
+    *   `strategies/`: 策略 Skill（如 `v93_innovation`）。
+    *   `datafeeds/`: 行情 Skill（如 `okx-feed`）。
+    *   `executors/`: 执行 Skill（如 `paper-executor`）。
+*   `logs/trading/`: 黑匣子事件日志。
 
 ## 🚀 快速开始
 

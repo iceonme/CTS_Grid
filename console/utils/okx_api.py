@@ -47,14 +47,20 @@ class OKXAPI:
         return header
 
     def _request(self, method, request_path, params=None, body=None):
-        url = self.base_url + request_path
         if params:
             import urllib.parse
-            url += '?' + urllib.parse.urlencode(params)
+            # 核心修复：签名中的 requestPath 必须包含 Query String
+            request_path += '?' + urllib.parse.urlencode(params)
             
-        header = self._get_header(method, request_path, json.dumps(body) if body else "")
-        
+        url = self.base_url + request_path
         try:
+            # 只有在提供 Key/Secret 时才生成签名 Header
+            header = {'Content-Type': 'application/json'}
+            if self.api_key and self.api_secret:
+                header = self._get_header(method, request_path, json.dumps(body) if body else "")
+            elif self.is_demo:
+                header['x-simulated-trading'] = '1'
+
             if method == 'GET':
                 response = requests.get(url, headers=header, timeout=10)
             else:
@@ -69,9 +75,13 @@ class OKXAPI:
             return None
 
     # --- 行情接口 ---
-    def get_candles(self, instId, bar='1m', limit=100):
+    def get_candles(self, instId, bar='1m', limit=100, after=None):
+        """获取 K 线数据 (支持分页)"""
         path = "/api/v5/market/candles"
         params = {"instId": instId, "bar": bar, "limit": limit}
+        if after:
+            params["after"] = after
+            
         res = self._request('GET', path, params=params)
         if res and res.get('data'):
             df = pd.DataFrame(res['data'], columns=['ts', 'open', 'high', 'low', 'close', 'vol', 'volCcy', 'volCcyQuote', 'confirm'])

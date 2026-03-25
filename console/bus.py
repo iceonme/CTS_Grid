@@ -59,6 +59,9 @@ class EventBus:
         while self._running:
             try:
                 event_type, data = await self._queue.get()
+                # 特别打印：只看关键握手信号，不看高频行情，避免刷屏
+                if event_type in ["history_request", "market_history_update", "ui_snapshot_request"]:
+                    print(f"[EventBus:BUS] 捕获关键信号: {event_type}")
                 self.publish(event_type, data)
                 self._queue.task_done()
             except Exception as e:
